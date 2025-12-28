@@ -1,0 +1,23 @@
+# Business Metrics Analyzer Requirements
+# GUI
+PyQt5>=5.15.0
+
+# Data Processing
+pandas>=1.5.0
+openpyxl>=3.0.0
+xlrd>=2.0.0
+
+# Visualization
+matplotlib>=3.5.0
+seaborn>=0.12.0
+
+# Report Generation
+reportlab>=3.6.0
+Pillow>=9.0.0
+
+# Database (optional, for future expansion)
+SQLAlchemy>=2.0.0
+
+# Web Dashboard (optional, for future expansion)
+# streamlit>=1.20.0
+# plotly>=5.10.0
