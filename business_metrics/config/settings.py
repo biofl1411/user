@@ -15,18 +15,24 @@ REPORTS_DIR = BASE_DIR / "reports"
 DATA_DIR.mkdir(exist_ok=True)
 REPORTS_DIR.mkdir(exist_ok=True)
 
-# 엑셀 컬럼 매핑 (실제 엑셀 컬럼명에 맞게 수정 필요)
+# 엑셀 컬럼 매핑 (BioFL 접수내역 엑셀 기준)
 COLUMN_MAPPING = {
-    "date": ["날짜", "일자", "접수일", "Date"],
-    "sales_amount": ["매출액", "매출금액", "금액", "Sales"],
-    "cost": ["비용", "원가", "Cost"],
-    "profit": ["이익", "영업이익", "순이익", "Profit"],
-    "manager": ["담당자", "영업담당", "Manager"],
-    "center": ["센터", "지점", "부서", "Center", "Branch"],
-    "client": ["거래처", "고객", "업체명", "Client"],
-    "test_purpose": ["검사목적", "목적", "Purpose"],
-    "test_count": ["검사건수", "건수", "Count"],
-    "processing_days": ["처리일수", "TAT", "소요일"],
+    "date": ["접수일자", "날짜", "일자"],
+    "sales_amount": ["수수료", "공급가액", "매출액", "금액"],
+    "tax_amount": ["세액"],
+    "manager": ["영업담당", "담당자"],
+    "center": ["영업팀", "지부명", "센터", "부서"],
+    "client": ["의뢰업체명", "거래처", "업체명"],
+    "test_purpose": ["검사목적", "목적"],
+    "test_count": ["항목개수", "검사건수", "건수"],
+    "status": ["상태"],
+    "test_field": ["시험분야"],
+    "product_name": ["제품/시료명", "제품명", "시료명"],
+    "receipt_no": ["접수번호"],
+    "completion_date": ["완료예정일"],
+    "payment_status": ["입금여부", "입금구분"],
+    "payment_amount": ["입금액"],
+    "outstanding": ["업체총미수금", "잔액"],
 }
 
 # 지표 계산 설정
