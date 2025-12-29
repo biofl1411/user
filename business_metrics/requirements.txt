@@ -18,6 +18,6 @@ Pillow>=9.0.0
 # Database (optional, for future expansion)
 SQLAlchemy>=2.0.0
 
-# Web Dashboard (optional, for future expansion)
-# streamlit>=1.20.0
-# plotly>=5.10.0
+# Web Dashboard
+streamlit>=1.20.0
+plotly>=5.10.0
