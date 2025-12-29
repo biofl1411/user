@@ -807,7 +807,6 @@ HTML_TEMPLATE = '''
             updateManagerTable();
             updateBranchTable();
             updateClientTables();
-            updateRegionChart();
             updateRegionTables();
             updateRegionSelects();
             updatePurposeCheckboxes();
