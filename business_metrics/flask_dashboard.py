@@ -387,6 +387,12 @@ HTML_TEMPLATE = '''
 
     <!-- 업체별 탭 -->
     <div id="client" class="tab-content">
+        <div class="sub-select" style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <label style="margin-right: 10px; font-weight: bold;">👤 담당자 필터:</label>
+            <select id="clientManagerFilter" onchange="updateClientTables()">
+                <option value="">전체 담당자</option>
+            </select>
+        </div>
         <div class="charts">
             <div class="chart-container">
                 <h3>🏆 매출 TOP 20 업체</h3>
@@ -411,20 +417,6 @@ HTML_TEMPLATE = '''
                 <div class="scroll-table">
                     <table id="clientVolTable">
                         <thead><tr><th>거래처</th><th>건수</th><th>매출액</th><th>평균단가</th></tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="chart-container">
-                <h3>👤 영업담당별 TOP 10 업체</h3>
-                <div class="sub-select">
-                    <select id="managerSelect" onchange="updateManagerClients()">
-                        <option value="">담당자 선택</option>
-                    </select>
-                </div>
-                <div class="scroll-table">
-                    <table id="managerClientTable">
-                        <thead><tr><th>순위</th><th>거래처</th><th>매출액</th><th>건수</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -622,12 +614,14 @@ HTML_TEMPLATE = '''
                 options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } } } }
             });
 
-            // 담당자 선택 드롭다운 업데이트
-            const managerSelect = document.getElementById('managerSelect');
-            managerSelect.innerHTML = '<option value="">담당자 선택</option>';
+            // 업체별 탭 담당자 필터 드롭다운 업데이트
+            const clientManagerFilter = document.getElementById('clientManagerFilter');
+            const currentFilter = clientManagerFilter.value;
+            clientManagerFilter.innerHTML = '<option value="">전체 담당자</option>';
             currentData.by_manager.forEach(m => {
-                managerSelect.innerHTML += `<option value="${m[0]}">${m[0]}</option>`;
+                clientManagerFilter.innerHTML += `<option value="${m[0]}">${m[0]}</option>`;
             });
+            if (currentFilter) clientManagerFilter.value = currentFilter;
         }
 
         function updateBranchChart() {
@@ -717,38 +711,52 @@ HTML_TEMPLATE = '''
         }
 
         function updateClientTables() {
+            const selectedManager = document.getElementById('clientManagerFilter').value;
+
+            let clientData, effData, volData;
+
+            if (selectedManager && currentData.manager_top_clients[selectedManager]) {
+                // 담당자별 데이터 사용
+                const managerClients = currentData.manager_top_clients[selectedManager];
+
+                // 매출순 정렬
+                clientData = managerClients.map(c => [c[0], {
+                    sales: c[1].sales,
+                    count: c[1].count,
+                    avg: c[1].count > 0 ? c[1].sales / c[1].count : 0
+                }]);
+
+                // 고효율 (단가순)
+                effData = [...clientData].sort((a, b) => b[1].avg - a[1].avg).slice(0, 20);
+
+                // 대량 (건수순)
+                volData = [...clientData].sort((a, b) => b[1].count - a[1].count).slice(0, 20);
+
+                clientData = clientData.slice(0, 20);
+            } else {
+                // 전체 데이터 사용
+                clientData = currentData.by_client.slice(0, 20);
+                effData = currentData.high_efficiency;
+                volData = currentData.high_volume;
+            }
+
             // TOP 20 업체
             const topTbody = document.querySelector('#clientTopTable tbody');
-            topTbody.innerHTML = currentData.by_client.slice(0, 20).map((d, i) =>
+            topTbody.innerHTML = clientData.map((d, i) =>
                 `<tr><td>${i+1}</td><td>${d[0]}</td><td>${formatCurrency(d[1].sales)}</td><td>${d[1].count}</td><td>${formatCurrency(d[1].avg)}</td></tr>`
-            ).join('');
+            ).join('') || '<tr><td colspan="5">데이터 없음</td></tr>';
 
             // 고효율 업체
             const effTbody = document.querySelector('#clientEffTable tbody');
-            effTbody.innerHTML = currentData.high_efficiency.map(d =>
+            effTbody.innerHTML = effData.map(d =>
                 `<tr><td>${d[0]}</td><td>${formatCurrency(d[1].avg)}</td><td>${formatCurrency(d[1].sales)}</td><td>${d[1].count}</td></tr>`
-            ).join('');
+            ).join('') || '<tr><td colspan="4">데이터 없음</td></tr>';
 
             // 대량 업체
             const volTbody = document.querySelector('#clientVolTable tbody');
-            volTbody.innerHTML = currentData.high_volume.map(d =>
+            volTbody.innerHTML = volData.map(d =>
                 `<tr><td>${d[0]}</td><td>${d[1].count}</td><td>${formatCurrency(d[1].sales)}</td><td>${formatCurrency(d[1].avg)}</td></tr>`
-            ).join('');
-        }
-
-        function updateManagerClients() {
-            const manager = document.getElementById('managerSelect').value;
-            const tbody = document.querySelector('#managerClientTable tbody');
-
-            if (!manager || !currentData.manager_top_clients[manager]) {
-                tbody.innerHTML = '<tr><td colspan="4">담당자를 선택하세요</td></tr>';
-                return;
-            }
-
-            const clients = currentData.manager_top_clients[manager];
-            tbody.innerHTML = clients.map((c, i) =>
-                `<tr><td>${i+1}</td><td>${c[0]}</td><td>${formatCurrency(c[1].sales)}</td><td>${c[1].count}</td></tr>`
-            ).join('');
+            ).join('') || '<tr><td colspan="4">데이터 없음</td></tr>';
         }
 
         function updateDefectChart() {
