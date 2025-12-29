@@ -109,7 +109,7 @@ def extract_region(address):
     if match:
         sigungu = match.group(1)
         # 시도명이 시군구에 포함되어 있으면 다음 매칭 찾기
-        if sigungu == sido + '시' or sigungu == sido + '도':
+        if sido and (sigungu == sido + '시' or sigungu == sido + '도'):
             matches = re.findall(r'([가-힣]+(?:시|군|구))', addr)
             if len(matches) > 1:
                 sigungu = matches[1]
