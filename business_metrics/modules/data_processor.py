@@ -48,6 +48,9 @@ class DataProcessor:
         # 5. 카테고리 컬럼 정제
         df = self.clean_category_columns(df)
 
+        # 6. 영업담당 → 지사/센터 매핑 추가
+        df = self.add_branch_column(df)
+
         self.processed_df = df
         logger.info(f"데이터 전처리 완료: {len(df)} 행")
         return df
@@ -159,6 +162,46 @@ class DataProcessor:
                 df[col] = df[col].astype(str).str.strip()
                 df[col] = df[col].replace(['nan', 'None', ''], '미지정')
 
+        return df
+
+    def add_branch_column(self, df: pd.DataFrame,
+                          manager_column: str = '영업담당') -> pd.DataFrame:
+        """
+        영업담당 → 지사/센터 컬럼 추가
+
+        Args:
+            df: DataFrame
+            manager_column: 영업담당 컬럼명
+
+        Returns:
+            지사/센터 컬럼이 추가된 DataFrame
+        """
+        try:
+            from config.settings import MANAGER_TO_BRANCH
+        except ImportError:
+            # 설정 파일이 없으면 기본 매핑 사용
+            MANAGER_TO_BRANCH = {}
+
+        # 영업담당 컬럼 찾기
+        if manager_column not in df.columns:
+            for col in df.columns:
+                if '영업담당' in col or '담당자' in col:
+                    manager_column = col
+                    break
+
+        if manager_column not in df.columns:
+            logger.warning("영업담당 컬럼을 찾을 수 없습니다.")
+            return df
+
+        # 지사/센터 컬럼 추가
+        df['지사센터'] = df[manager_column].map(MANAGER_TO_BRANCH).fillna('기타')
+
+        # 매핑되지 않은 담당자 로깅
+        unmapped = df[df['지사센터'] == '기타'][manager_column].unique()
+        if len(unmapped) > 0:
+            logger.info(f"매핑되지 않은 담당자: {list(unmapped)}")
+
+        logger.info("지사/센터 컬럼 추가 완료")
         return df
 
     def add_calculated_columns(self, df: pd.DataFrame,
