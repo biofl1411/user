@@ -15,6 +15,10 @@ app = Flask(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
+# 데이터 캐시 (메모리에 저장)
+DATA_CACHE = {}
+CACHE_TIME = {}
+
 # 설정
 MANAGER_TO_BRANCH = {
     "장동욱": "충청지사", "지병훈": "충청지사", "박은태": "충청지사",
@@ -26,13 +30,25 @@ MANAGER_TO_BRANCH = {
     "엄상흠": "경북센터",
 }
 
-def load_excel_data(year):
-    """openpyxl로 직접 엑셀 로드 (pandas 없이)"""
+def load_excel_data(year, use_cache=True):
+    """openpyxl로 직접 엑셀 로드 (캐시 사용)"""
+    import time
     from openpyxl import load_workbook
+
+    # 캐시 확인 (1시간 유효)
+    cache_key = str(year)
+    if use_cache and cache_key in DATA_CACHE:
+        cache_age = time.time() - CACHE_TIME.get(cache_key, 0)
+        if cache_age < 3600:  # 1시간
+            print(f"[CACHE] {year}년 데이터 캐시 사용 ({len(DATA_CACHE[cache_key])}건)")
+            return DATA_CACHE[cache_key]
 
     data_path = DATA_DIR / str(year)
     if not data_path.exists():
         return []
+
+    print(f"[LOAD] {year}년 데이터 로딩 시작...")
+    start_time = time.time()
 
     all_data = []
     files = sorted(data_path.glob("*.xlsx"))
@@ -47,8 +63,16 @@ def load_excel_data(year):
                 row_dict = dict(zip(headers, row))
                 all_data.append(row_dict)
             wb.close()
+            print(f"[LOAD] {f.name} 완료")
         except Exception as e:
             print(f"[ERROR] Loading {f}: {e}")
+
+    elapsed = time.time() - start_time
+    print(f"[LOAD] {year}년 완료: {len(all_data)}건, {elapsed:.1f}초 소요")
+
+    # 캐시 저장
+    DATA_CACHE[cache_key] = all_data
+    CACHE_TIME[cache_key] = time.time()
 
     return all_data
 
@@ -803,5 +827,26 @@ def get_data():
     print(f"[API] 처리 완료: total_count={processed['total_count']}")
     return jsonify(processed)
 
+@app.route('/api/cache/refresh')
+def refresh_cache():
+    """캐시 새로고침"""
+    global DATA_CACHE, CACHE_TIME
+    DATA_CACHE = {}
+    CACHE_TIME = {}
+    print("[CACHE] 캐시 초기화됨")
+    # 데이터 미리 로드
+    for year in ['2024', '2025']:
+        load_excel_data(year, use_cache=False)
+    return jsonify({'status': 'ok', 'message': '캐시가 새로고침되었습니다.'})
+
+def preload_data():
+    """서버 시작 시 데이터 미리 로드"""
+    print("[PRELOAD] 데이터 미리 로드 시작...")
+    for year in ['2024', '2025']:
+        load_excel_data(year)
+    print("[PRELOAD] 완료!")
+
 if __name__ == '__main__':
+    # 서버 시작 시 데이터 미리 로드
+    preload_data()
     app.run(host='0.0.0.0', port=6001, debug=False)
