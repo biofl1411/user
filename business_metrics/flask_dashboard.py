@@ -78,6 +78,44 @@ def load_excel_data(year, use_cache=True):
 
     return all_data
 
+def extract_region(address):
+    """주소에서 시/도, 시/군/구 추출"""
+    if not address:
+        return None, None
+
+    addr = str(address).strip()
+    if not addr:
+        return None, None
+
+    # 시/도 추출
+    sido = None
+    sigungu = None
+
+    # 광역시/특별시/도 패턴
+    sido_patterns = [
+        '서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종',
+        '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'
+    ]
+
+    for pattern in sido_patterns:
+        if pattern in addr:
+            sido = pattern
+            break
+
+    # 시/군/구 추출 (첫 번째 시/군/구 단위)
+    import re
+    # 시, 군, 구 패턴 매칭
+    match = re.search(r'([가-힣]+(?:시|군|구))', addr)
+    if match:
+        sigungu = match.group(1)
+        # 시도명이 시군구에 포함되어 있으면 다음 매칭 찾기
+        if sigungu == sido + '시' or sigungu == sido + '도':
+            matches = re.findall(r'([가-힣]+(?:시|군|구))', addr)
+            if len(matches) > 1:
+                sigungu = matches[1]
+
+    return sido, sigungu
+
 def process_data(data, purpose_filter=None):
     """데이터 처리"""
     by_manager = {}
@@ -87,9 +125,14 @@ def process_data(data, purpose_filter=None):
     by_purpose = {}
     by_defect = {}
     by_defect_month = {}
+    by_region = {}  # 지역별 데이터
+    by_region_manager = {}  # 지역-담당자별 데이터
     purposes = set()
     total_sales = 0
     total_count = 0
+
+    # 주소 컬럼 자동 감지
+    address_columns = ['주소', '시료주소', '업체주소', '거래처주소', '검체주소', '시료채취장소']
 
     for row in data:
         purpose = str(row.get('검사목적', '') or '').strip()
@@ -175,6 +218,40 @@ def process_data(data, purpose_filter=None):
                     by_defect_month[defect][month] = 0
                 by_defect_month[defect][month] += 1
 
+        # 지역별 분석
+        address = None
+        for col in address_columns:
+            if row.get(col):
+                address = row.get(col)
+                break
+
+        sido, sigungu = extract_region(address)
+
+        if sido:
+            region_key = sido
+            if sigungu:
+                region_key = f"{sido} {sigungu}"
+
+            # 지역별 통계
+            if region_key not in by_region:
+                by_region[region_key] = {'sales': 0, 'count': 0, 'sido': sido, 'sigungu': sigungu or '', 'managers': {}}
+            by_region[region_key]['sales'] += sales
+            by_region[region_key]['count'] += 1
+
+            # 지역-담당자별 통계
+            if manager not in by_region[region_key]['managers']:
+                by_region[region_key]['managers'][manager] = {'sales': 0, 'count': 0}
+            by_region[region_key]['managers'][manager]['sales'] += sales
+            by_region[region_key]['managers'][manager]['count'] += 1
+
+            # 담당자-지역별 통계
+            if manager not in by_region_manager:
+                by_region_manager[manager] = {}
+            if region_key not in by_region_manager[manager]:
+                by_region_manager[manager][region_key] = {'sales': 0, 'count': 0, 'sido': sido, 'sigungu': sigungu or ''}
+            by_region_manager[manager][region_key]['sales'] += sales
+            by_region_manager[manager][region_key]['count'] += 1
+
         total_sales += sales
         total_count += 1
 
@@ -198,6 +275,27 @@ def process_data(data, purpose_filter=None):
     # 대량 업체 (많은 건수)
     high_volume = sorted(by_client.items(), key=lambda x: x[1]['count'], reverse=True)[:20]
 
+    # 지역별 정렬 (매출 기준)
+    sorted_regions = sorted(by_region.items(), key=lambda x: x[1]['sales'], reverse=True)
+
+    # 지역별 TOP 담당자
+    region_top_managers = {}
+    for region, data in sorted_regions:
+        managers = sorted(data['managers'].items(), key=lambda x: x[1]['sales'], reverse=True)
+        region_top_managers[region] = [
+            {'name': m, 'sales': d['sales'], 'count': d['count']}
+            for m, d in managers[:5]
+        ]
+
+    # 담당자별 지역 분포
+    manager_regions = {}
+    for mgr, regions in by_region_manager.items():
+        sorted_mgr_regions = sorted(regions.items(), key=lambda x: x[1]['sales'], reverse=True)
+        manager_regions[mgr] = [
+            {'region': r, 'sales': d['sales'], 'count': d['count'], 'sido': d['sido'], 'sigungu': d['sigungu']}
+            for r, d in sorted_mgr_regions[:10]
+        ]
+
     return {
         'by_manager': [(m, {'sales': d['sales'], 'count': d['count']}) for m, d in sorted_managers],
         'by_branch': [(k, {'sales': v['sales'], 'count': v['count'], 'managers': len(v['managers'])})
@@ -213,6 +311,10 @@ def process_data(data, purpose_filter=None):
                            for c, d in high_efficiency],
         'high_volume': [(c, {'sales': d['sales'], 'count': d['count'], 'avg': d['sales']/d['count'] if d['count'] > 0 else 0})
                        for c, d in high_volume],
+        'by_region': [(r, {'sales': d['sales'], 'count': d['count'], 'sido': d['sido'], 'sigungu': d['sigungu']})
+                      for r, d in sorted_regions[:50]],
+        'region_top_managers': region_top_managers,
+        'manager_regions': manager_regions,
         'purposes': sorted(list(purposes)),
         'total_sales': total_sales,
         'total_count': total_count
@@ -335,6 +437,7 @@ HTML_TEMPLATE = '''
         <button class="tab" onclick="showTab('team')">🏢 팀별</button>
         <button class="tab" onclick="showTab('monthly')">📅 월별</button>
         <button class="tab" onclick="showTab('client')">🏭 업체별</button>
+        <button class="tab" onclick="showTab('region')">📍 지역별</button>
         <button class="tab" onclick="showTab('defect')">⚠️ 부적합</button>
     </div>
 
@@ -419,6 +522,59 @@ HTML_TEMPLATE = '''
                 <div class="scroll-table">
                     <table id="clientVolTable">
                         <thead><tr><th>거래처</th><th>건수</th><th>매출액</th><th>평균단가</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 지역별 탭 -->
+    <div id="region" class="tab-content">
+        <div class="sub-select" style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <label style="margin-right: 10px; font-weight: bold;">👤 담당자 필터:</label>
+            <select id="regionManagerFilter" onchange="updateRegionTables()">
+                <option value="">전체 담당자</option>
+            </select>
+        </div>
+        <div class="charts">
+            <div class="chart-container">
+                <h3>📍 지역별 매출 TOP 20</h3>
+                <canvas id="regionChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>지역별 상세 (시/도, 시/군/구)</h3>
+                <div class="scroll-table">
+                    <table id="regionTable">
+                        <thead><tr><th>순위</th><th>지역</th><th>매출액</th><th>건수</th><th>평균단가</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="chart-container full">
+                <h3>🏆 지역별 TOP 담당자</h3>
+                <div class="sub-select">
+                    <select id="regionSelect" onchange="updateRegionManagers()">
+                        <option value="">지역 선택</option>
+                    </select>
+                </div>
+                <div class="scroll-table">
+                    <table id="regionManagerTable">
+                        <thead><tr><th>순위</th><th>담당자</th><th>매출액</th><th>건수</th><th>비중</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="chart-container full">
+                <h3>👤 담당자별 지역 분포</h3>
+                <div class="sub-select">
+                    <select id="managerRegionSelect" onchange="updateManagerRegions()">
+                        <option value="">담당자 선택</option>
+                    </select>
+                </div>
+                <div class="scroll-table">
+                    <table id="managerRegionTable">
+                        <thead><tr><th>순위</th><th>지역</th><th>매출액</th><th>건수</th><th>비중</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -554,6 +710,9 @@ HTML_TEMPLATE = '''
             updateManagerTable();
             updateBranchTable();
             updateClientTables();
+            updateRegionChart();
+            updateRegionTables();
+            updateRegionSelects();
             updateDefectChart();
             updateDefectTable();
             updateDefectSelect();
@@ -815,6 +974,105 @@ HTML_TEMPLATE = '''
             });
         }
 
+        // 지역별 함수들
+        function updateRegionChart() {
+            if (!currentData.by_region || currentData.by_region.length === 0) {
+                // 지역 데이터가 없으면 안내 메시지 표시
+                const ctx = document.getElementById('regionChart').getContext('2d');
+                if (charts.region) charts.region.destroy();
+                ctx.font = '14px Malgun Gothic';
+                ctx.fillStyle = '#999';
+                ctx.textAlign = 'center';
+                ctx.fillText('지역 데이터가 없습니다. (주소 컬럼 확인 필요)', ctx.canvas.width / 2, ctx.canvas.height / 2);
+                return;
+            }
+
+            const ctx = document.getElementById('regionChart').getContext('2d');
+            if (charts.region) charts.region.destroy();
+
+            const top20 = currentData.by_region.slice(0, 20);
+            charts.region = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: top20.map(d => d[0].length > 12 ? d[0].substring(0, 12) + '...' : d[0]),
+                    datasets: [{ label: '매출', data: top20.map(d => d[1].sales), backgroundColor: 'rgba(52, 152, 219, 0.7)' }]
+                },
+                options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => formatCurrency(v) } } } }
+            });
+        }
+
+        function updateRegionTables() {
+            if (!currentData.by_region) return;
+
+            const tbody = document.querySelector('#regionTable tbody');
+            const totalSales = currentData.by_region.reduce((sum, d) => sum + d[1].sales, 0);
+            tbody.innerHTML = currentData.by_region.map((d, i) => {
+                const avg = d[1].count > 0 ? d[1].sales / d[1].count : 0;
+                return `<tr><td>${i+1}</td><td>${d[0]}</td><td>${formatCurrency(d[1].sales)}</td><td>${d[1].count}</td><td>${formatCurrency(avg)}</td></tr>`;
+            }).join('') || '<tr><td colspan="5">지역 데이터 없음</td></tr>';
+        }
+
+        function updateRegionSelects() {
+            if (!currentData.by_region) return;
+
+            // 지역 선택 드롭다운
+            const regionSelect = document.getElementById('regionSelect');
+            regionSelect.innerHTML = '<option value="">지역 선택</option>';
+            currentData.by_region.forEach(d => {
+                regionSelect.innerHTML += `<option value="${d[0]}">${d[0]}</option>`;
+            });
+
+            // 담당자 선택 드롭다운 (담당자별 지역 분포용)
+            const managerRegionSelect = document.getElementById('managerRegionSelect');
+            managerRegionSelect.innerHTML = '<option value="">담당자 선택</option>';
+            currentData.by_manager.forEach(m => {
+                managerRegionSelect.innerHTML += `<option value="${m[0]}">${m[0]}</option>`;
+            });
+
+            // 지역별 탭 담당자 필터
+            const regionManagerFilter = document.getElementById('regionManagerFilter');
+            const currentFilter = regionManagerFilter.value;
+            regionManagerFilter.innerHTML = '<option value="">전체 담당자</option>';
+            currentData.by_manager.forEach(m => {
+                regionManagerFilter.innerHTML += `<option value="${m[0]}">${m[0]}</option>`;
+            });
+            if (currentFilter) regionManagerFilter.value = currentFilter;
+        }
+
+        function updateRegionManagers() {
+            const region = document.getElementById('regionSelect').value;
+            const tbody = document.querySelector('#regionManagerTable tbody');
+
+            if (!region || !currentData.region_top_managers || !currentData.region_top_managers[region]) {
+                tbody.innerHTML = '<tr><td colspan="5">지역을 선택해주세요</td></tr>';
+                return;
+            }
+
+            const managers = currentData.region_top_managers[region];
+            const totalSales = managers.reduce((sum, m) => sum + m.sales, 0);
+
+            tbody.innerHTML = managers.map((m, i) =>
+                `<tr><td>${i+1}</td><td>${m.name}</td><td>${formatCurrency(m.sales)}</td><td>${m.count}</td><td>${(m.sales / totalSales * 100).toFixed(1)}%</td></tr>`
+            ).join('') || '<tr><td colspan="5">데이터 없음</td></tr>';
+        }
+
+        function updateManagerRegions() {
+            const manager = document.getElementById('managerRegionSelect').value;
+            const tbody = document.querySelector('#managerRegionTable tbody');
+
+            if (!manager || !currentData.manager_regions || !currentData.manager_regions[manager]) {
+                tbody.innerHTML = '<tr><td colspan="5">담당자를 선택해주세요</td></tr>';
+                return;
+            }
+
+            const regions = currentData.manager_regions[manager];
+            const totalSales = regions.reduce((sum, r) => sum + r.sales, 0);
+
+            tbody.innerHTML = regions.map((r, i) =>
+                `<tr><td>${i+1}</td><td>${r.region}</td><td>${formatCurrency(r.sales)}</td><td>${r.count}</td><td>${(r.sales / totalSales * 100).toFixed(1)}%</td></tr>`
+            ).join('') || '<tr><td colspan="5">데이터 없음</td></tr>';
+        }
+
         showToast('연도를 선택하고 [조회하기] 버튼을 클릭하세요.', 'loading', 5000);
         setTimeout(() => hideToast(), 5000);
     </script>
@@ -836,6 +1094,39 @@ def get_data():
     processed = process_data(data, purpose)
     print(f"[API] 처리 완료: total_count={processed['total_count']}")
     return jsonify(processed)
+
+@app.route('/api/columns')
+def get_columns():
+    """Excel 파일의 컬럼명 조회"""
+    year = request.args.get('year', '2025')
+    from openpyxl import load_workbook
+
+    data_path = DATA_DIR / str(year)
+    if not data_path.exists():
+        return jsonify({'error': f'{year}년 데이터 폴더가 없습니다.', 'columns': []})
+
+    files = sorted(data_path.glob("*.xlsx"))
+    if not files:
+        return jsonify({'error': f'{year}년 데이터 파일이 없습니다.', 'columns': []})
+
+    try:
+        wb = load_workbook(files[0], read_only=True, data_only=True)
+        ws = wb.active
+        headers = [cell.value for cell in ws[1] if cell.value]
+        wb.close()
+
+        # 주소 관련 컬럼 표시
+        address_cols = [h for h in headers if h and any(k in str(h) for k in ['주소', '지역', '시', '도', '군', '구', '동', '장소'])]
+
+        return jsonify({
+            'year': year,
+            'file': files[0].name,
+            'total_columns': len(headers),
+            'columns': headers,
+            'address_columns': address_cols
+        })
+    except Exception as e:
+        return jsonify({'error': str(e), 'columns': []})
 
 @app.route('/api/cache/refresh')
 def refresh_cache():
