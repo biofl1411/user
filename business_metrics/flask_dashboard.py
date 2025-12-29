@@ -800,20 +800,34 @@ HTML_TEMPLATE = '''
         }
 
         function updateAll() {
-            updateSummary();
-            updateManagerChart();
-            updateBranchChart();
-            updateMonthlyChart();
-            updateManagerTable();
-            updateBranchTable();
-            updateClientTables();
-            updateRegionTables();
-            updateRegionSelects();
-            updatePurposeCheckboxes();
-            updatePurposeTab();
-            updateDefectChart();
-            updateDefectTable();
-            updateDefectSelect();
+            const steps = [
+                ['updateSummary', updateSummary],
+                ['updateManagerChart', updateManagerChart],
+                ['updateBranchChart', updateBranchChart],
+                ['updateMonthlyChart', updateMonthlyChart],
+                ['updateManagerTable', updateManagerTable],
+                ['updateBranchTable', updateBranchTable],
+                ['updateClientTables', updateClientTables],
+                ['updateRegionTables', updateRegionTables],
+                ['updateRegionSelects', updateRegionSelects],
+                ['updatePurposeCheckboxes', updatePurposeCheckboxes],
+                ['updatePurposeTab', updatePurposeTab],
+                ['updateDefectChart', updateDefectChart],
+                ['updateDefectTable', updateDefectTable],
+                ['updateDefectSelect', updateDefectSelect]
+            ];
+
+            for (const [name, fn] of steps) {
+                try {
+                    console.log(`[UPDATE] ${name} 시작...`);
+                    fn();
+                    console.log(`[UPDATE] ${name} 완료 ✓`);
+                } catch (e) {
+                    console.error(`[UPDATE ERROR] ${name} 실패:`, e);
+                    throw e;
+                }
+            }
+            console.log('[UPDATE] 모든 업데이트 완료');
         }
 
         function updateSummary() {
