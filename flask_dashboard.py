@@ -125,6 +125,8 @@ def process_data(data, purpose_filter=None):
     by_purpose = {}
     by_defect = {}
     by_defect_month = {}
+    by_defect_purpose = {}  # 부적합-검사목적별 데이터
+    by_defect_purpose_month = {}  # 부적합-검사목적별-월별 데이터
     by_purpose_month = {}  # 목적별-월별 데이터
     by_region = {}  # 지역별 데이터
     by_region_manager = {}  # 지역-담당자별 데이터
@@ -250,6 +252,24 @@ def process_data(data, purpose_filter=None):
                 if month not in by_defect_month[defect]:
                     by_defect_month[defect][month] = 0
                 by_defect_month[defect][month] += 1
+
+            # 부적합항목-검사목적별
+            if purpose:
+                if purpose not in by_defect_purpose:
+                    by_defect_purpose[purpose] = {}
+                if defect not in by_defect_purpose[purpose]:
+                    by_defect_purpose[purpose][defect] = {'count': 0}
+                by_defect_purpose[purpose][defect]['count'] += 1
+
+                # 부적합항목-검사목적별-월별
+                if month > 0:
+                    if purpose not in by_defect_purpose_month:
+                        by_defect_purpose_month[purpose] = {}
+                    if defect not in by_defect_purpose_month[purpose]:
+                        by_defect_purpose_month[purpose][defect] = {}
+                    if month not in by_defect_purpose_month[purpose][defect]:
+                        by_defect_purpose_month[purpose][defect][month] = 0
+                    by_defect_purpose_month[purpose][defect][month] += 1
 
         # 검체유형별
         if sample_type:
@@ -437,6 +457,8 @@ def process_data(data, purpose_filter=None):
         'by_purpose': sorted_purposes,
         'by_defect': sorted_defects[:30],
         'by_defect_month': {d: sorted(months.items()) for d, months in by_defect_month.items()},
+        'by_defect_purpose': {p: sorted(defects.items(), key=lambda x: x[1]['count'], reverse=True)[:30] for p, defects in by_defect_purpose.items()},
+        'by_defect_purpose_month': {p: {d: sorted(months.items()) for d, months in defects.items()} for p, defects in by_defect_purpose_month.items()},
         'by_purpose_month': {p: {m: {'sales': d['sales'], 'count': d['count'], 'by_manager': d.get('by_manager', {})} for m, d in months.items()} for p, months in by_purpose_month.items()},
         'manager_top_clients': manager_top_clients,
         'high_efficiency': [(c, {'sales': d['sales'], 'count': d['count'], 'avg': d['sales']/d['count'] if d['count'] > 0 else 0})
@@ -959,13 +981,21 @@ HTML_TEMPLATE = '''
 
     <!-- 부적합 탭 -->
     <div id="defect" class="tab-content">
+        <div class="sub-select" style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="font-weight: bold;">🎯 검사목적:</label>
+                <select id="defectPurposeFilter" onchange="updateDefectTab()" style="padding: 5px 10px; border-radius: 5px; border: 1px solid #ddd;">
+                    <option value="">전체</option>
+                </select>
+            </div>
+        </div>
         <div class="charts">
             <div class="chart-container">
-                <h3>⚠️ 부적합항목 TOP 15</h3>
+                <h3>⚠️ 부적합항목 TOP 15 <span id="defectChartFilterLabel" style="font-size: 12px; color: #667eea;"></span></h3>
                 <canvas id="defectChart"></canvas>
             </div>
             <div class="chart-container">
-                <h3>부적합항목 상세</h3>
+                <h3>부적합항목 상세 <span id="defectTableFilterLabel" style="font-size: 12px; color: #667eea;"></span></h3>
                 <div class="scroll-table">
                     <table id="defectTable">
                         <thead><tr><th>순위</th><th>부적합항목</th><th>건수</th><th>비중</th></tr></thead>
@@ -976,7 +1006,7 @@ HTML_TEMPLATE = '''
         </div>
         <div class="charts" style="margin-top: 20px;">
             <div class="chart-container full">
-                <h3>부적합항목 월별 추이</h3>
+                <h3>부적합항목 월별 추이 <span id="defectMonthlyFilterLabel" style="font-size: 12px; color: #667eea;"></span></h3>
                 <div class="sub-select">
                     <select id="defectSelect" onchange="updateDefectMonthly()">
                         <option value="">항목 선택</option>
@@ -1237,9 +1267,8 @@ HTML_TEMPLATE = '''
                 ['updatePurposeTab', updatePurposeTab],
                 ['updateSampleTypeFilters', updateSampleTypeFilters],
                 ['updateSampleTypeTab', updateSampleTypeTab],
-                ['updateDefectChart', updateDefectChart],
-                ['updateDefectTable', updateDefectTable],
-                ['updateDefectSelect', updateDefectSelect]
+                ['updateDefectPurposeFilter', updateDefectPurposeFilter],
+                ['updateDefectTab', updateDefectTab]
             ];
 
             for (const [name, fn] of steps) {
@@ -1522,15 +1551,52 @@ HTML_TEMPLATE = '''
             }
         }
 
-        function updateDefectChart() {
+        function updateDefectPurposeFilter() {
+            const filter = document.getElementById('defectPurposeFilter');
+            const currentValue = filter.value;
+            filter.innerHTML = '<option value="">전체</option>';
+            if (currentData.purposes) {
+                currentData.purposes.forEach(p => {
+                    if (p) filter.innerHTML += `<option value="${p}">${p}</option>`;
+                });
+            }
+            if (currentValue) filter.value = currentValue;
+        }
+
+        function updateDefectTab() {
+            const selectedPurpose = document.getElementById('defectPurposeFilter').value;
+
+            // 필터 라벨 업데이트
+            const filterLabel = selectedPurpose ? `[${selectedPurpose}]` : '';
+            document.getElementById('defectChartFilterLabel').textContent = filterLabel;
+            document.getElementById('defectTableFilterLabel').textContent = filterLabel;
+            document.getElementById('defectMonthlyFilterLabel').textContent = filterLabel;
+
+            // 데이터 선택 (목적 필터 적용)
+            let defectData = currentData.by_defect;
+            let compareDefectData = compareData?.by_defect;
+
+            if (selectedPurpose && currentData.by_defect_purpose && currentData.by_defect_purpose[selectedPurpose]) {
+                defectData = currentData.by_defect_purpose[selectedPurpose];
+            }
+            if (selectedPurpose && compareData?.by_defect_purpose && compareData.by_defect_purpose[selectedPurpose]) {
+                compareDefectData = compareData.by_defect_purpose[selectedPurpose];
+            }
+
+            updateDefectChart(defectData, compareDefectData);
+            updateDefectTable(defectData, compareDefectData);
+            updateDefectSelect(defectData);
+        }
+
+        function updateDefectChart(defectData, compareDefectData) {
             const ctx = document.getElementById('defectChart').getContext('2d');
             if (charts.defect) charts.defect.destroy();
 
-            const top15 = currentData.by_defect.slice(0, 15);
+            const top15 = defectData.slice(0, 15);
             const datasets = [{ label: currentData.year + '년', data: top15.map(d => d[1].count), backgroundColor: 'rgba(231, 76, 60, 0.8)' }];
 
-            if (compareData && compareData.by_defect) {
-                const compareMap = Object.fromEntries(compareData.by_defect);
+            if (compareData && compareDefectData) {
+                const compareMap = Object.fromEntries(compareDefectData);
                 datasets.push({ label: compareData.year + '년', data: top15.map(d => compareMap[d[0]]?.count || 0), backgroundColor: 'rgba(155, 89, 182, 0.6)' });
             }
 
@@ -1541,15 +1607,15 @@ HTML_TEMPLATE = '''
             });
         }
 
-        function updateDefectTable() {
+        function updateDefectTable(defectData, compareDefectData) {
             const thead = document.querySelector('#defectTable thead');
             const tbody = document.querySelector('#defectTable tbody');
-            const totalDefects = currentData.by_defect.reduce((sum, d) => sum + d[1].count, 0);
+            const totalDefects = defectData.reduce((sum, d) => sum + d[1].count, 0);
 
-            if (compareData && compareData.by_defect) {
-                const compareMap = Object.fromEntries(compareData.by_defect);
+            if (compareData && compareDefectData) {
+                const compareMap = Object.fromEntries(compareDefectData);
                 thead.innerHTML = `<tr><th>순위</th><th>부적합항목</th><th>${currentData.year}년 건수</th><th>${compareData.year}년 건수</th><th>증감</th><th>비중</th></tr>`;
-                tbody.innerHTML = currentData.by_defect.map((d, i) => {
+                tbody.innerHTML = defectData.map((d, i) => {
                     const compCount = compareMap[d[0]]?.count || 0;
                     const diff = d[1].count - compCount;
                     const diffRate = compCount > 0 ? ((diff / compCount) * 100).toFixed(1) : (d[1].count > 0 ? 100 : 0);
@@ -1558,39 +1624,69 @@ HTML_TEMPLATE = '''
                 }).join('');
             } else {
                 thead.innerHTML = `<tr><th>순위</th><th>부적합항목</th><th>건수</th><th>비중</th></tr>`;
-                tbody.innerHTML = currentData.by_defect.map((d, i) =>
+                tbody.innerHTML = defectData.map((d, i) =>
                     `<tr><td>${i+1}</td><td>${d[0]}</td><td>${d[1].count}</td><td>${(d[1].count / totalDefects * 100).toFixed(1)}%</td></tr>`
                 ).join('');
             }
         }
 
-        function updateDefectSelect() {
+        function updateDefectSelect(defectData) {
             const select = document.getElementById('defectSelect');
             select.innerHTML = '<option value="">항목 선택</option>';
-            currentData.by_defect.slice(0, 15).forEach(d => {
+            defectData.slice(0, 15).forEach(d => {
                 select.innerHTML += `<option value="${d[0]}">${d[0]}</option>`;
             });
         }
 
         function updateDefectMonthly() {
             const defect = document.getElementById('defectSelect').value;
+            const selectedPurpose = document.getElementById('defectPurposeFilter').value;
             const ctx = document.getElementById('defectMonthlyChart').getContext('2d');
             if (charts.defectMonthly) charts.defectMonthly.destroy();
 
-            if (!defect || !currentData.by_defect_month[defect]) {
+            // 목적 필터에 따른 월별 데이터 선택
+            let monthSource = currentData.by_defect_month;
+            let compareMonthSource = compareData?.by_defect_month;
+
+            if (selectedPurpose) {
+                monthSource = currentData.by_defect_purpose_month?.[selectedPurpose] || {};
+                compareMonthSource = compareData?.by_defect_purpose_month?.[selectedPurpose] || {};
+            }
+
+            if (!defect || !monthSource[defect]) {
                 return;
             }
 
             const labels = []; for (let i = 1; i <= 12; i++) labels.push(i + '월');
-            const monthData = Object.fromEntries(currentData.by_defect_month[defect] || []);
+            const monthData = Object.fromEntries(monthSource[defect] || []);
             const values = labels.map((_, i) => monthData[i+1] || 0);
+
+            const datasets = [{
+                label: currentData.year + '년',
+                data: values,
+                borderColor: '#e74c3c',
+                backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                fill: true,
+                tension: 0.4
+            }];
+
+            // 전년도 비교 데이터 추가
+            if (compareData && compareMonthSource && compareMonthSource[defect]) {
+                const compareMonthData = Object.fromEntries(compareMonthSource[defect] || []);
+                const compareValues = labels.map((_, i) => compareMonthData[i+1] || 0);
+                datasets.push({
+                    label: compareData.year + '년',
+                    data: compareValues,
+                    borderColor: '#9b59b6',
+                    backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                });
+            }
 
             charts.defectMonthly = new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels,
-                    datasets: [{ label: defect, data: values, borderColor: '#e74c3c', backgroundColor: 'rgba(231, 76, 60, 0.1)', fill: true, tension: 0.4 }]
-                },
+                data: { labels, datasets },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } } }
             });
         }
