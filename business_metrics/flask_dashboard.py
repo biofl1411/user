@@ -1272,9 +1272,11 @@ HTML_TEMPLATE = '''
 
         function updateRegionManagers() {
             const region = document.getElementById('regionSelect').value;
+            const thead = document.querySelector('#regionManagerTable thead');
             const tbody = document.querySelector('#regionManagerTable tbody');
 
             if (!region || !currentData.region_top_managers || !currentData.region_top_managers[region]) {
+                thead.innerHTML = '<tr><th>순위</th><th>담당자</th><th>매출액</th><th>건수</th><th>비중</th></tr>';
                 tbody.innerHTML = '<tr><td colspan="5">지역을 선택해주세요</td></tr>';
                 return;
             }
@@ -1282,16 +1284,34 @@ HTML_TEMPLATE = '''
             const managers = currentData.region_top_managers[region];
             const totalSales = managers.reduce((sum, m) => sum + m.sales, 0);
 
-            tbody.innerHTML = managers.map((m, i) =>
-                `<tr><td>${i+1}</td><td>${m.name}</td><td>${formatCurrency(m.sales)}</td><td>${m.count}</td><td>${(m.sales / totalSales * 100).toFixed(1)}%</td></tr>`
-            ).join('') || '<tr><td colspan="5">데이터 없음</td></tr>';
+            if (compareData && compareData.region_top_managers && compareData.region_top_managers[region]) {
+                const compareManagers = compareData.region_top_managers[region];
+                const compareMap = {};
+                compareManagers.forEach(m => { compareMap[m.name] = m; });
+
+                thead.innerHTML = `<tr><th>순위</th><th>담당자</th><th>${currentData.year}년</th><th>${compareData.year}년</th><th>증감</th><th>건수</th></tr>`;
+                tbody.innerHTML = managers.map((m, i) => {
+                    const compData = compareMap[m.name] || {sales: 0, count: 0};
+                    const diff = formatDiff(m.sales, compData.sales);
+                    const diffClass = diff.diff >= 0 ? 'positive' : 'negative';
+                    const diffText = diff.text ? `<span class="${diffClass}">${diff.text}</span>` : '-';
+                    return `<tr><td>${i+1}</td><td>${m.name}</td><td>${formatCurrency(m.sales)}</td><td>${formatCurrency(compData.sales)}</td><td>${diffText}</td><td>${m.count}</td></tr>`;
+                }).join('') || '<tr><td colspan="6">데이터 없음</td></tr>';
+            } else {
+                thead.innerHTML = '<tr><th>순위</th><th>담당자</th><th>매출액</th><th>건수</th><th>비중</th></tr>';
+                tbody.innerHTML = managers.map((m, i) =>
+                    `<tr><td>${i+1}</td><td>${m.name}</td><td>${formatCurrency(m.sales)}</td><td>${m.count}</td><td>${(m.sales / totalSales * 100).toFixed(1)}%</td></tr>`
+                ).join('') || '<tr><td colspan="5">데이터 없음</td></tr>';
+            }
         }
 
         function updateManagerRegions() {
             const manager = document.getElementById('managerRegionSelect').value;
+            const thead = document.querySelector('#managerRegionTable thead');
             const tbody = document.querySelector('#managerRegionTable tbody');
 
             if (!manager || !currentData.manager_regions || !currentData.manager_regions[manager]) {
+                thead.innerHTML = '<tr><th>순위</th><th>지역</th><th>매출액</th><th>건수</th><th>비중</th></tr>';
                 tbody.innerHTML = '<tr><td colspan="5">담당자를 선택해주세요</td></tr>';
                 return;
             }
@@ -1299,9 +1319,25 @@ HTML_TEMPLATE = '''
             const regions = currentData.manager_regions[manager];
             const totalSales = regions.reduce((sum, r) => sum + r.sales, 0);
 
-            tbody.innerHTML = regions.map((r, i) =>
-                `<tr><td>${i+1}</td><td>${r.region}</td><td>${formatCurrency(r.sales)}</td><td>${r.count}</td><td>${(r.sales / totalSales * 100).toFixed(1)}%</td></tr>`
-            ).join('') || '<tr><td colspan="5">데이터 없음</td></tr>';
+            if (compareData && compareData.manager_regions && compareData.manager_regions[manager]) {
+                const compareRegions = compareData.manager_regions[manager];
+                const compareMap = {};
+                compareRegions.forEach(r => { compareMap[r.region] = r; });
+
+                thead.innerHTML = `<tr><th>순위</th><th>지역</th><th>${currentData.year}년</th><th>${compareData.year}년</th><th>증감</th><th>건수</th></tr>`;
+                tbody.innerHTML = regions.map((r, i) => {
+                    const compData = compareMap[r.region] || {sales: 0, count: 0};
+                    const diff = formatDiff(r.sales, compData.sales);
+                    const diffClass = diff.diff >= 0 ? 'positive' : 'negative';
+                    const diffText = diff.text ? `<span class="${diffClass}">${diff.text}</span>` : '-';
+                    return `<tr><td>${i+1}</td><td>${r.region}</td><td>${formatCurrency(r.sales)}</td><td>${formatCurrency(compData.sales)}</td><td>${diffText}</td><td>${r.count}</td></tr>`;
+                }).join('') || '<tr><td colspan="6">데이터 없음</td></tr>';
+            } else {
+                thead.innerHTML = '<tr><th>순위</th><th>지역</th><th>매출액</th><th>건수</th><th>비중</th></tr>';
+                tbody.innerHTML = regions.map((r, i) =>
+                    `<tr><td>${i+1}</td><td>${r.region}</td><td>${formatCurrency(r.sales)}</td><td>${r.count}</td><td>${(r.sales / totalSales * 100).toFixed(1)}%</td></tr>`
+                ).join('') || '<tr><td colspan="5">데이터 없음</td></tr>';
+            }
         }
 
         // 목적별 탭 함수들
