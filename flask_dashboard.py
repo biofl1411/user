@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 # 경로 설정 - 절대 경로 사용
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = Path("/home/biofl/business_metrics/data")
 
 # 데이터 캐시 (메모리에 저장)
 DATA_CACHE = {}
