@@ -2289,7 +2289,25 @@ HTML_TEMPLATE = '''
             let sampleTypeData = {};
             let compareSampleTypeData = {};
 
-            if (selectedManager && currentData.sample_type_managers) {
+            if (selectedManager && selectedPurpose && currentData.sample_type_managers) {
+                // 담당자 + 목적 둘 다 필터: 해당 담당자의 해당 목적 매출만
+                Object.keys(currentData.sample_type_managers).forEach(st => {
+                    const managerInfo = currentData.sample_type_managers[st].find(m => m.name === selectedManager);
+                    if (managerInfo && managerInfo.by_purpose && managerInfo.by_purpose[selectedPurpose]) {
+                        const purposeData = managerInfo.by_purpose[selectedPurpose];
+                        sampleTypeData[st] = { sales: purposeData.sales, count: purposeData.count };
+                    }
+                });
+                if (compareData && compareData.sample_type_managers) {
+                    Object.keys(compareData.sample_type_managers).forEach(st => {
+                        const managerInfo = compareData.sample_type_managers[st].find(m => m.name === selectedManager);
+                        if (managerInfo && managerInfo.by_purpose && managerInfo.by_purpose[selectedPurpose]) {
+                            const purposeData = managerInfo.by_purpose[selectedPurpose];
+                            compareSampleTypeData[st] = { sales: purposeData.sales, count: purposeData.count };
+                        }
+                    });
+                }
+            } else if (selectedManager && currentData.sample_type_managers) {
                 // 특정 담당자의 검체유형별 데이터만 집계
                 Object.keys(currentData.sample_type_managers).forEach(st => {
                     const managerInfo = currentData.sample_type_managers[st].find(m => m.name === selectedManager);
