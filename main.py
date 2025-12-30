@@ -1,146 +1,163 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+경영지표 분석기 (Business Metrics Analyzer)
+- 엑셀 데이터 불러오기
+- 경영 지표 자동 계산
+- 대시보드 시각화
+- 보고서 출력 (Excel/PDF)
 
-'''
-식품 실험/분석 관련 견적 및 스케줄 관리 시스템
-메인 실행 파일
-'''
+실행 방법:
+    python main.py
 
+또는 GUI 없이 CLI로:
+    python main.py --cli input.xlsx
+"""
 import sys
-import os
-import traceback
+import argparse
+from pathlib import Path
 
-# 실행 파일 위치를 기준으로 경로 설정 (빌드 후 실행을 위해 필요)
-if getattr(sys, 'frozen', False):
-    # 실행 파일로 빌드된 경우
-    application_path = os.path.dirname(sys.executable)
-    os.chdir(application_path)
-    sys.path.insert(0, application_path)
 
-try:
-    from PyQt5.QtWidgets import QApplication, QMessageBox
-    from PyQt5.QtGui import QIcon
-    from PyQt5.QtCore import QTimer
+def run_gui():
+    """GUI 모드 실행"""
+    from PyQt5.QtWidgets import QApplication
+    from PyQt5.QtGui import QFont
+    from ui.main_window import MainWindow
 
-    from views import MainWindow
-    from database import init_database
-    from version import VERSION, APP_DISPLAY_NAME
-except ImportError as e:
-    print(f"필요한 라이브러리를 불러올 수 없습니다: {e}")
-    sys.exit(1)
-
-def check_dependencies():
-    """필요한 라이브러리 체크"""
-    try:
-        import PyQt5
-        import pymysql
-        return True
-    except ImportError as e:
-        return False
-
-def setup_environment():
-    """환경 설정"""
-    # 필요한 폴더 확인 및 생성
-    folders = ['data', 'output', 'templates', 'config']
-    for folder in folders:
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-
-    # 데이터베이스 초기화
-    try:
-        init_database()
-    except Exception as e:
-        print(f"데이터베이스 초기화 중 오류 발생: {e}")
-        return False
-
-    return True
-
-def check_for_updates(window):
-    """업데이트 확인 (비동기)"""
-    try:
-        from utils.updater import Updater
-
-        updater = Updater()
-        has_update, message = updater.check_for_updates()
-
-        if has_update:
-            reply = QMessageBox.question(
-                window,
-                "업데이트 알림",
-                f"새 버전이 있습니다!\n\n"
-                f"현재 버전: {VERSION}\n"
-                f"최신 버전: {message}\n\n"
-                f"지금 다운로드하시겠습니까?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes
-            )
-
-            if reply == QMessageBox.Yes:
-                # 다운로드 진행
-                success, result = updater.download_update()
-                if success:
-                    QMessageBox.information(
-                        window,
-                        "다운로드 완료",
-                        f"업데이트 파일이 다운로드되었습니다.\n\n{result}\n\n"
-                        f"프로그램을 종료하고 업데이트를 진행하세요."
-                    )
-                else:
-                    QMessageBox.warning(
-                        window,
-                        "다운로드 실패",
-                        f"업데이트 다운로드에 실패했습니다.\n\n{result}"
-                    )
-    except Exception as e:
-        # 업데이트 확인 실패는 조용히 무시
-        print(f"업데이트 확인 오류: {e}")
-
-def main():
-    """메인 함수"""
-    # 의존성 체크
-    if not check_dependencies():
-        print("필요한 라이브러리가 설치되지 않았습니다.")
-        print("pip install -r requirements.txt 명령으로 필요한 라이브러리를 설치하세요.")
-        return
-
-    # 환경 설정
-    if not setup_environment():
-        print("환경 설정 중 오류가 발생했습니다.")
-        return
-
-    # QApplication 생성
     app = QApplication(sys.argv)
-    app.setStyle('Fusion')  # 모던한 스타일 적용
-    app.setApplicationName(APP_DISPLAY_NAME)
-    app.setApplicationVersion(VERSION)
+    app.setStyle('Fusion')
 
-    # 메인 윈도우 생성 및 표시
-    try:
-        window = MainWindow()
+    # 한글 폰트 설정
+    font = QFont("Malgun Gothic", 10)
+    app.setFont(font)
 
-        # 2초 후 업데이트 확인 (비동기)
-        QTimer.singleShot(2000, lambda: check_for_updates(window))
+    window = MainWindow()
+    window.show()
 
-    except Exception as e:
-        error_msg = f"프로그램 초기화 중 오류가 발생했습니다:\n{e}\n\n{traceback.format_exc()}"
-        print(error_msg)
-
-        # GUI 오류 메시지
-        error_dialog = QMessageBox()
-        error_dialog.setIcon(QMessageBox.Critical)
-        error_dialog.setWindowTitle("오류")
-        error_dialog.setText("프로그램 초기화 중 오류가 발생했습니다")
-        error_dialog.setDetailedText(error_msg)
-        error_dialog.exec_()
-        return
-
-    # 앱 실행
     sys.exit(app.exec_())
 
-if __name__ == "__main__":
+
+def run_cli(input_file: str, output_dir: str = "reports"):
+    """CLI 모드 실행"""
+    from modules.data_loader import DataLoader
+    from modules.data_processor import DataProcessor
+    from modules.metrics_calculator import MetricsCalculator
+    from modules.report_generator import ReportGenerator
+    from config.settings import COLUMN_MAPPING
+
+    print("=" * 50)
+    print("경영지표 분석기 (CLI Mode)")
+    print("=" * 50)
+
+    # 1. 데이터 로드
+    print(f"\n[1/4] 데이터 로드 중... ({input_file})")
+    loader = DataLoader(column_mapping=COLUMN_MAPPING)
+    df = loader.load_excel(input_file)
+    print(f"    - {len(df)} 행 로드 완료")
+
+    # 2. 데이터 전처리
+    print("\n[2/4] 데이터 전처리 중...")
+    processor = DataProcessor()
+    df = processor.process(df)
+    summary = processor.get_summary(df)
+    print(f"    - 기간: {summary.get('date_range', {})}")
+
+    # 3. 지표 계산
+    print("\n[3/4] 지표 계산 중...")
+    calculator = MetricsCalculator(df)
+    metrics = calculator.calculate_all_metrics()
+
+    # 요약 출력
+    s = metrics.get('summary', {})
+    print(f"\n{'='*40}")
+    print("[ 요약 ]")
+    print(f"{'='*40}")
+    print(f"  총 매출액: {s.get('total_sales', 0):,.0f} 원")
+    print(f"  총 이익:   {s.get('total_profit', 0):,.0f} 원")
+    print(f"  이익률:    {s.get('profit_margin', 0)}%")
+    print(f"  거래 건수: {s.get('transaction_count', 0)}")
+
+    # 4. 보고서 생성
+    print(f"\n[4/4] 보고서 생성 중...")
+    output_path = Path(output_dir)
+    output_path.mkdir(exist_ok=True)
+
+    generator = ReportGenerator(output_path)
+    excel_path = generator.generate_excel_report(metrics)
+    print(f"    - Excel: {excel_path}")
+
     try:
-        main()
-    except Exception as e:
-        print(f"예상치 못한 오류가 발생했습니다: {e}")
-        print(traceback.format_exc())
-        sys.exit(1)
+        pdf_path = generator.generate_pdf_report(metrics)
+        print(f"    - PDF:   {pdf_path}")
+    except ImportError:
+        print("    - PDF: reportlab이 설치되지 않아 건너뜀")
+
+    print(f"\n{'='*50}")
+    print("완료!")
+    print("=" * 50)
+
+
+def create_sample_data():
+    """샘플 데이터 생성"""
+    import pandas as pd
+    import numpy as np
+    from datetime import datetime, timedelta
+
+    print("샘플 데이터 생성 중...")
+
+    # 날짜 범위: 최근 1년
+    start_date = datetime(2023, 1, 1)
+    dates = [start_date + timedelta(days=i) for i in range(365)]
+
+    # 샘플 데이터 생성
+    np.random.seed(42)
+    n = 500
+
+    data = {
+        '날짜': np.random.choice(dates, n),
+        '매출액': np.random.randint(100000, 5000000, n),
+        '비용': np.random.randint(50000, 2000000, n),
+        '담당자': np.random.choice(['김영업', '이대리', '박과장', '최부장', '정차장'], n),
+        '센터': np.random.choice(['서울센터', '부산센터', '대전센터', '광주센터'], n),
+        '검사목적': np.random.choice(['정기검사', '품질관리', '신제품검사', '클레임대응', '연구개발'], n),
+        '검사건수': np.random.randint(1, 20, n),
+        '거래처': np.random.choice(['A식품', 'B제과', 'C음료', 'D유업', 'E농산'], n),
+    }
+
+    df = pd.DataFrame(data)
+    df['날짜'] = pd.to_datetime(df['날짜'])
+    df = df.sort_values('날짜').reset_index(drop=True)
+
+    # 이익 계산
+    df['이익'] = df['매출액'] - df['비용']
+
+    # 파일 저장
+    output_path = Path("data/sample_sales_data.xlsx")
+    output_path.parent.mkdir(exist_ok=True)
+    df.to_excel(output_path, index=False)
+
+    print(f"샘플 데이터 저장: {output_path}")
+    print(f"  - 행 수: {len(df)}")
+    print(f"  - 기간: {df['날짜'].min()} ~ {df['날짜'].max()}")
+
+    return output_path
+
+
+def main():
+    parser = argparse.ArgumentParser(description="경영지표 분석기")
+    parser.add_argument('--cli', type=str, help='CLI 모드로 실행 (엑셀 파일 경로)')
+    parser.add_argument('--output', type=str, default='reports', help='출력 디렉토리')
+    parser.add_argument('--sample', action='store_true', help='샘플 데이터 생성')
+
+    args = parser.parse_args()
+
+    if args.sample:
+        create_sample_data()
+    elif args.cli:
+        run_cli(args.cli, args.output)
+    else:
+        run_gui()
+
+
+if __name__ == "__main__":
+    main()
