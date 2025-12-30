@@ -1158,18 +1158,10 @@ HTML_TEMPLATE = '''
             charts.region = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: top20.map(d => d[0].length > 8 ? d[0].substring(0, 8) + '..' : d[0]),
+                    labels: top20.map(d => d[0]),
                     datasets: [{ label: '매출', data: top20.map(d => d[1].sales), backgroundColor: 'rgba(52, 152, 219, 0.7)' }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { ticks: { callback: v => formatCurrency(v) } },
-                        x: { ticks: { maxRotation: 45, minRotation: 45 } }
-                    }
-                }
+                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } } } }
             });
         }
 
@@ -1236,7 +1228,7 @@ HTML_TEMPLATE = '''
             const top20 = regionData.slice(0, 20);
             if (!charts.region) return;
 
-            charts.region.data.labels = top20.map(d => d[0].length > 8 ? d[0].substring(0, 8) + '..' : d[0]);
+            charts.region.data.labels = top20.map(d => d[0]);
 
             if (compareData && compareRegionData) {
                 const compareMap = Object.fromEntries(compareRegionData);
