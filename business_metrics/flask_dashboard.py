@@ -685,7 +685,7 @@ HTML_TEMPLATE = '''
     <div id="defect" class="tab-content">
         <div class="charts">
             <div class="chart-container">
-                <h3>⚠️ 부적합항목 TOP 20</h3>
+                <h3>⚠️ 부적합항목 TOP 15</h3>
                 <canvas id="defectChart"></canvas>
             </div>
             <div class="chart-container">
@@ -697,6 +697,8 @@ HTML_TEMPLATE = '''
                     </table>
                 </div>
             </div>
+        </div>
+        <div class="charts" style="margin-top: 20px;">
             <div class="chart-container full">
                 <h3>부적합항목 월별 추이</h3>
                 <div class="sub-select">
@@ -1090,14 +1092,14 @@ HTML_TEMPLATE = '''
             const ctx = document.getElementById('defectChart').getContext('2d');
             if (charts.defect) charts.defect.destroy();
 
-            const top20 = currentData.by_defect.slice(0, 20);
+            const top15 = currentData.by_defect.slice(0, 15);
             charts.defect = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: top20.map(d => d[0].length > 15 ? d[0].substring(0, 15) + '...' : d[0]),
-                    datasets: [{ label: '건수', data: top20.map(d => d[1].count), backgroundColor: 'rgba(231, 76, 60, 0.7)' }]
+                    labels: top15.map(d => d[0]),
+                    datasets: [{ label: '건수', data: top15.map(d => d[1].count), backgroundColor: 'rgba(231, 76, 60, 0.7)' }]
                 },
-                options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } } }
+                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v.toLocaleString() } } } }
             });
         }
 
@@ -1112,7 +1114,7 @@ HTML_TEMPLATE = '''
         function updateDefectSelect() {
             const select = document.getElementById('defectSelect');
             select.innerHTML = '<option value="">항목 선택</option>';
-            currentData.by_defect.slice(0, 20).forEach(d => {
+            currentData.by_defect.slice(0, 15).forEach(d => {
                 select.innerHTML += `<option value="${d[0]}">${d[0]}</option>`;
             });
         }
