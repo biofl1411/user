@@ -1093,22 +1093,40 @@ HTML_TEMPLATE = '''
             if (charts.defect) charts.defect.destroy();
 
             const top15 = currentData.by_defect.slice(0, 15);
+            const datasets = [{ label: currentData.year + '년', data: top15.map(d => d[1].count), backgroundColor: 'rgba(231, 76, 60, 0.7)' }];
+
+            if (compareData && compareData.by_defect) {
+                const compareMap = Object.fromEntries(compareData.by_defect);
+                datasets.push({ label: compareData.year + '년', data: top15.map(d => compareMap[d[0]]?.count || 0), backgroundColor: 'rgba(192, 57, 43, 0.5)' });
+            }
+
             charts.defect = new Chart(ctx, {
                 type: 'bar',
-                data: {
-                    labels: top15.map(d => d[0]),
-                    datasets: [{ label: '건수', data: top15.map(d => d[1].count), backgroundColor: 'rgba(231, 76, 60, 0.7)' }]
-                },
-                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v.toLocaleString() } } } }
+                data: { labels: top15.map(d => d[0]), datasets },
+                options: { responsive: true, plugins: { legend: { display: compareData ? true : false } }, scales: { y: { ticks: { callback: v => v.toLocaleString() } } } }
             });
         }
 
         function updateDefectTable() {
+            const thead = document.querySelector('#defectTable thead');
             const tbody = document.querySelector('#defectTable tbody');
             const totalDefects = currentData.by_defect.reduce((sum, d) => sum + d[1].count, 0);
-            tbody.innerHTML = currentData.by_defect.map((d, i) =>
-                `<tr><td>${i+1}</td><td>${d[0]}</td><td>${d[1].count}</td><td>${(d[1].count / totalDefects * 100).toFixed(1)}%</td></tr>`
-            ).join('');
+
+            if (compareData && compareData.by_defect) {
+                const compareMap = Object.fromEntries(compareData.by_defect);
+                thead.innerHTML = `<tr><th>순위</th><th>부적합항목</th><th>${currentData.year}년</th><th>${compareData.year}년</th><th>증감</th><th>비중</th></tr>`;
+                tbody.innerHTML = currentData.by_defect.map((d, i) => {
+                    const compCount = compareMap[d[0]]?.count || 0;
+                    const diff = d[1].count - compCount;
+                    const diffText = diff >= 0 ? `<span class="positive">+${diff}</span>` : `<span class="negative">${diff}</span>`;
+                    return `<tr><td>${i+1}</td><td>${d[0]}</td><td>${d[1].count}</td><td>${compCount}</td><td>${diffText}</td><td>${(d[1].count / totalDefects * 100).toFixed(1)}%</td></tr>`;
+                }).join('');
+            } else {
+                thead.innerHTML = `<tr><th>순위</th><th>부적합항목</th><th>건수</th><th>비중</th></tr>`;
+                tbody.innerHTML = currentData.by_defect.map((d, i) =>
+                    `<tr><td>${i+1}</td><td>${d[0]}</td><td>${d[1].count}</td><td>${(d[1].count / totalDefects * 100).toFixed(1)}%</td></tr>`
+                ).join('');
+            }
         }
 
         function updateDefectSelect() {
