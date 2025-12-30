@@ -2387,21 +2387,36 @@ HTML_TEMPLATE = '''
                 }).join('') || '<tr><td colspan="6">데이터 없음</td></tr>';
             }
 
+            // 필터된 검체유형 목록 (목적 필터 적용시 해당 목적이 있는 검체유형만)
+            const filteredSampleTypes = selectedPurpose
+                ? Object.keys(currentData.sample_type_purposes || {}).filter(st =>
+                    currentData.sample_type_purposes[st].some(p => p.name === selectedPurpose))
+                : null;
+
             // 검체유형별 담당자 테이블
-            updateSampleTypeManagerTable(selectedManager, topN, totalSales);
+            updateSampleTypeManagerTable(selectedManager, selectedPurpose, filteredSampleTypes, topN, totalSales);
 
             // 검체유형별 목적 테이블
             updateSampleTypePurposeTable(selectedPurpose, topN, totalSales);
         }
 
-        function updateSampleTypeManagerTable(selectedManager, topN, totalSales) {
+        function updateSampleTypeManagerTable(selectedManager, selectedPurpose, filteredSampleTypes, topN, totalSales) {
             const thead = document.getElementById('sampleTypeManagerTableHead');
             const tbody = document.querySelector('#sampleTypeManagerTable tbody');
 
-            // 모든 검체유형의 담당자 데이터 집계
+            // 필터 라벨 업데이트
+            let filterLabel = '';
+            if (selectedManager) filterLabel += `[${selectedManager}]`;
+            if (selectedPurpose) filterLabel += `[${selectedPurpose}]`;
+            document.getElementById('sampleTypeManagerTableLabel').textContent = filterLabel;
+
+            // 검체유형의 담당자 데이터 집계 (목적 필터 적용)
             let managerData = {};
             if (currentData.sample_type_managers) {
-                Object.values(currentData.sample_type_managers).forEach(managers => {
+                Object.entries(currentData.sample_type_managers).forEach(([st, managers]) => {
+                    // 목적 필터가 있으면 해당 목적이 있는 검체유형만 포함
+                    if (filteredSampleTypes && !filteredSampleTypes.includes(st)) return;
+
                     managers.forEach(m => {
                         if (!selectedManager || m.name === selectedManager) {
                             if (!managerData[m.name]) {
@@ -2420,9 +2435,17 @@ HTML_TEMPLATE = '''
 
             const managerTotalSales = sortedManagers.reduce((sum, [_, d]) => sum + d.sales, 0);
 
+            // 비교 데이터용 필터된 검체유형 목록
+            const compareFilteredSampleTypes = selectedPurpose && compareData && compareData.sample_type_purposes
+                ? Object.keys(compareData.sample_type_purposes).filter(st =>
+                    compareData.sample_type_purposes[st].some(p => p.name === selectedPurpose))
+                : null;
+
             let compareManagerData = {};
             if (compareData && compareData.sample_type_managers) {
-                Object.values(compareData.sample_type_managers).forEach(managers => {
+                Object.entries(compareData.sample_type_managers).forEach(([st, managers]) => {
+                    if (compareFilteredSampleTypes && !compareFilteredSampleTypes.includes(st)) return;
+
                     managers.forEach(m => {
                         if (!selectedManager || m.name === selectedManager) {
                             if (!compareManagerData[m.name]) {
