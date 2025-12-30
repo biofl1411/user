@@ -601,6 +601,8 @@ HTML_TEMPLATE = '''
                     </table>
                 </div>
             </div>
+        </div>
+        <div class="charts" style="margin-top: 20px;">
             <div class="chart-container full">
                 <h3>🏆 지역별 TOP 담당자</h3>
                 <div class="sub-select">
