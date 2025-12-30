@@ -1684,6 +1684,8 @@ HTML_TEMPLATE = '''
 
             const selectedPurposes = getSelectedPurposes();
             const topN = parseInt(document.getElementById('purposeTopN').value) || 15;
+            const selectedManager = document.getElementById('purposeManagerFilter').value;
+            const selectedRegion = document.getElementById('purposeRegionFilter').value;
             document.getElementById('purposeChartTopN').textContent = topN;
 
             if (selectedPurposes.length === 0) {
@@ -1694,18 +1696,86 @@ HTML_TEMPLATE = '''
                 return;
             }
 
-            // 선택된 목적별 데이터 필터링
-            const filteredPurposes = currentData.by_purpose.filter(p => selectedPurposes.includes(p[0]));
-            const topPurposes = filteredPurposes.slice(0, topN);
-            const totalSales = filteredPurposes.reduce((sum, p) => sum + p[1].sales, 0);
+            // 담당자/지역 필터에 따른 목적별 데이터 계산
+            let purposeData = {};
+            let comparePurposeData = {};
 
-            // 비교 데이터 맵 생성
-            let compareMap = {};
-            if (compareData && compareData.by_purpose) {
-                compareData.by_purpose.forEach(p => { compareMap[p[0]] = p[1]; });
+            if (selectedManager && currentData.purpose_managers) {
+                // 특정 담당자의 목적별 데이터만 집계
+                selectedPurposes.forEach(purpose => {
+                    if (currentData.purpose_managers[purpose]) {
+                        const managerInfo = currentData.purpose_managers[purpose].find(m => m.name === selectedManager);
+                        if (managerInfo) {
+                            purposeData[purpose] = { sales: managerInfo.sales, count: managerInfo.count };
+                        }
+                    }
+                });
+                // 비교 데이터
+                if (compareData && compareData.purpose_managers) {
+                    selectedPurposes.forEach(purpose => {
+                        if (compareData.purpose_managers[purpose]) {
+                            const managerInfo = compareData.purpose_managers[purpose].find(m => m.name === selectedManager);
+                            if (managerInfo) {
+                                comparePurposeData[purpose] = { sales: managerInfo.sales, count: managerInfo.count };
+                            }
+                        }
+                    });
+                }
+            } else if (selectedRegion && currentData.purpose_regions) {
+                // 특정 지역의 목적별 데이터만 집계
+                selectedPurposes.forEach(purpose => {
+                    if (currentData.purpose_regions[purpose]) {
+                        let totalSales = 0, totalCount = 0;
+                        currentData.purpose_regions[purpose].forEach(r => {
+                            if (r.region.startsWith(selectedRegion)) {
+                                totalSales += r.sales;
+                                totalCount += r.count;
+                            }
+                        });
+                        if (totalSales > 0) {
+                            purposeData[purpose] = { sales: totalSales, count: totalCount };
+                        }
+                    }
+                });
+                // 비교 데이터
+                if (compareData && compareData.purpose_regions) {
+                    selectedPurposes.forEach(purpose => {
+                        if (compareData.purpose_regions[purpose]) {
+                            let totalSales = 0, totalCount = 0;
+                            compareData.purpose_regions[purpose].forEach(r => {
+                                if (r.region.startsWith(selectedRegion)) {
+                                    totalSales += r.sales;
+                                    totalCount += r.count;
+                                }
+                            });
+                            if (totalSales > 0) {
+                                comparePurposeData[purpose] = { sales: totalSales, count: totalCount };
+                            }
+                        }
+                    });
+                }
+            } else {
+                // 전체 데이터 사용
+                currentData.by_purpose.forEach(p => {
+                    if (selectedPurposes.includes(p[0])) {
+                        purposeData[p[0]] = p[1];
+                    }
+                });
+                if (compareData && compareData.by_purpose) {
+                    compareData.by_purpose.forEach(p => {
+                        if (selectedPurposes.includes(p[0])) {
+                            comparePurposeData[p[0]] = p[1];
+                        }
+                    });
+                }
             }
 
-            // 목적별 차트 (막대 차트로 변경, 연도 비교 지원)
+            // 정렬 및 상위 N개 추출
+            const sortedPurposes = Object.entries(purposeData).sort((a, b) => b[1].sales - a[1].sales);
+            const topPurposes = sortedPurposes.slice(0, topN);
+            const totalSales = sortedPurposes.reduce((sum, p) => sum + p[1].sales, 0);
+
+            // 목적별 차트 (막대 차트, 연도 비교 지원)
             const ctx = document.getElementById('purposeChart').getContext('2d');
             if (charts.purpose) charts.purpose.destroy();
 
@@ -1715,10 +1785,10 @@ HTML_TEMPLATE = '''
                 backgroundColor: 'rgba(102, 126, 234, 0.8)'
             }];
 
-            if (compareData && compareData.by_purpose) {
+            if (compareData && Object.keys(comparePurposeData).length > 0) {
                 datasets.push({
                     label: compareData.dateLabel || compareData.year + '년',
-                    data: topPurposes.map(p => compareMap[p[0]]?.sales || 0),
+                    data: topPurposes.map(p => comparePurposeData[p[0]]?.sales || 0),
                     backgroundColor: 'rgba(118, 75, 162, 0.6)'
                 });
             }
@@ -1737,10 +1807,10 @@ HTML_TEMPLATE = '''
             const thead = document.getElementById('purposeTableHead');
             const tbody = document.querySelector('#purposeTable tbody');
 
-            if (compareData && compareData.by_purpose) {
+            if (compareData && Object.keys(comparePurposeData).length > 0) {
                 thead.innerHTML = `<tr><th>순위</th><th>검사목적</th><th>${currLabel}</th><th>${compareData.dateLabel || compareData.year + '년'}</th><th>증감</th><th>건수</th><th>비중</th></tr>`;
-                tbody.innerHTML = filteredPurposes.map((p, i) => {
-                    const compSales = compareMap[p[0]]?.sales || 0;
+                tbody.innerHTML = sortedPurposes.map((p, i) => {
+                    const compSales = comparePurposeData[p[0]]?.sales || 0;
                     const diff = p[1].sales - compSales;
                     const diffClass = diff >= 0 ? 'positive' : 'negative';
                     const diffText = `<span class="${diffClass}">${diff >= 0 ? '+' : ''}${formatCurrency(diff)}</span>`;
@@ -1749,7 +1819,7 @@ HTML_TEMPLATE = '''
                 }).join('') || '<tr><td colspan="7">데이터 없음</td></tr>';
             } else {
                 thead.innerHTML = `<tr><th>순위</th><th>검사목적</th><th>매출액</th><th>건수</th><th>평균단가</th><th>비중</th></tr>`;
-                tbody.innerHTML = filteredPurposes.map((p, i) => {
+                tbody.innerHTML = sortedPurposes.map((p, i) => {
                     const avg = p[1].count > 0 ? p[1].sales / p[1].count : 0;
                     const ratio = totalSales > 0 ? (p[1].sales / totalSales * 100).toFixed(1) : 0;
                     return `<tr><td>${i+1}</td><td>${p[0]}</td><td>${formatCurrency(p[1].sales)}</td><td>${p[1].count}</td><td>${formatCurrency(avg)}</td><td>${ratio}%</td></tr>`;
@@ -1757,13 +1827,13 @@ HTML_TEMPLATE = '''
             }
 
             // 목적별 담당자 테이블
-            updatePurposeManagerTable(selectedPurposes, topN);
+            updatePurposeManagerTable(selectedPurposes, topN, selectedManager, selectedRegion);
 
             // 목적별 지역 테이블
-            updatePurposeRegionTable(selectedPurposes, topN);
+            updatePurposeRegionTable(selectedPurposes, topN, selectedManager, selectedRegion);
         }
 
-        function updatePurposeManagerTable(selectedPurposes, topN) {
+        function updatePurposeManagerTable(selectedPurposes, topN, selectedManager, selectedRegion) {
             const thead = document.getElementById('purposeManagerTableHead');
             const tbody = document.querySelector('#purposeManagerTable tbody');
 
@@ -1779,6 +1849,8 @@ HTML_TEMPLATE = '''
             selectedPurposes.forEach(purpose => {
                 if (currentData.purpose_managers[purpose]) {
                     currentData.purpose_managers[purpose].forEach(m => {
+                        // 담당자 필터가 있으면 해당 담당자만
+                        if (selectedManager && m.name !== selectedManager) return;
                         if (!managerData[m.name]) managerData[m.name] = { sales: 0, count: 0 };
                         managerData[m.name].sales += m.sales;
                         managerData[m.name].count += m.count;
@@ -1786,6 +1858,7 @@ HTML_TEMPLATE = '''
                 }
                 if (compareData && compareData.purpose_managers && compareData.purpose_managers[purpose]) {
                     compareData.purpose_managers[purpose].forEach(m => {
+                        if (selectedManager && m.name !== selectedManager) return;
                         if (!compareManagerData[m.name]) compareManagerData[m.name] = { sales: 0, count: 0 };
                         compareManagerData[m.name].sales += m.sales;
                         compareManagerData[m.name].count += m.count;
@@ -1818,7 +1891,7 @@ HTML_TEMPLATE = '''
             }
         }
 
-        function updatePurposeRegionTable(selectedPurposes, topN) {
+        function updatePurposeRegionTable(selectedPurposes, topN, selectedManager, selectedRegion) {
             const thead = document.getElementById('purposeRegionTableHead');
             const tbody = document.querySelector('#purposeRegionTable tbody');
 
@@ -1834,6 +1907,8 @@ HTML_TEMPLATE = '''
             selectedPurposes.forEach(purpose => {
                 if (currentData.purpose_regions[purpose]) {
                     currentData.purpose_regions[purpose].forEach(r => {
+                        // 지역 필터가 있으면 해당 지역만
+                        if (selectedRegion && !r.region.startsWith(selectedRegion)) return;
                         if (!regionData[r.region]) regionData[r.region] = { sales: 0, count: 0 };
                         regionData[r.region].sales += r.sales;
                         regionData[r.region].count += r.count;
@@ -1841,6 +1916,7 @@ HTML_TEMPLATE = '''
                 }
                 if (compareData && compareData.purpose_regions && compareData.purpose_regions[purpose]) {
                     compareData.purpose_regions[purpose].forEach(r => {
+                        if (selectedRegion && !r.region.startsWith(selectedRegion)) return;
                         if (!compareRegionData[r.region]) compareRegionData[r.region] = { sales: 0, count: 0 };
                         compareRegionData[r.region].sales += r.sales;
                         compareRegionData[r.region].count += r.count;
