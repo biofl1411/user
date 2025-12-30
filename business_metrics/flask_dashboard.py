@@ -589,7 +589,7 @@ HTML_TEMPLATE = '''
         </div>
         <div class="charts">
             <div class="chart-container">
-                <h3>📍 지역별 매출 TOP 20</h3>
+                <h3>📍 지역별 매출 TOP 15</h3>
                 <canvas id="regionChart"></canvas>
             </div>
             <div class="chart-container">
@@ -1154,12 +1154,12 @@ HTML_TEMPLATE = '''
             const ctx = document.getElementById('regionChart').getContext('2d');
             if (charts.region) charts.region.destroy();
 
-            const top20 = currentData.by_region.slice(0, 20);
+            const top15 = currentData.by_region.slice(0, 15);
             charts.region = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: top20.map(d => d[0]),
-                    datasets: [{ label: '매출', data: top20.map(d => d[1].sales), backgroundColor: 'rgba(52, 152, 219, 0.7)' }]
+                    labels: top15.map(d => d[0]),
+                    datasets: [{ label: '매출', data: top15.map(d => d[1].sales), backgroundColor: 'rgba(52, 152, 219, 0.7)' }]
                 },
                 options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } } } }
             });
@@ -1225,21 +1225,21 @@ HTML_TEMPLATE = '''
         }
 
         function updateRegionChart(regionData, compareRegionData) {
-            const top20 = regionData.slice(0, 20);
+            const top15 = regionData.slice(0, 15);
             if (!charts.region) return;
 
-            charts.region.data.labels = top20.map(d => d[0]);
+            charts.region.data.labels = top15.map(d => d[0]);
 
             if (compareData && compareRegionData) {
                 const compareMap = Object.fromEntries(compareRegionData);
                 charts.region.data.datasets = [
-                    { label: currentData.year + '년', data: top20.map(d => d[1].sales), backgroundColor: 'rgba(102, 126, 234, 0.8)' },
-                    { label: compareData.year + '년', data: top20.map(d => (compareMap[d[0]]?.sales || 0)), backgroundColor: 'rgba(118, 75, 162, 0.6)' }
+                    { label: currentData.year + '년', data: top15.map(d => d[1].sales), backgroundColor: 'rgba(102, 126, 234, 0.8)' },
+                    { label: compareData.year + '년', data: top15.map(d => (compareMap[d[0]]?.sales || 0)), backgroundColor: 'rgba(118, 75, 162, 0.6)' }
                 ];
                 charts.region.options.plugins.legend = { display: true };
             } else {
                 charts.region.data.datasets = [
-                    { label: '매출액', data: top20.map(d => d[1].sales), backgroundColor: 'rgba(102, 126, 234, 0.8)' }
+                    { label: '매출액', data: top15.map(d => d[1].sales), backgroundColor: 'rgba(102, 126, 234, 0.8)' }
                 ];
                 charts.region.options.plugins.legend = { display: false };
             }
