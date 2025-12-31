@@ -4898,75 +4898,6 @@ def ai_analyze():
         print(f"[AI] 오류: 질문 없음")
         return jsonify({'error': '질문을 입력해주세요.'})
 
-    # 목표 달성 관련 질문인지 감지 (Gemini 없이 처리)
-    goal_keywords = ['목표', '달성', '억원', '억 원', '70억', '60억', '80억', '100억',
-                     '개선', '코칭', '부족한', '어떻게 하면', '성장률', '영업자별', '영업담당별']
-    query_lower = query.lower()
-    is_goal_query = any(kw in query for kw in goal_keywords)
-
-    if is_goal_query:
-        print(f"[AI] 목표 분석 질문 감지 - Gemini 없이 직접 분석")
-        # 목표 금액 추출 (기본 70억)
-        import re
-        target_match = re.search(r'(\d+)억', query)
-        target_amount = int(target_match.group(1)) * 100000000 if target_match else 7000000000
-
-        # 목표 연도 추출 (기본 2026)
-        year_match = re.search(r'(202[5-9]|203\d)년', query)
-        target_year = int(year_match.group(1)) if year_match else 2026
-
-        # 목표 분석 API 직접 호출
-        try:
-            from flask import current_app
-            with current_app.test_request_context(json={'target': target_amount, 'year': target_year, 'filters': {}}):
-                # goal_analysis 함수의 로직 재사용
-                food_2024 = load_food_item_data('2024')
-                food_2025 = load_food_item_data('2025')
-
-                def get_fee(row):
-                    fee = row.get('항목수수료', 0) or 0
-                    if isinstance(fee, str):
-                        fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
-                    return float(fee)
-
-                revenue_2024 = sum(get_fee(row) for row in food_2024)
-                revenue_2025 = sum(get_fee(row) for row in food_2025)
-                growth_rate = ((revenue_2025 - revenue_2024) / revenue_2024 * 100) if revenue_2024 > 0 else 0
-                gap = target_amount - revenue_2025
-                required_growth = ((target_amount - revenue_2025) / revenue_2025 * 100) if revenue_2025 > 0 else 0
-
-                # 간단한 분석 결과 생성
-                analysis_text = f"""📊 **{target_year}년 {target_amount/100000000:.0f}억 목표 분석**
-
-**현황:**
-- 2024년 매출: {revenue_2024/100000000:.1f}억원
-- 2025년 매출: {revenue_2025/100000000:.1f}억원
-- 현재 성장률: {growth_rate:+.1f}%
-
-**목표 달성 필요:**
-- 추가 매출: {gap/100000000:.1f}억원
-- 필요 성장률: {required_growth:.1f}%
-- 월 평균 추가: {gap/12/10000:.0f}만원
-
-💡 **세부 분석이 필요하시면 '목표 달성 분석' 탭을 이용해주세요.**
-영업담당별, 검사목적별, 지역별 상세 분석과 개선 추천사항을 확인할 수 있습니다."""
-
-                return jsonify({
-                    'success': True,
-                    'analysis_type': 'direct_answer',
-                    'description': f'{target_year}년 {target_amount/100000000:.0f}억 목표 분석',
-                    'direct_answer': analysis_text,
-                    'parsed_query': {
-                        'analysis_type': 'goal_analysis',
-                        'target': target_amount,
-                        'year': target_year
-                    },
-                    'redirect_hint': 'goal_analysis'  # 프론트엔드에서 목표 분석 탭으로 안내
-                })
-        except Exception as e:
-            print(f"[AI] 목표 분석 직접 처리 실패: {e}")
-            # 실패하면 Gemini로 fallback
-
     api_key = GEMINI_API_KEY
     if not api_key:
         print(f"[AI] 오류: API 키 없음")
@@ -5010,7 +4941,8 @@ JSON 형식만 응답:
     print(f"[AI] 프롬프트 길이: {len(system_prompt)}자")
 
     # Gemini API 호출 (재시도 로직 포함)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={api_key}"
+    # gemini-1.5-flash 모델 사용 (무료 티어: 분당 15회, 일 1500회)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
 
     payload = {
         "contents": [{"parts": [{"text": system_prompt + f"\n\n질문: {query}"}]}],
