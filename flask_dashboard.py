@@ -3,13 +3,18 @@
 - 오래된 CPU에서도 작동
 - Chart.js 사용
 - 연도 비교, 검사목적 필터, 업체별 분석, 부적합항목 분석
+- AI 분석 (Google Gemini API)
 """
 from flask import Flask, render_template_string, jsonify, request
 import os
 from pathlib import Path
 from datetime import datetime
+import json
 
 app = Flask(__name__)
+
+# Gemini API 설정
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 
 # 경로 설정 - 절대 경로 사용
 BASE_DIR = Path(__file__).resolve().parent
@@ -883,6 +888,7 @@ HTML_TEMPLATE = '''
         <button class="tab" onclick="showTab('sampleType')">🧪 유형</button>
         <button class="tab" onclick="showTab('defect')">⚠️ 부적합</button>
         <button class="tab" onclick="showTab('foodItem')">🔬 검사항목</button>
+        <button class="tab" onclick="showTab('aiAnalysis')" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">🤖 AI 분석</button>
     </div>
 
     <!-- 개인별 탭 -->
@@ -1338,6 +1344,69 @@ HTML_TEMPLATE = '''
             </div>
         </div>
     </div>
+
+    <!-- AI 분석 탭 -->
+    <div id="aiAnalysis" class="tab-content">
+        <div style="max-width: 1200px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <h2 style="margin: 0 0 10px 0;">🤖 AI 데이터 분석</h2>
+                <p style="margin: 0; opacity: 0.9;">자연어로 질문하면 데이터를 분석해드립니다.</p>
+            </div>
+
+            <div style="background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px;">
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="aiQueryInput" placeholder="예: 2025년 자가품질위탁검사 이물 항목 월별 매출 보여줘"
+                           style="flex: 1; padding: 15px; font-size: 16px; border: 2px solid #e0e0e0; border-radius: 8px; outline: none;"
+                           onkeypress="if(event.key==='Enter') runAiAnalysis()">
+                    <button onclick="runAiAnalysis()"
+                            style="padding: 15px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold;">
+                        분석하기
+                    </button>
+                </div>
+                <div style="margin-top: 10px; color: #888; font-size: 13px;">
+                    💡 예시 질문:
+                    <span style="cursor: pointer; color: #667eea; margin-left: 10px;" onclick="setAiQuery('2025년 자가품질위탁검사 이물 항목 월별 매출 보여줘')">월별 매출</span> |
+                    <span style="cursor: pointer; color: #667eea; margin-left: 5px;" onclick="setAiQuery('기타가공품에서 이물 항목 빠지면 연매출 영향은?')">항목 제외 영향</span> |
+                    <span style="cursor: pointer; color: #667eea; margin-left: 5px;" onclick="setAiQuery('올해 가장 많이 접수된 항목 TOP 10')">TOP 항목</span>
+                </div>
+            </div>
+
+            <div id="aiLoading" style="display: none; text-align: center; padding: 40px;">
+                <div style="font-size: 40px; animation: spin 1s linear infinite;">⚙️</div>
+                <p style="color: #666; margin-top: 10px;">AI가 분석 중입니다...</p>
+            </div>
+
+            <div id="aiResult" style="display: none;">
+                <div id="aiDescription" style="background: #f0f7ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #667eea;">
+                </div>
+
+                <div class="charts">
+                    <div class="chart-container">
+                        <h3>📊 분석 차트</h3>
+                        <div style="height: 350px;"><canvas id="aiChart"></canvas></div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>📋 분석 결과</h3>
+                        <div id="aiTableContainer" class="scroll-table" style="max-height: 350px;">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="aiInsight" style="background: #fff8e1; padding: 15px; border-radius: 8px; margin-top: 20px; border-left: 4px solid #ffc107;">
+                </div>
+            </div>
+
+            <div id="aiError" style="display: none; background: #ffebee; padding: 20px; border-radius: 8px; color: #c62828; border-left: 4px solid #c62828;">
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
 
     <script>
         let charts = {};
@@ -3803,6 +3872,186 @@ HTML_TEMPLATE = '''
         initDateSelectors();
         showToast('조회 조건을 선택하고 [조회하기] 버튼을 클릭하세요.', 'loading', 5000);
         setTimeout(() => hideToast(), 5000);
+
+        // ========== AI 분석 함수들 ==========
+        function setAiQuery(query) {
+            document.getElementById('aiQueryInput').value = query;
+        }
+
+        async function runAiAnalysis() {
+            const query = document.getElementById('aiQueryInput').value.trim();
+            if (!query) {
+                alert('질문을 입력해주세요.');
+                return;
+            }
+
+            // UI 상태 변경
+            document.getElementById('aiLoading').style.display = 'block';
+            document.getElementById('aiResult').style.display = 'none';
+            document.getElementById('aiError').style.display = 'none';
+
+            try {
+                const response = await fetch('/api/ai/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({query: query})
+                });
+
+                const data = await response.json();
+                document.getElementById('aiLoading').style.display = 'none';
+
+                if (data.error) {
+                    document.getElementById('aiError').innerHTML = `<strong>오류:</strong> ${data.error}`;
+                    document.getElementById('aiError').style.display = 'block';
+                    return;
+                }
+
+                // 결과 표시
+                displayAiResult(data);
+            } catch (error) {
+                document.getElementById('aiLoading').style.display = 'none';
+                document.getElementById('aiError').innerHTML = `<strong>오류:</strong> ${error.message}`;
+                document.getElementById('aiError').style.display = 'block';
+            }
+        }
+
+        function displayAiResult(data) {
+            document.getElementById('aiResult').style.display = 'block';
+
+            // 설명 표시
+            const desc = data.description || '분석 완료';
+            const parsed = data.parsed_query || {};
+            document.getElementById('aiDescription').innerHTML = `
+                <strong>📝 분석 내용:</strong> ${desc}<br>
+                <small style="color: #666;">조건: ${parsed.year || ''}년 /
+                ${parsed.purpose || '전체 목적'} /
+                ${parsed.sample_type || '전체 유형'} /
+                ${parsed.item || '전체 항목'}
+                ${parsed.exclude_item ? ' / 제외: ' + parsed.exclude_item : ''}</small>
+            `;
+
+            // 차트 그리기
+            if (data.chart_data) {
+                drawAiChart(data.chart_data, data.analysis_type);
+            }
+
+            // 테이블 표시
+            displayAiTable(data);
+
+            // 인사이트 표시
+            displayAiInsight(data);
+        }
+
+        function drawAiChart(chartData, analysisType) {
+            const ctx = document.getElementById('aiChart').getContext('2d');
+            if (charts.aiChart) charts.aiChart.destroy();
+
+            const colors = [
+                'rgba(102, 126, 234, 0.7)',
+                'rgba(118, 75, 162, 0.7)',
+                'rgba(255, 193, 7, 0.7)',
+                'rgba(76, 175, 80, 0.7)'
+            ];
+
+            const datasets = chartData.datasets.map((ds, i) => ({
+                label: ds.label,
+                data: ds.data,
+                backgroundColor: colors[i % colors.length],
+                borderColor: colors[i % colors.length].replace('0.7', '1'),
+                borderWidth: 1
+            }));
+
+            charts.aiChart = new Chart(ctx, {
+                type: analysisType === 'top_items' ? 'bar' : 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: datasets.length > 1 }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 10000) return (value/10000).toFixed(0) + '만';
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function displayAiTable(data) {
+            const container = document.getElementById('aiTableContainer');
+            let html = '';
+
+            if (data.analysis_type === 'monthly_trend' && data.chart_data) {
+                html = `<table><thead><tr><th>월</th>`;
+                data.chart_data.datasets.forEach(ds => {
+                    html += `<th>${ds.label}</th>`;
+                });
+                html += `</tr></thead><tbody>`;
+
+                data.chart_data.labels.forEach((label, i) => {
+                    html += `<tr><td>${label}</td>`;
+                    data.chart_data.datasets.forEach(ds => {
+                        const val = ds.data[i];
+                        html += `<td>${formatCurrency(val)}</td>`;
+                    });
+                    html += `</tr>`;
+                });
+                html += `</tbody></table>`;
+            } else if (data.analysis_type === 'top_items' && data.top_items) {
+                html = `<table><thead><tr><th>순위</th><th>항목명</th><th>건수</th><th>수수료</th></tr></thead><tbody>`;
+                data.top_items.forEach((item, i) => {
+                    html += `<tr><td>${i+1}</td><td>${item.name}</td><td>${item.count.toLocaleString()}</td><td>${formatCurrency(item.fee)}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+            } else if (data.analysis_type === 'comparison' && data.comparison) {
+                const c = data.comparison;
+                html = `<table><thead><tr><th>구분</th><th>건수</th><th>수수료</th></tr></thead><tbody>`;
+                html += `<tr><td>전체</td><td>${c.with_item.count.toLocaleString()}</td><td>${formatCurrency(c.with_item.fee)}</td></tr>`;
+                html += `<tr><td>제외 후</td><td>${c.without_item.count.toLocaleString()}</td><td>${formatCurrency(c.without_item.fee)}</td></tr>`;
+                html += `<tr style="font-weight: bold; color: #c62828;"><td>차이</td><td>-${c.difference.count.toLocaleString()}</td><td>-${formatCurrency(c.difference.fee)}</td></tr>`;
+                html += `</tbody></table>`;
+            } else if (data.summary) {
+                html = `<table><thead><tr><th>항목</th><th>값</th></tr></thead><tbody>`;
+                html += `<tr><td>총 건수</td><td>${data.summary.total_count.toLocaleString()}건</td></tr>`;
+                html += `<tr><td>총 수수료</td><td>${formatCurrency(data.summary.total_fee)}</td></tr>`;
+                html += `<tr><td>평균 수수료</td><td>${formatCurrency(data.summary.avg_fee)}</td></tr>`;
+                html += `</tbody></table>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function displayAiInsight(data) {
+            const insight = document.getElementById('aiInsight');
+            let text = '💡 <strong>인사이트:</strong> ';
+
+            if (data.analysis_type === 'monthly_trend') {
+                text += `총 매출 ${formatCurrency(data.total_fee || 0)}`;
+                if (data.total_diff) {
+                    text += `, 제외 시 연간 <span style="color: #c62828; font-weight: bold;">-${formatCurrency(data.total_diff)}</span> 감소 예상`;
+                }
+            } else if (data.analysis_type === 'comparison' && data.comparison) {
+                const pct = ((data.comparison.difference.fee / data.comparison.with_item.fee) * 100).toFixed(1);
+                text += `해당 항목 제외 시 매출 <span style="color: #c62828; font-weight: bold;">${pct}%</span> 감소 (${formatCurrency(data.comparison.difference.fee)})`;
+            } else if (data.analysis_type === 'top_items' && data.top_items) {
+                text += `상위 ${data.top_items.length}개 항목 중 1위는 <strong>${data.top_items[0]?.name || '-'}</strong> (${data.top_items[0]?.count.toLocaleString() || 0}건)`;
+            } else {
+                text += `총 ${data.total_count?.toLocaleString() || 0}건의 데이터가 분석되었습니다.`;
+            }
+
+            insight.innerHTML = text;
+        }
     </script>
 </body>
 </html>
@@ -4008,6 +4257,258 @@ def refresh_cache():
     for year in ['2024', '2025']:
         load_excel_data(year, use_cache=False)
     return jsonify({'status': 'ok', 'message': '캐시가 새로고침되었습니다.'})
+
+@app.route('/api/ai/analyze', methods=['POST'])
+def ai_analyze():
+    """AI 분석 API - Gemini로 자연어 질문 분석"""
+    import urllib.request
+    import urllib.error
+
+    query = request.json.get('query', '')
+    if not query:
+        return jsonify({'error': '질문을 입력해주세요.'})
+
+    api_key = GEMINI_API_KEY
+    if not api_key:
+        return jsonify({'error': 'GEMINI_API_KEY가 설정되지 않았습니다.'})
+
+    # 현재 데이터 요약 정보 수집
+    data_2024 = load_excel_data('2024')
+    data_2025 = load_excel_data('2025')
+    food_2024 = load_food_item_data('2024')
+    food_2025 = load_food_item_data('2025')
+
+    # 사용 가능한 필터 값들 수집
+    purposes = set()
+    sample_types = set()
+    items = set()
+    managers = set()
+
+    for row in food_2025:
+        if row.get('검사목적'): purposes.add(str(row.get('검사목적')))
+        if row.get('검체유형'): sample_types.add(str(row.get('검체유형')))
+        if row.get('항목명'): items.add(str(row.get('항목명')))
+        if row.get('영업담당'): managers.add(str(row.get('영업담당')))
+
+    # Gemini에게 보낼 프롬프트
+    system_prompt = f"""당신은 경영지표 데이터 분석 도우미입니다.
+사용자의 자연어 질문을 분석하여 데이터 조회에 필요한 조건을 JSON으로 추출해주세요.
+
+사용 가능한 데이터:
+- 연도: 2024, 2025
+- 검사목적: {', '.join(list(purposes)[:20])}...
+- 검체유형: {', '.join(list(sample_types)[:20])}...
+- 항목명: {', '.join(list(items)[:30])}...
+- 영업담당: {', '.join(list(managers)[:15])}
+
+분석 유형:
+1. monthly_trend: 월별 추이 분석
+2. comparison: 비교 분석 (항목 포함 vs 제외)
+3. top_items: TOP N 항목
+4. summary: 요약 통계
+
+반드시 아래 JSON 형식으로만 응답하세요:
+{{
+    "analysis_type": "monthly_trend|comparison|top_items|summary",
+    "year": "2024|2025",
+    "purpose": "검사목적 값 또는 null",
+    "sample_type": "검체유형 값 또는 null",
+    "item": "항목명 값 또는 null",
+    "exclude_item": "제외할 항목명 또는 null",
+    "manager": "영업담당 값 또는 null",
+    "top_n": 숫자 또는 null,
+    "description": "분석 설명 (한글)"
+}}"""
+
+    try:
+        # Gemini API 호출
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": system_prompt},
+                    {"text": f"사용자 질문: {query}"}
+                ]
+            }],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 1000
+            }
+        }
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode('utf-8'))
+
+        # Gemini 응답에서 JSON 추출
+        ai_response = result['candidates'][0]['content']['parts'][0]['text']
+        print(f"[AI] Gemini 응답: {ai_response}")
+
+        # JSON 파싱 (코드블록 제거)
+        json_str = ai_response.strip()
+        if '```json' in json_str:
+            json_str = json_str.split('```json')[1].split('```')[0]
+        elif '```' in json_str:
+            json_str = json_str.split('```')[1].split('```')[0]
+
+        parsed = json.loads(json_str.strip())
+        print(f"[AI] 파싱된 조건: {parsed}")
+
+        # 데이터 조회 및 분석 실행
+        analysis_result = execute_analysis(parsed, food_2024, food_2025, data_2024, data_2025)
+        analysis_result['parsed_query'] = parsed
+
+        return jsonify(analysis_result)
+
+    except urllib.error.URLError as e:
+        return jsonify({'error': f'API 연결 실패: {str(e)}'})
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'응답 파싱 실패: {str(e)}', 'raw_response': ai_response if 'ai_response' in locals() else ''})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': f'분석 실패: {str(e)}', 'traceback': traceback.format_exc()})
+
+
+def execute_analysis(params, food_2024, food_2025, data_2024, data_2025):
+    """파싱된 조건으로 실제 데이터 분석 실행"""
+    analysis_type = params.get('analysis_type', 'summary')
+    year = params.get('year', '2025')
+    purpose = params.get('purpose')
+    sample_type = params.get('sample_type')
+    item = params.get('item')
+    exclude_item = params.get('exclude_item')
+    manager = params.get('manager')
+    top_n = params.get('top_n', 10)
+    description = params.get('description', '')
+
+    # 연도별 데이터 선택
+    food_data = food_2025 if year == '2025' else food_2024
+
+    # 필터링
+    filtered = []
+    for row in food_data:
+        if purpose and str(row.get('검사목적', '')).strip() != purpose:
+            continue
+        if sample_type and str(row.get('검체유형', '')).strip() != sample_type:
+            continue
+        if item and str(row.get('항목명', '')).strip() != item:
+            continue
+        if manager and str(row.get('영업담당', '')).strip() != manager:
+            continue
+        filtered.append(row)
+
+    # 제외 항목 필터링 (비교 분석용)
+    filtered_excluded = []
+    if exclude_item:
+        for row in filtered:
+            if str(row.get('항목명', '')).strip() != exclude_item:
+                filtered_excluded.append(row)
+
+    result = {
+        'success': True,
+        'description': description,
+        'analysis_type': analysis_type,
+        'total_count': len(filtered),
+        'year': year
+    }
+
+    if analysis_type == 'monthly_trend':
+        # 월별 추이
+        monthly = {}
+        monthly_excluded = {}
+        for row in filtered:
+            date = row.get('접수일자')
+            if date and hasattr(date, 'month'):
+                m = date.month
+                fee = row.get('항목수수료', 0) or 0
+                if isinstance(fee, str):
+                    fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+                monthly[m] = monthly.get(m, 0) + fee
+
+        if exclude_item:
+            for row in filtered_excluded:
+                date = row.get('접수일자')
+                if date and hasattr(date, 'month'):
+                    m = date.month
+                    fee = row.get('항목수수료', 0) or 0
+                    if isinstance(fee, str):
+                        fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+                    monthly_excluded[m] = monthly_excluded.get(m, 0) + fee
+
+        result['chart_data'] = {
+            'labels': [f'{m}월' for m in range(1, 13)],
+            'datasets': [
+                {'label': '전체 매출', 'data': [monthly.get(m, 0) for m in range(1, 13)]}
+            ]
+        }
+        if exclude_item:
+            result['chart_data']['datasets'].append({
+                'label': f'{exclude_item} 제외',
+                'data': [monthly_excluded.get(m, 0) for m in range(1, 13)]
+            })
+            # 차이 계산
+            diff_data = []
+            for m in range(1, 13):
+                diff = monthly.get(m, 0) - monthly_excluded.get(m, 0)
+                diff_data.append(diff)
+            result['chart_data']['datasets'].append({
+                'label': '차이 (감소액)',
+                'data': diff_data
+            })
+            result['total_diff'] = sum(diff_data)
+
+        result['total_fee'] = sum(monthly.values())
+
+    elif analysis_type == 'comparison':
+        # 비교 분석
+        total_with = sum((row.get('항목수수료', 0) or 0) for row in filtered)
+        total_without = sum((row.get('항목수수료', 0) or 0) for row in filtered_excluded) if exclude_item else 0
+
+        result['comparison'] = {
+            'with_item': {'count': len(filtered), 'fee': total_with},
+            'without_item': {'count': len(filtered_excluded) if exclude_item else 0, 'fee': total_without},
+            'difference': {'count': len(filtered) - len(filtered_excluded) if exclude_item else 0,
+                          'fee': total_with - total_without}
+        }
+
+    elif analysis_type == 'top_items':
+        # TOP N 항목
+        item_stats = {}
+        for row in filtered:
+            item_name = str(row.get('항목명', '')).strip()
+            if item_name:
+                if item_name not in item_stats:
+                    item_stats[item_name] = {'count': 0, 'fee': 0}
+                item_stats[item_name]['count'] += 1
+                fee = row.get('항목수수료', 0) or 0
+                if isinstance(fee, str):
+                    fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+                item_stats[item_name]['fee'] += fee
+
+        sorted_items = sorted(item_stats.items(), key=lambda x: x[1]['count'], reverse=True)[:top_n]
+        result['top_items'] = [{'name': k, 'count': v['count'], 'fee': v['fee']} for k, v in sorted_items]
+        result['chart_data'] = {
+            'labels': [item[0][:15] for item in sorted_items],
+            'datasets': [{'label': '건수', 'data': [item[1]['count'] for item in sorted_items]}]
+        }
+
+    else:  # summary
+        total_fee = sum((row.get('항목수수료', 0) or 0) for row in filtered)
+        result['summary'] = {
+            'total_count': len(filtered),
+            'total_fee': total_fee,
+            'avg_fee': total_fee / len(filtered) if filtered else 0
+        }
+
+    return result
+
 
 def preload_data():
     """서버 시작 시 데이터 미리 로드"""
