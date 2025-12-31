@@ -13,8 +13,14 @@ import json
 
 app = Flask(__name__)
 
-# Gemini API 설정
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+# Gemini API 설정 (여러 키로 429 에러 대응)
+GEMINI_API_KEYS = [
+    os.environ.get('GEMINI_API_KEY', ''),
+    os.environ.get('GEMINI_API_KEY_2', 'AIzaSyA7saUcePkpMh3olwkKKG7z-u1XXcDc7u4'),  # 경영지표1
+    os.environ.get('GEMINI_API_KEY_3', 'AIzaSyCo8k3H7Pi128OuBgcupa7jlcm-hH1q68g'),  # 경영지표2
+]
+GEMINI_API_KEYS = [k for k in GEMINI_API_KEYS if k]  # 빈 키 제거
+current_api_key_index = 0  # 현재 사용 중인 키 인덱스
 
 # 경로 설정 - 절대 경로 사용
 BASE_DIR = Path(__file__).resolve().parent
@@ -4902,12 +4908,12 @@ def ai_analyze():
         print(f"[AI] 오류: 질문 없음")
         return jsonify({'error': '질문을 입력해주세요.'})
 
-    api_key = GEMINI_API_KEY
-    if not api_key:
+    global current_api_key_index
+    if not GEMINI_API_KEYS:
         print(f"[AI] 오류: API 키 없음")
-        return jsonify({'error': 'GEMINI_API_KEY가 설정되지 않았습니다. 서버 시작 시 export GEMINI_API_KEY="키값" 필요'})
+        return jsonify({'error': 'GEMINI_API_KEY가 설정되지 않았습니다.'})
 
-    print(f"[AI] API 키 확인됨: {api_key[:10]}...")
+    print(f"[AI] 사용 가능한 API 키: {len(GEMINI_API_KEYS)}개")
 
     # 캐시된 데이터 요약 사용 (변경 감지 포함)
     data_summary = get_ai_data_summary()
@@ -4944,22 +4950,22 @@ JSON 형식만 응답:
 
     print(f"[AI] 프롬프트 길이: {len(system_prompt)}자")
 
-    # Gemini API 호출 (재시도 로직 포함)
-    # gemini-1.5-flash 모델 사용 (무료 티어: 분당 15회, 일 1500회)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-
     payload = {
         "contents": [{"parts": [{"text": system_prompt + f"\n\n질문: {query}"}]}],
         "generationConfig": {"temperature": 0.1, "maxOutputTokens": 500}
     }
 
-    max_retries = 3
-    retry_delay = 2
+    # Gemini API 호출 (여러 키로 429 대응)
+    total_keys = len(GEMINI_API_KEYS)
+    keys_tried = 0
 
-    for attempt in range(max_retries):
+    while keys_tried < total_keys:
+        api_key = GEMINI_API_KEYS[current_api_key_index]
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+
+        print(f"[AI] API 키 {current_api_key_index + 1}/{total_keys} 사용: {api_key[:15]}...")
+
         try:
-            print(f"[AI] Gemini API 호출 시도 {attempt + 1}/{max_retries}")
-
             req = urllib.request.Request(
                 url,
                 data=json.dumps(payload).encode('utf-8'),
@@ -4971,6 +4977,9 @@ JSON 형식만 응답:
                 result = json.loads(response.read().decode('utf-8'))
 
             print(f"[AI] Gemini API 응답 수신 성공")
+
+            # 라운드 로빈: 성공 후에도 다음 키로 전환 (부하 분산)
+            current_api_key_index = (current_api_key_index + 1) % total_keys
 
             # Gemini 응답에서 JSON 추출
             ai_response = result['candidates'][0]['content']['parts'][0]['text']
@@ -5012,19 +5021,14 @@ JSON 형식만 응답:
         except urllib.error.HTTPError as e:
             error_body = e.read().decode('utf-8') if e.fp else ''
             print(f"[AI] HTTP 오류 {e.code}: {e.reason}")
-            print(f"[AI] 오류 상세: {error_body[:500]}")
+            print(f"[AI] 오류 상세: {error_body[:300]}")
 
-            if e.code == 429:  # Too Many Requests
-                if attempt < max_retries - 1:
-                    wait_time = retry_delay * (2 ** attempt)  # exponential backoff
-                    print(f"[AI] 429 오류 - {wait_time}초 후 재시도...")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    return jsonify({
-                        'error': f'API 요청 한도 초과 (429). {retry_delay * 4}초 후 다시 시도해주세요.',
-                        'retry_after': retry_delay * 4
-                    })
+            if e.code == 429:  # Too Many Requests - 다음 키로 전환
+                keys_tried += 1
+                current_api_key_index = (current_api_key_index + 1) % total_keys
+                print(f"[AI] 429 오류 - 다음 API 키로 전환 (키 {current_api_key_index + 1})")
+                time.sleep(1)  # 짧은 대기 후 다음 키 시도
+                continue
             elif e.code == 404:
                 return jsonify({'error': f'API 모델을 찾을 수 없습니다 (404). 모델명 확인 필요.'})
             else:
@@ -5048,7 +5052,7 @@ JSON 형식만 응답:
             print(f"[AI] 트레이스백: {traceback.format_exc()}")
             return jsonify({'error': f'분석 실패: {str(e)}'})
 
-    return jsonify({'error': '최대 재시도 횟수 초과'})
+    return jsonify({'error': f'모든 API 키({total_keys}개)가 할당량을 초과했습니다. 잠시 후 다시 시도해주세요.'})
 
 
 def execute_analysis(params, food_2024, food_2025, data_2024, data_2025):
