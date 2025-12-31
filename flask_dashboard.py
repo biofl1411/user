@@ -78,6 +78,201 @@ def load_excel_data(year, use_cache=True):
 
     return all_data
 
+def load_food_item_data(year, use_cache=True):
+    """food_item 폴더에서 검사항목 데이터 로드"""
+    import time
+    from openpyxl import load_workbook
+
+    cache_key = f"food_item_{year}"
+    if use_cache and cache_key in DATA_CACHE:
+        cache_age = time.time() - CACHE_TIME.get(cache_key, 0)
+        if cache_age < 3600:
+            print(f"[CACHE] food_item {year}년 데이터 캐시 사용 ({len(DATA_CACHE[cache_key])}건)")
+            return DATA_CACHE[cache_key]
+
+    data_path = DATA_DIR / "food_item" / str(year)
+    if not data_path.exists():
+        print(f"[WARN] food_item {year}년 폴더 없음: {data_path}")
+        return []
+
+    print(f"[LOAD] food_item {year}년 데이터 로딩 시작...")
+    start_time = time.time()
+
+    # 필요한 컬럼만 로드
+    required_columns = ['접수일자', '발행일', '검체유형', '업체명', '의뢰인명', '업체주소',
+                       '항목명', '규격', '항목담당', '결과입력자', '입력일', '분석일',
+                       '항목단위', '시험결과', '시험치', '성적서결과', '판정', '시험목적',
+                       '긴급여부', '항목수수료', '영업담당']
+
+    all_data = []
+    files = sorted(data_path.glob("*.xlsx"))
+
+    for f in files:
+        try:
+            wb = load_workbook(f, read_only=True, data_only=True)
+            ws = wb.active
+            headers = [cell.value for cell in ws[1]]
+
+            # 컬럼 인덱스 매핑
+            col_indices = {}
+            for i, h in enumerate(headers):
+                if h in required_columns:
+                    col_indices[h] = i
+
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                row_dict = {}
+                for col_name, idx in col_indices.items():
+                    row_dict[col_name] = row[idx] if idx < len(row) else None
+                all_data.append(row_dict)
+            wb.close()
+            print(f"[LOAD] food_item {f.name} 완료")
+        except Exception as e:
+            print(f"[ERROR] Loading food_item {f}: {e}")
+
+    elapsed = time.time() - start_time
+    print(f"[LOAD] food_item {year}년 완료: {len(all_data)}건, {elapsed:.1f}초 소요")
+
+    DATA_CACHE[cache_key] = all_data
+    CACHE_TIME[cache_key] = time.time()
+
+    return all_data
+
+def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
+                           item_filter=None, manager_filter=None):
+    """검사항목 데이터 처리"""
+    by_item = {}  # 항목별 데이터
+    by_item_month = {}  # 항목별-월별 데이터
+    by_item_analyzer = {}  # 항목별-분석자 데이터
+    by_sample_type_item = {}  # 검체유형별-항목 데이터
+    by_manager_item = {}  # 영업담당별-항목 데이터
+    by_manager_fee = {}  # 영업담당별-수수료 데이터
+    by_month_fee = {}  # 월별-수수료 데이터
+
+    purposes = set()
+    sample_types = set()
+    items = set()
+    managers = set()
+    analyzers = set()
+
+    total_fee = 0
+    total_count = 0
+
+    for row in data:
+        purpose = str(row.get('시험목적', '') or '').strip()
+        sample_type = str(row.get('검체유형', '') or '').strip()
+        item_name = str(row.get('항목명', '') or '').strip()
+        manager = str(row.get('영업담당', '') or '').strip() or '미지정'
+        analyzer = str(row.get('결과입력자', '') or '').strip() or '미지정'
+        fee = row.get('항목수수료', 0) or 0
+        date = row.get('접수일자')
+
+        if isinstance(fee, str):
+            fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+
+        # 목록 수집
+        if purpose: purposes.add(purpose)
+        if sample_type: sample_types.add(sample_type)
+        if item_name: items.add(item_name)
+        if manager and manager != '미지정': managers.add(manager)
+        if analyzer and analyzer != '미지정': analyzers.add(analyzer)
+
+        # 필터 적용
+        if purpose_filter and purpose_filter != '전체' and purpose != purpose_filter:
+            continue
+        if sample_type_filter and sample_type_filter != '전체' and sample_type != sample_type_filter:
+            continue
+        if item_filter and item_filter != '전체' and item_name != item_filter:
+            continue
+        if manager_filter and manager_filter != '전체' and manager != manager_filter:
+            continue
+
+        # 월 추출
+        month = 0
+        if date:
+            if hasattr(date, 'month'):
+                month = date.month
+            else:
+                try:
+                    month = int(str(date).split('-')[1])
+                except:
+                    month = 0
+
+        total_fee += fee
+        total_count += 1
+
+        # 항목별 집계
+        if item_name:
+            if item_name not in by_item:
+                by_item[item_name] = {'count': 0, 'fee': 0}
+            by_item[item_name]['count'] += 1
+            by_item[item_name]['fee'] += fee
+
+            # 항목별-월별
+            if month > 0:
+                if item_name not in by_item_month:
+                    by_item_month[item_name] = {}
+                if month not in by_item_month[item_name]:
+                    by_item_month[item_name][month] = 0
+                by_item_month[item_name][month] += 1
+
+            # 항목별-분석자
+            if item_name not in by_item_analyzer:
+                by_item_analyzer[item_name] = {}
+            if analyzer not in by_item_analyzer[item_name]:
+                by_item_analyzer[item_name][analyzer] = {'count': 0, 'fee': 0}
+            by_item_analyzer[item_name][analyzer]['count'] += 1
+            by_item_analyzer[item_name][analyzer]['fee'] += fee
+
+        # 검체유형별-항목
+        if sample_type:
+            if sample_type not in by_sample_type_item:
+                by_sample_type_item[sample_type] = {}
+            if item_name:
+                if item_name not in by_sample_type_item[sample_type]:
+                    by_sample_type_item[sample_type][item_name] = {'count': 0, 'fee': 0}
+                by_sample_type_item[sample_type][item_name]['count'] += 1
+                by_sample_type_item[sample_type][item_name]['fee'] += fee
+
+        # 영업담당별 집계
+        if manager not in by_manager_item:
+            by_manager_item[manager] = {'count': 0, 'fee': 0, 'items': {}}
+        by_manager_item[manager]['count'] += 1
+        by_manager_item[manager]['fee'] += fee
+        if item_name:
+            if item_name not in by_manager_item[manager]['items']:
+                by_manager_item[manager]['items'][item_name] = {'count': 0, 'fee': 0}
+            by_manager_item[manager]['items'][item_name]['count'] += 1
+            by_manager_item[manager]['items'][item_name]['fee'] += fee
+
+        # 월별 수수료
+        if month > 0:
+            if month not in by_month_fee:
+                by_month_fee[month] = {'count': 0, 'fee': 0}
+            by_month_fee[month]['count'] += 1
+            by_month_fee[month]['fee'] += fee
+
+    # 결과 정리
+    by_item_sorted = sorted(by_item.items(), key=lambda x: x[1]['count'], reverse=True)
+    by_manager_sorted = sorted(by_manager_item.items(), key=lambda x: x[1]['fee'], reverse=True)
+
+    return {
+        'by_item': by_item_sorted,
+        'by_item_month': {k: list(v.items()) for k, v in by_item_month.items()},
+        'by_item_analyzer': {k: sorted(v.items(), key=lambda x: x[1]['count'], reverse=True)
+                            for k, v in by_item_analyzer.items()},
+        'by_sample_type_item': {k: sorted(v.items(), key=lambda x: x[1]['count'], reverse=True)
+                               for k, v in by_sample_type_item.items()},
+        'by_manager_item': by_manager_sorted,
+        'by_month_fee': list(by_month_fee.items()),
+        'purposes': sorted(purposes),
+        'sample_types': sorted(sample_types),
+        'items': sorted(items),
+        'managers': sorted(managers),
+        'analyzers': sorted(analyzers),
+        'total_fee': total_fee,
+        'total_count': total_count
+    }
+
 def extract_region(address):
     """주소에서 시/도, 시/군/구 추출"""
     if not address:
@@ -662,6 +857,7 @@ HTML_TEMPLATE = '''
         <button class="tab" onclick="showTab('purpose')">🎯 목적별</button>
         <button class="tab" onclick="showTab('sampleType')">🧪 유형</button>
         <button class="tab" onclick="showTab('defect')">⚠️ 부적합</button>
+        <button class="tab" onclick="showTab('foodItem')">🔬 검사항목</button>
     </div>
 
     <!-- 개인별 탭 -->
@@ -1022,10 +1218,100 @@ HTML_TEMPLATE = '''
         </div>
     </div>
 
+    <!-- 검사항목 탭 -->
+    <div id="foodItem" class="tab-content">
+        <div class="filter-row" style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <label>시험목적:</label>
+            <select id="foodItemPurposeFilter" onchange="updateFoodItemTab()" style="padding: 5px;">
+                <option value="전체">전체</option>
+            </select>
+            <label>검체유형:</label>
+            <input type="text" id="foodItemSampleTypeInput" placeholder="검체유형 입력..."
+                   oninput="filterSampleTypeDropdown()" style="padding: 5px; width: 150px;">
+            <select id="foodItemSampleTypeFilter" onchange="updateFoodItemTab()" style="padding: 5px; width: 200px;">
+                <option value="전체">전체</option>
+            </select>
+            <label>항목:</label>
+            <select id="foodItemItemFilter" onchange="updateFoodItemTab()" style="padding: 5px; width: 200px;">
+                <option value="전체">전체</option>
+            </select>
+            <label>영업담당:</label>
+            <select id="foodItemManagerFilter" onchange="updateFoodItemTab()" style="padding: 5px;">
+                <option value="전체">전체</option>
+            </select>
+        </div>
+
+        <div class="summary-cards" style="margin-bottom: 15px;">
+            <div class="summary-card">
+                <div class="label">총 건수</div>
+                <div class="value" id="foodItemTotalCount">-</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">총 항목수수료</div>
+                <div class="value" id="foodItemTotalFee">-</div>
+            </div>
+        </div>
+
+        <div class="charts">
+            <div class="chart-container">
+                <h3>항목별 건수 TOP 20</h3>
+                <div style="height: 350px;"><canvas id="foodItemChart"></canvas></div>
+            </div>
+            <div class="chart-container">
+                <h3>항목별 상세</h3>
+                <div class="scroll-table" style="max-height: 350px;">
+                    <table id="foodItemTable">
+                        <thead id="foodItemTableHead"><tr><th>순위</th><th>항목명</th><th>건수</th><th>항목수수료</th><th>비중</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="charts" style="margin-top: 20px;">
+            <div class="chart-container">
+                <h3>항목별 분석자 건수</h3>
+                <div class="sub-select">
+                    <select id="foodItemAnalyzerSelect" onchange="updateFoodItemAnalyzerTable()">
+                        <option value="">항목 선택</option>
+                    </select>
+                </div>
+                <div class="scroll-table" style="max-height: 300px;">
+                    <table id="foodItemAnalyzerTable">
+                        <thead id="foodItemAnalyzerTableHead"><tr><th>순위</th><th>분석자</th><th>건수</th><th>항목수수료</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="chart-container">
+                <h3>월별 추이</h3>
+                <div class="sub-select">
+                    <select id="foodItemMonthlySelect" onchange="updateFoodItemMonthlyChart()">
+                        <option value="">항목 선택</option>
+                    </select>
+                </div>
+                <div style="height: 250px;"><canvas id="foodItemMonthlyChart"></canvas></div>
+            </div>
+        </div>
+
+        <div class="charts" style="margin-top: 20px;">
+            <div class="chart-container">
+                <h3>항목수수료 연도별 추이</h3>
+                <div style="height: 250px;"><canvas id="foodItemFeeYearlyChart"></canvas></div>
+            </div>
+            <div class="chart-container">
+                <h3>영업담당별 항목수수료</h3>
+                <div style="height: 250px;"><canvas id="foodItemManagerFeeChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let charts = {};
         let currentData = null;
         let compareData = null;
+        let foodItemData = null;
+        let compareFoodItemData = null;
 
         function formatCurrency(value) {
             if (value >= 100000000) return (value/100000000).toFixed(1) + '억';
@@ -1316,6 +1602,9 @@ HTML_TEMPLATE = '''
                 }
 
                 updateAll();
+
+                // 검사항목 데이터도 함께 로드
+                loadFoodItemData();
 
                 let msg = `${currentData.dateLabel} 데이터 로드 완료 (${currentData.total_count.toLocaleString()}건)`;
                 if (compareData) msg = `${currentData.dateLabel} vs ${compareData.dateLabel} 비교 로드 완료`;
@@ -2958,6 +3247,356 @@ HTML_TEMPLATE = '''
             });
         }
 
+        // ========== 검사항목 탭 함수들 ==========
+        let allSampleTypes = [];  // 전체 검체유형 목록 저장
+
+        async function loadFoodItemData() {
+            const year = document.getElementById('yearSelect').value;
+            const purpose = document.getElementById('foodItemPurposeFilter').value;
+            const sampleType = document.getElementById('foodItemSampleTypeFilter').value;
+            const item = document.getElementById('foodItemItemFilter').value;
+            const manager = document.getElementById('foodItemManagerFilter').value;
+
+            showToast('검사항목 데이터 로딩 중...', 'loading');
+
+            try {
+                const response = await fetch(`/api/food_item?year=${year}&purpose=${purpose}&sample_type=${sampleType}&item=${item}&manager=${manager}`);
+                foodItemData = await response.json();
+                foodItemData.year = parseInt(year);
+
+                // 비교 모드일 경우
+                if (document.getElementById('compareCheck').checked) {
+                    const compareYear = document.getElementById('compareYearSelect').value;
+                    const compareResponse = await fetch(`/api/food_item?year=${compareYear}&purpose=${purpose}&sample_type=${sampleType}&item=${item}&manager=${manager}`);
+                    compareFoodItemData = await compareResponse.json();
+                    compareFoodItemData.year = parseInt(compareYear);
+                } else {
+                    compareFoodItemData = null;
+                }
+
+                // 필터 드롭다운 초기화 (첫 로드 시에만)
+                if (allSampleTypes.length === 0) {
+                    initFoodItemFilters();
+                }
+
+                updateFoodItemDisplay();
+                hideToast();
+            } catch (error) {
+                console.error('Food item data load error:', error);
+                showToast('검사항목 데이터 로드 실패', 'error');
+            }
+        }
+
+        function initFoodItemFilters() {
+            if (!foodItemData) return;
+
+            // 시험목적 필터
+            const purposeSelect = document.getElementById('foodItemPurposeFilter');
+            purposeSelect.innerHTML = '<option value="전체">전체</option>';
+            foodItemData.purposes.forEach(p => {
+                purposeSelect.innerHTML += `<option value="${p}">${p}</option>`;
+            });
+
+            // 검체유형 필터 (전체 저장)
+            allSampleTypes = [...foodItemData.sample_types];
+            updateSampleTypeDropdown(allSampleTypes);
+
+            // 영업담당 필터
+            const managerSelect = document.getElementById('foodItemManagerFilter');
+            managerSelect.innerHTML = '<option value="전체">전체</option>';
+            foodItemData.managers.forEach(m => {
+                managerSelect.innerHTML += `<option value="${m}">${m}</option>`;
+            });
+
+            // 항목 필터 업데이트
+            updateItemFilter();
+        }
+
+        function updateSampleTypeDropdown(types) {
+            const select = document.getElementById('foodItemSampleTypeFilter');
+            const currentValue = select.value;
+            select.innerHTML = '<option value="전체">전체</option>';
+            types.slice(0, 100).forEach(st => {
+                select.innerHTML += `<option value="${st}">${st}</option>`;
+            });
+            if (types.includes(currentValue)) {
+                select.value = currentValue;
+            }
+        }
+
+        function filterSampleTypeDropdown() {
+            const input = document.getElementById('foodItemSampleTypeInput').value.toLowerCase();
+            if (!input) {
+                updateSampleTypeDropdown(allSampleTypes);
+                return;
+            }
+            const filtered = allSampleTypes.filter(st => st.toLowerCase().includes(input));
+            updateSampleTypeDropdown(filtered);
+            if (filtered.length === 1) {
+                document.getElementById('foodItemSampleTypeFilter').value = filtered[0];
+            }
+        }
+
+        function updateItemFilter() {
+            if (!foodItemData) return;
+            const sampleType = document.getElementById('foodItemSampleTypeFilter').value;
+            const itemSelect = document.getElementById('foodItemItemFilter');
+            itemSelect.innerHTML = '<option value="전체">전체</option>';
+
+            let items = [];
+            if (sampleType !== '전체' && foodItemData.by_sample_type_item && foodItemData.by_sample_type_item[sampleType]) {
+                items = foodItemData.by_sample_type_item[sampleType].map(i => i[0]);
+            } else {
+                items = foodItemData.items.slice(0, 200);
+            }
+
+            items.forEach(item => {
+                itemSelect.innerHTML += `<option value="${item}">${item}</option>`;
+            });
+        }
+
+        function updateFoodItemTab() {
+            updateItemFilter();
+            loadFoodItemData();
+        }
+
+        function updateFoodItemDisplay() {
+            if (!foodItemData) return;
+
+            // 요약 카드 업데이트
+            document.getElementById('foodItemTotalCount').textContent = foodItemData.total_count.toLocaleString() + '건';
+            document.getElementById('foodItemTotalFee').textContent = formatCurrency(foodItemData.total_fee);
+
+            // 차트 업데이트
+            updateFoodItemChart();
+            updateFoodItemTable();
+            updateFoodItemSelects();
+            updateFoodItemFeeCharts();
+        }
+
+        function updateFoodItemChart() {
+            const ctx = document.getElementById('foodItemChart').getContext('2d');
+            if (charts.foodItem) charts.foodItem.destroy();
+
+            const top20 = foodItemData.by_item.slice(0, 20);
+            const labels = top20.map(d => d[0].length > 15 ? d[0].substring(0, 15) + '...' : d[0]);
+
+            const datasets = [{
+                label: foodItemData.year + '년',
+                data: top20.map(d => d[1].count),
+                backgroundColor: 'rgba(52, 152, 219, 0.7)'
+            }];
+
+            if (compareFoodItemData) {
+                const compareMap = Object.fromEntries(compareFoodItemData.by_item);
+                datasets.push({
+                    label: compareFoodItemData.year + '년',
+                    data: top20.map(d => compareMap[d[0]]?.count || 0),
+                    backgroundColor: 'rgba(155, 89, 182, 0.7)'
+                });
+            }
+
+            charts.foodItem = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: !!compareFoodItemData } }
+                }
+            });
+        }
+
+        function updateFoodItemTable() {
+            const thead = document.getElementById('foodItemTableHead');
+            const tbody = document.querySelector('#foodItemTable tbody');
+            const totalCount = foodItemData.total_count || 1;
+
+            if (compareFoodItemData) {
+                const compareMap = Object.fromEntries(compareFoodItemData.by_item);
+                thead.innerHTML = `<tr><th>순위</th><th>항목명</th><th>${foodItemData.year}년 건수</th><th>${compareFoodItemData.year}년 건수</th><th>건수 증감</th><th>증감율(%)</th><th>${foodItemData.year}년 수수료</th><th>비중</th></tr>`;
+                tbody.innerHTML = foodItemData.by_item.slice(0, 50).map((d, i) => {
+                    const compCount = compareMap[d[0]]?.count || 0;
+                    const compFee = compareMap[d[0]]?.fee || 0;
+                    const countDiff = d[1].count - compCount;
+                    const countDiffRate = compCount > 0 ? ((countDiff / compCount) * 100).toFixed(1) : (d[1].count > 0 ? 100 : 0);
+                    const ratio = (d[1].count / totalCount * 100).toFixed(1);
+                    return `<tr><td>${i+1}</td><td title="${d[0]}">${d[0].length > 20 ? d[0].substring(0, 20) + '...' : d[0]}</td><td>${d[1].count.toLocaleString()}</td><td>${compCount.toLocaleString()}</td><td class="${countDiff >= 0 ? 'positive' : 'negative'}">${countDiff >= 0 ? '+' : ''}${countDiff.toLocaleString()}</td><td class="${countDiff >= 0 ? 'positive' : 'negative'}">${countDiff >= 0 ? '+' : ''}${countDiffRate}%</td><td>${formatCurrency(d[1].fee)}</td><td>${ratio}%</td></tr>`;
+                }).join('') || '<tr><td colspan="8">데이터 없음</td></tr>';
+            } else {
+                thead.innerHTML = '<tr><th>순위</th><th>항목명</th><th>건수</th><th>항목수수료</th><th>비중</th></tr>';
+                tbody.innerHTML = foodItemData.by_item.slice(0, 50).map((d, i) => {
+                    const ratio = (d[1].count / totalCount * 100).toFixed(1);
+                    return `<tr><td>${i+1}</td><td title="${d[0]}">${d[0].length > 20 ? d[0].substring(0, 20) + '...' : d[0]}</td><td>${d[1].count.toLocaleString()}</td><td>${formatCurrency(d[1].fee)}</td><td>${ratio}%</td></tr>`;
+                }).join('') || '<tr><td colspan="5">데이터 없음</td></tr>';
+            }
+        }
+
+        function updateFoodItemSelects() {
+            // 분석자 테이블용 항목 선택
+            const analyzerSelect = document.getElementById('foodItemAnalyzerSelect');
+            analyzerSelect.innerHTML = '<option value="">항목 선택</option>';
+            foodItemData.by_item.slice(0, 50).forEach(d => {
+                analyzerSelect.innerHTML += `<option value="${d[0]}">${d[0].length > 30 ? d[0].substring(0, 30) + '...' : d[0]}</option>`;
+            });
+
+            // 월별 추이용 항목 선택
+            const monthlySelect = document.getElementById('foodItemMonthlySelect');
+            monthlySelect.innerHTML = '<option value="">항목 선택</option>';
+            foodItemData.by_item.slice(0, 50).forEach(d => {
+                monthlySelect.innerHTML += `<option value="${d[0]}">${d[0].length > 30 ? d[0].substring(0, 30) + '...' : d[0]}</option>`;
+            });
+        }
+
+        function updateFoodItemAnalyzerTable() {
+            const item = document.getElementById('foodItemAnalyzerSelect').value;
+            const thead = document.getElementById('foodItemAnalyzerTableHead');
+            const tbody = document.querySelector('#foodItemAnalyzerTable tbody');
+
+            if (!item || !foodItemData.by_item_analyzer || !foodItemData.by_item_analyzer[item]) {
+                tbody.innerHTML = '<tr><td colspan="4">항목을 선택하세요</td></tr>';
+                return;
+            }
+
+            const analyzerData = foodItemData.by_item_analyzer[item];
+
+            if (compareFoodItemData && compareFoodItemData.by_item_analyzer && compareFoodItemData.by_item_analyzer[item]) {
+                const compareAnalyzerData = compareFoodItemData.by_item_analyzer[item];
+                const compareMap = Object.fromEntries(compareAnalyzerData);
+                thead.innerHTML = `<tr><th>순위</th><th>분석자</th><th>${foodItemData.year}년 건수</th><th>${compareFoodItemData.year}년 건수</th><th>건수 증감</th><th>증감율(%)</th></tr>`;
+                tbody.innerHTML = analyzerData.map((d, i) => {
+                    const compCount = compareMap[d[0]]?.count || 0;
+                    const countDiff = d[1].count - compCount;
+                    const countDiffRate = compCount > 0 ? ((countDiff / compCount) * 100).toFixed(1) : (d[1].count > 0 ? 100 : 0);
+                    return `<tr><td>${i+1}</td><td>${d[0]}</td><td>${d[1].count.toLocaleString()}</td><td>${compCount.toLocaleString()}</td><td class="${countDiff >= 0 ? 'positive' : 'negative'}">${countDiff >= 0 ? '+' : ''}${countDiff.toLocaleString()}</td><td class="${countDiff >= 0 ? 'positive' : 'negative'}">${countDiff >= 0 ? '+' : ''}${countDiffRate}%</td></tr>`;
+                }).join('') || '<tr><td colspan="6">데이터 없음</td></tr>';
+            } else {
+                thead.innerHTML = '<tr><th>순위</th><th>분석자</th><th>건수</th><th>항목수수료</th></tr>';
+                tbody.innerHTML = analyzerData.map((d, i) =>
+                    `<tr><td>${i+1}</td><td>${d[0]}</td><td>${d[1].count.toLocaleString()}</td><td>${formatCurrency(d[1].fee)}</td></tr>`
+                ).join('') || '<tr><td colspan="4">데이터 없음</td></tr>';
+            }
+        }
+
+        function updateFoodItemMonthlyChart() {
+            const item = document.getElementById('foodItemMonthlySelect').value;
+            const ctx = document.getElementById('foodItemMonthlyChart').getContext('2d');
+            if (charts.foodItemMonthly) charts.foodItemMonthly.destroy();
+
+            if (!item || !foodItemData.by_item_month || !foodItemData.by_item_month[item]) {
+                return;
+            }
+
+            const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+            const monthData = Object.fromEntries(foodItemData.by_item_month[item]);
+
+            const datasets = [{
+                label: foodItemData.year + '년',
+                data: labels.map((_, i) => monthData[i+1] || 0),
+                borderColor: '#3498db',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                fill: true,
+                tension: 0.4
+            }];
+
+            if (compareFoodItemData && compareFoodItemData.by_item_month && compareFoodItemData.by_item_month[item]) {
+                const compareMonthData = Object.fromEntries(compareFoodItemData.by_item_month[item]);
+                datasets.push({
+                    label: compareFoodItemData.year + '년',
+                    data: labels.map((_, i) => compareMonthData[i+1] || 0),
+                    borderColor: '#9b59b6',
+                    backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                });
+            }
+
+            charts.foodItemMonthly = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true } }
+                }
+            });
+        }
+
+        function updateFoodItemFeeCharts() {
+            // 월별 수수료 추이
+            const feeCtx = document.getElementById('foodItemFeeYearlyChart').getContext('2d');
+            if (charts.foodItemFeeYearly) charts.foodItemFeeYearly.destroy();
+
+            const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+            const monthFeeData = Object.fromEntries(foodItemData.by_month_fee);
+
+            const feeDatasets = [{
+                label: foodItemData.year + '년',
+                data: labels.map((_, i) => monthFeeData[i+1]?.fee || 0),
+                borderColor: '#27ae60',
+                backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                fill: true,
+                tension: 0.4
+            }];
+
+            if (compareFoodItemData) {
+                const compareMonthFeeData = Object.fromEntries(compareFoodItemData.by_month_fee);
+                feeDatasets.push({
+                    label: compareFoodItemData.year + '년',
+                    data: labels.map((_, i) => compareMonthFeeData[i+1]?.fee || 0),
+                    borderColor: '#e67e22',
+                    backgroundColor: 'rgba(230, 126, 34, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                });
+            }
+
+            charts.foodItemFeeYearly = new Chart(feeCtx, {
+                type: 'line',
+                data: { labels, datasets: feeDatasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true } },
+                    scales: { y: { ticks: { callback: v => formatCurrency(v) } } }
+                }
+            });
+
+            // 영업담당별 수수료
+            const managerCtx = document.getElementById('foodItemManagerFeeChart').getContext('2d');
+            if (charts.foodItemManagerFee) charts.foodItemManagerFee.destroy();
+
+            const managerData = foodItemData.by_manager_item.slice(0, 15);
+            const managerLabels = managerData.map(d => d[0]);
+
+            const managerDatasets = [{
+                label: foodItemData.year + '년',
+                data: managerData.map(d => d[1].fee),
+                backgroundColor: 'rgba(52, 152, 219, 0.7)'
+            }];
+
+            if (compareFoodItemData) {
+                const compareManagerMap = Object.fromEntries(compareFoodItemData.by_manager_item);
+                managerDatasets.push({
+                    label: compareFoodItemData.year + '년',
+                    data: managerData.map(d => compareManagerMap[d[0]]?.fee || 0),
+                    backgroundColor: 'rgba(155, 89, 182, 0.7)'
+                });
+            }
+
+            charts.foodItemManagerFee = new Chart(managerCtx, {
+                type: 'bar',
+                data: { labels: managerLabels, datasets: managerDatasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: !!compareFoodItemData } },
+                    scales: { y: { ticks: { callback: v => formatCurrency(v) } } }
+                }
+            });
+        }
+
         // 페이지 로드 시 초기화
         initDateSelectors();
         showToast('조회 조건을 선택하고 [조회하기] 버튼을 클릭하세요.', 'loading', 5000);
@@ -3095,6 +3734,34 @@ def get_data():
     print(f"[API] 처리 완료: total_count={processed['total_count']}")
     return jsonify(processed)
 
+@app.route('/api/food_item')
+def get_food_item_data():
+    """검사항목 데이터 API"""
+    year = request.args.get('year', '2025')
+    purpose = request.args.get('purpose', '전체')
+    sample_type = request.args.get('sample_type', '전체')
+    item = request.args.get('item', '전체')
+    manager = request.args.get('manager', '전체')
+
+    print(f"[API] food_item 요청: year={year}, purpose={purpose}, sample_type={sample_type}, item={item}, manager={manager}")
+
+    # 데이터 로드
+    data = load_food_item_data(year)
+    print(f"[API] food_item 로드: {len(data)}건")
+
+    # 데이터 처리
+    processed = process_food_item_data(
+        data,
+        purpose_filter=purpose if purpose != '전체' else None,
+        sample_type_filter=sample_type if sample_type != '전체' else None,
+        item_filter=item if item != '전체' else None,
+        manager_filter=manager if manager != '전체' else None
+    )
+
+    processed['year'] = int(year)
+    print(f"[API] food_item 처리 완료: total_count={processed['total_count']}")
+    return jsonify(processed)
+
 @app.route('/api/columns')
 def get_columns():
     """Excel 파일의 컬럼명 조회"""
@@ -3145,6 +3812,7 @@ def preload_data():
     print("[PRELOAD] 데이터 미리 로드 시작...")
     for year in ['2024', '2025']:
         load_excel_data(year)
+        load_food_item_data(year)
     print("[PRELOAD] 완료!")
 
 if __name__ == '__main__':
