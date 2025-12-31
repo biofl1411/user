@@ -2248,29 +2248,33 @@ HTML_TEMPLATE = '''
                         background: #ddd;
                         border-radius: 4px;
                     }
-                    .month-grid {
-                        display: grid;
-                        grid-template-columns: repeat(6, 1fr);
-                        gap: 6px;
-                    }
-                    .month-grid label {
-                        display: flex;
+                    .month-btn {
+                        display: inline-flex;
                         align-items: center;
-                        gap: 3px;
-                        padding: 4px 6px;
-                        background: #f8f9fa;
+                        justify-content: center;
+                        width: 36px;
+                        height: 32px;
+                        background: #f0f4ff;
                         border-radius: 6px;
-                        font-size: 12px;
+                        font-size: 13px;
                         cursor: pointer;
-                        transition: background 0.2s;
-                        white-space: nowrap;
+                        transition: all 0.2s;
+                        border: 1px solid transparent;
                     }
-                    .month-grid label:hover {
+                    .month-btn:hover {
                         background: #e3e8ff;
+                        border-color: #667eea;
                     }
-                    .month-grid input:checked + span {
+                    .month-btn input {
+                        display: none;
+                    }
+                    .month-btn input:checked + span {
                         color: #667eea;
-                        font-weight: 600;
+                        font-weight: 700;
+                    }
+                    .month-btn:has(input:checked) {
+                        background: #e3e8ff;
+                        border-color: #667eea;
                     }
                     .filter-info {
                         margin-top: 16px;
@@ -2295,8 +2299,8 @@ HTML_TEMPLATE = '''
                         </button>
                     </div>
                     <div id="goalFiltersPanel" style="display: none;">
+                        <!-- 1행: 영업담당, 팀, 검사목적, 지역 -->
                         <div class="filter-grid">
-                            <!-- 영업담당 -->
                             <div class="filter-card">
                                 <div class="filter-card-header">
                                     <span class="filter-card-title"><span class="icon">👤</span> 영업담당</span>
@@ -2304,7 +2308,6 @@ HTML_TEMPLATE = '''
                                 </div>
                                 <div class="filter-card-body" id="goalManagerFilters"></div>
                             </div>
-                            <!-- 팀 -->
                             <div class="filter-card">
                                 <div class="filter-card-header">
                                     <span class="filter-card-title"><span class="icon">👥</span> 팀</span>
@@ -2312,7 +2315,6 @@ HTML_TEMPLATE = '''
                                 </div>
                                 <div class="filter-card-body" id="goalTeamFilters"></div>
                             </div>
-                            <!-- 검사목적 -->
                             <div class="filter-card">
                                 <div class="filter-card-header">
                                     <span class="filter-card-title"><span class="icon">🎯</span> 검사목적</span>
@@ -2320,7 +2322,6 @@ HTML_TEMPLATE = '''
                                 </div>
                                 <div class="filter-card-body" id="goalPurposeFilters"></div>
                             </div>
-                            <!-- 지역 -->
                             <div class="filter-card">
                                 <div class="filter-card-header">
                                     <span class="filter-card-title"><span class="icon">📍</span> 지역</span>
@@ -2328,28 +2329,50 @@ HTML_TEMPLATE = '''
                                 </div>
                                 <div class="filter-card-body" id="goalRegionFilters"></div>
                             </div>
-                            <!-- 월 (2줄 그리드) -->
-                            <div class="filter-card" style="grid-column: span 2;">
-                                <div class="filter-card-header">
-                                    <span class="filter-card-title"><span class="icon">📅</span> 월 선택</span>
-                                    <label class="filter-all-check"><input type="checkbox" id="goalMonthAll" checked onchange="toggleAllGoalFilters('month')"> 전체</label>
+                        </div>
+
+                        <!-- 2행: 연도 + 월 선택 (한 줄) -->
+                        <div class="filter-card" style="margin-top: 16px;">
+                            <div class="filter-card-header">
+                                <span class="filter-card-title"><span class="icon">📅</span> 연도 / 월 선택</span>
+                                <label class="filter-all-check"><input type="checkbox" id="goalMonthAll" checked onchange="toggleAllGoalFilters('month')"> 전체</label>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                                <!-- 연도 선택 -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-weight: 600; color: #555; font-size: 13px;">연도:</span>
+                                    <label style="display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: #f0f4ff; border-radius: 6px; cursor: pointer; border: 1px solid #ddd;">
+                                        <input type="checkbox" class="goalYearFilter" value="2024" checked> <span>2024</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: #f0f4ff; border-radius: 6px; cursor: pointer; border: 1px solid #ddd;">
+                                        <input type="checkbox" class="goalYearFilter" value="2025" checked> <span>2025</span>
+                                    </label>
                                 </div>
-                                <div class="month-grid">
-                                    <label><input type="checkbox" class="goalMonthFilter" value="1"><span>1월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="2"><span>2월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="3"><span>3월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="4"><span>4월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="5"><span>5월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="6"><span>6월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="7"><span>7월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="8"><span>8월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="9"><span>9월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="10"><span>10월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="11"><span>11월</span></label>
-                                    <label><input type="checkbox" class="goalMonthFilter" value="12"><span>12월</span></label>
+                                <!-- 구분선 -->
+                                <div style="width: 1px; height: 30px; background: #ddd;"></div>
+                                <!-- 월 선택 (한 줄) -->
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-weight: 600; color: #555; font-size: 13px;">월:</span>
+                                    <div style="display: flex; gap: 4px; flex-wrap: nowrap;">
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="1"><span>1</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="2"><span>2</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="3"><span>3</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="4"><span>4</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="5"><span>5</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="6"><span>6</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="7"><span>7</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="8"><span>8</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="9"><span>9</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="10"><span>10</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="11"><span>11</span></label>
+                                        <label class="month-btn"><input type="checkbox" class="goalMonthFilter" value="12"><span>12</span></label>
+                                    </div>
                                 </div>
                             </div>
-                            <!-- 검체유형 -->
+                        </div>
+
+                        <!-- 3행: 검체유형, 분석자 -->
+                        <div class="filter-grid" style="margin-top: 16px; grid-template-columns: repeat(2, 1fr);">
                             <div class="filter-card">
                                 <div class="filter-card-header">
                                     <span class="filter-card-title"><span class="icon">🧪</span> 검체유형</span>
@@ -2357,7 +2380,6 @@ HTML_TEMPLATE = '''
                                 </div>
                                 <div class="filter-card-body" id="goalSampleTypeFilters"></div>
                             </div>
-                            <!-- 분석자 -->
                             <div class="filter-card">
                                 <div class="filter-card-header">
                                     <span class="filter-card-title"><span class="icon">🔬</span> 분석자</span>
@@ -2366,6 +2388,7 @@ HTML_TEMPLATE = '''
                                 <div class="filter-card-body" id="goalAnalyzerFilters"></div>
                             </div>
                         </div>
+
                         <div class="filter-info">
                             <small>💡 <strong>전체</strong> 체크 시 해당 필터는 적용하지 않음 (모든 데이터 포함)</small>
                         </div>
