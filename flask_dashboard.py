@@ -1398,6 +1398,87 @@ HTML_TEMPLATE = '''
 
             <div id="aiError" style="display: none; background: #ffebee; padding: 20px; border-radius: 8px; color: #c62828; border-left: 4px solid #c62828;">
             </div>
+
+            <!-- 목표 달성 분석 섹션 -->
+            <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 20px; border-radius: 10px; margin-top: 30px; margin-bottom: 20px;">
+                <h2 style="margin: 0 0 10px 0;">🎯 목표 달성 분석</h2>
+                <p style="margin: 0; opacity: 0.9;">영업담당별, 검사목적별, 항목별, 지역별 종합 분석 및 개선점 제안</p>
+            </div>
+
+            <div style="background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px;">
+                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <label style="font-weight: bold;">목표 연도:</label>
+                    <select id="goalYear" style="padding: 10px; border-radius: 5px; border: 1px solid #ddd;">
+                        <option value="2026">2026년</option>
+                        <option value="2027">2027년</option>
+                    </select>
+                    <label style="font-weight: bold;">목표 매출:</label>
+                    <input type="number" id="goalTarget" value="70" style="padding: 10px; width: 100px; border-radius: 5px; border: 1px solid #ddd;">
+                    <span>억원</span>
+                    <button onclick="runGoalAnalysis()"
+                            style="padding: 12px 25px; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold;">
+                        🔍 종합 분석 실행
+                    </button>
+                </div>
+            </div>
+
+            <div id="goalLoading" style="display: none; text-align: center; padding: 40px;">
+                <div style="font-size: 40px; animation: spin 1s linear infinite;">📊</div>
+                <p style="color: #666; margin-top: 10px;">종합 분석 중입니다... (Gemini API 불필요)</p>
+            </div>
+
+            <div id="goalResult" style="display: none;">
+                <!-- 현황 요약 -->
+                <div id="goalSummary" style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                </div>
+
+                <!-- 추천사항 -->
+                <div id="goalRecommendations" style="margin-bottom: 20px;">
+                </div>
+
+                <!-- 상세 분석 테이블들 -->
+                <div class="charts">
+                    <div class="chart-container">
+                        <h3>👤 영업담당별 분석</h3>
+                        <div class="scroll-table" style="max-height: 300px;">
+                            <table id="goalManagerTable">
+                                <thead><tr><th>담당자</th><th>2024</th><th>2025</th><th>성장률</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>🎯 검사목적별 분석</h3>
+                        <div class="scroll-table" style="max-height: 300px;">
+                            <table id="goalPurposeTable">
+                                <thead><tr><th>검사목적</th><th>2024</th><th>2025</th><th>성장률</th><th>비중</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts" style="margin-top: 20px;">
+                    <div class="chart-container">
+                        <h3>📍 지역별 분석</h3>
+                        <div class="scroll-table" style="max-height: 300px;">
+                            <table id="goalRegionTable">
+                                <thead><tr><th>지역</th><th>2024</th><th>2025</th><th>성장률</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>🔬 항목별 분석 (TOP 20)</h3>
+                        <div class="scroll-table" style="max-height: 300px;">
+                            <table id="goalItemTable">
+                                <thead><tr><th>항목명</th><th>2024</th><th>2025</th><th>성장률</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -4052,6 +4133,128 @@ HTML_TEMPLATE = '''
 
             insight.innerHTML = text;
         }
+
+        // ========== 목표 달성 분석 함수들 ==========
+        async function runGoalAnalysis() {
+            const targetYear = document.getElementById('goalYear').value;
+            const targetAmount = document.getElementById('goalTarget').value * 100000000; // 억 -> 원
+
+            document.getElementById('goalLoading').style.display = 'block';
+            document.getElementById('goalResult').style.display = 'none';
+
+            try {
+                const response = await fetch('/api/ai/goal-analysis', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({target: targetAmount, year: parseInt(targetYear)})
+                });
+
+                const data = await response.json();
+                document.getElementById('goalLoading').style.display = 'none';
+
+                if (data.error) {
+                    alert('오류: ' + data.error);
+                    return;
+                }
+
+                displayGoalResult(data);
+            } catch (error) {
+                document.getElementById('goalLoading').style.display = 'none';
+                alert('분석 실패: ' + error.message);
+            }
+        }
+
+        function displayGoalResult(data) {
+            document.getElementById('goalResult').style.display = 'block';
+
+            // 현황 요약
+            const status = data.current_status;
+            const summaryHtml = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                        <div style="color: #888; font-size: 13px;">2024년 매출</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #667eea;">${formatCurrency(status.revenue_2024)}</div>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                        <div style="color: #888; font-size: 13px;">2025년 매출</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #11998e;">${formatCurrency(status.revenue_2025)}</div>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                        <div style="color: #888; font-size: 13px;">현재 성장률</div>
+                        <div style="font-size: 24px; font-weight: bold; color: ${status.growth_rate >= 0 ? '#4caf50' : '#f44336'};">${status.growth_rate >= 0 ? '+' : ''}${status.growth_rate}%</div>
+                    </div>
+                    <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                        <div style="color: #888; font-size: 13px;">목표까지</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #ff9800;">${formatCurrency(status.gap_to_target)}</div>
+                        <div style="color: #888; font-size: 12px;">(+${status.required_growth}% 필요)</div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('goalSummary').innerHTML = summaryHtml;
+
+            // 추천사항
+            let recsHtml = '<h3 style="margin-bottom: 15px;">📋 개선 추천사항</h3>';
+            data.recommendations.forEach(rec => {
+                const priorityColor = rec.priority === 'high' ? '#f44336' : '#ff9800';
+                const priorityBg = rec.priority === 'high' ? '#ffebee' : '#fff8e1';
+                recsHtml += `
+                    <div style="background: ${priorityBg}; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${priorityColor};">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: bold;">${rec.category} ${rec.title}</span>
+                            <span style="background: ${priorityColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px;">${rec.priority === 'high' ? '중요' : '참고'}</span>
+                        </div>
+                        <div style="margin-top: 8px; color: #555;">${rec.content}</div>
+                        <div style="margin-top: 5px; color: #11998e; font-weight: bold;">→ ${rec.action}</div>
+                    </div>
+                `;
+            });
+            document.getElementById('goalRecommendations').innerHTML = recsHtml;
+
+            // 영업담당별 테이블
+            const managerTbody = document.querySelector('#goalManagerTable tbody');
+            managerTbody.innerHTML = data.analysis.by_manager.map(m => `
+                <tr>
+                    <td>${m.name}</td>
+                    <td>${formatCurrency(m.revenue_2024)}</td>
+                    <td>${formatCurrency(m.revenue_2025)}</td>
+                    <td class="${m.growth >= 0 ? 'positive' : 'negative'}">${m.growth >= 0 ? '+' : ''}${m.growth}%</td>
+                </tr>
+            `).join('');
+
+            // 검사목적별 테이블
+            const purposeTbody = document.querySelector('#goalPurposeTable tbody');
+            purposeTbody.innerHTML = data.analysis.by_purpose.map(p => `
+                <tr>
+                    <td>${p.name}</td>
+                    <td>${formatCurrency(p.revenue_2024)}</td>
+                    <td>${formatCurrency(p.revenue_2025)}</td>
+                    <td class="${p.growth >= 0 ? 'positive' : 'negative'}">${p.growth >= 0 ? '+' : ''}${p.growth}%</td>
+                    <td>${p.share}%</td>
+                </tr>
+            `).join('');
+
+            // 지역별 테이블
+            const regionTbody = document.querySelector('#goalRegionTable tbody');
+            regionTbody.innerHTML = data.analysis.by_region.map(r => `
+                <tr>
+                    <td>${r.name}</td>
+                    <td>${formatCurrency(r.revenue_2024)}</td>
+                    <td>${formatCurrency(r.revenue_2025)}</td>
+                    <td class="${r.growth >= 0 ? 'positive' : 'negative'}">${r.growth >= 0 ? '+' : ''}${r.growth}%</td>
+                </tr>
+            `).join('');
+
+            // 항목별 테이블
+            const itemTbody = document.querySelector('#goalItemTable tbody');
+            itemTbody.innerHTML = data.analysis.by_item.map(i => `
+                <tr>
+                    <td title="${i.name}">${i.name.length > 20 ? i.name.substring(0,20)+'...' : i.name}</td>
+                    <td>${formatCurrency(i.fee_2024)}</td>
+                    <td>${formatCurrency(i.fee_2025)}</td>
+                    <td class="${i.growth >= 0 ? 'positive' : 'negative'}">${i.growth >= 0 ? '+' : ''}${i.growth}%</td>
+                </tr>
+            `).join('');
+        }
     </script>
 </body>
 </html>
@@ -4508,6 +4711,354 @@ def execute_analysis(params, food_2024, food_2025, data_2024, data_2025):
         }
 
     return result
+
+
+@app.route('/api/ai/goal-analysis', methods=['POST'])
+def goal_analysis():
+    """목표 달성 분석 API - 데이터 기반 종합 분석"""
+    try:
+        target_revenue = request.json.get('target', 7000000000)  # 기본 70억
+        target_year = request.json.get('year', 2026)
+
+        # 데이터 로드
+        data_2024 = load_excel_data('2024')
+        data_2025 = load_excel_data('2025')
+        food_2024 = load_food_item_data('2024')
+        food_2025 = load_food_item_data('2025')
+
+        # 연도별 매출 계산
+        revenue_2024 = sum(float(str(row.get('총금액', 0) or 0).replace(',', '')) for row in data_2024)
+        revenue_2025 = sum(float(str(row.get('총금액', 0) or 0).replace(',', '')) for row in data_2025)
+
+        # 성장률 계산
+        growth_rate = ((revenue_2025 - revenue_2024) / revenue_2024 * 100) if revenue_2024 > 0 else 0
+
+        # 목표 달성에 필요한 추가 매출
+        gap = target_revenue - revenue_2025
+        required_growth = ((target_revenue - revenue_2025) / revenue_2025 * 100) if revenue_2025 > 0 else 0
+
+        result = {
+            'success': True,
+            'target': target_revenue,
+            'target_year': target_year,
+            'current_status': {
+                'revenue_2024': revenue_2024,
+                'revenue_2025': revenue_2025,
+                'growth_rate': round(growth_rate, 1),
+                'gap_to_target': gap,
+                'required_growth': round(required_growth, 1)
+            },
+            'analysis': {},
+            'recommendations': []
+        }
+
+        # 1. 영업담당별 분석
+        by_manager = {}
+        for row in data_2025:
+            manager = str(row.get('영업담당', '') or '').strip() or '미지정'
+            revenue = float(str(row.get('총금액', 0) or 0).replace(',', ''))
+            if manager not in by_manager:
+                by_manager[manager] = {'revenue_2025': 0, 'count_2025': 0, 'revenue_2024': 0, 'count_2024': 0}
+            by_manager[manager]['revenue_2025'] += revenue
+            by_manager[manager]['count_2025'] += 1
+
+        for row in data_2024:
+            manager = str(row.get('영업담당', '') or '').strip() or '미지정'
+            revenue = float(str(row.get('총금액', 0) or 0).replace(',', ''))
+            if manager not in by_manager:
+                by_manager[manager] = {'revenue_2025': 0, 'count_2025': 0, 'revenue_2024': 0, 'count_2024': 0}
+            by_manager[manager]['revenue_2024'] += revenue
+            by_manager[manager]['count_2024'] += 1
+
+        # 영업담당별 성장률 계산
+        manager_analysis = []
+        for manager, data in by_manager.items():
+            if data['revenue_2024'] > 0:
+                mgr_growth = ((data['revenue_2025'] - data['revenue_2024']) / data['revenue_2024'] * 100)
+            else:
+                mgr_growth = 100 if data['revenue_2025'] > 0 else 0
+            manager_analysis.append({
+                'name': manager,
+                'revenue_2024': data['revenue_2024'],
+                'revenue_2025': data['revenue_2025'],
+                'growth': round(mgr_growth, 1),
+                'count_2025': data['count_2025'],
+                'potential': data['revenue_2025'] * (required_growth / 100) if mgr_growth < required_growth else 0
+            })
+
+        manager_analysis.sort(key=lambda x: x['revenue_2025'], reverse=True)
+        result['analysis']['by_manager'] = manager_analysis[:15]
+
+        # 성장률 낮은 영업담당 (개선 필요)
+        underperforming_managers = [m for m in manager_analysis if m['growth'] < growth_rate and m['revenue_2024'] > 10000000]
+        underperforming_managers.sort(key=lambda x: x['growth'])
+
+        # 2. 검사목적별 분석
+        by_purpose = {}
+        for row in data_2025:
+            purpose = str(row.get('검사목적', '') or '').strip() or '미지정'
+            revenue = float(str(row.get('총금액', 0) or 0).replace(',', ''))
+            if purpose not in by_purpose:
+                by_purpose[purpose] = {'revenue_2025': 0, 'count_2025': 0, 'revenue_2024': 0, 'count_2024': 0}
+            by_purpose[purpose]['revenue_2025'] += revenue
+            by_purpose[purpose]['count_2025'] += 1
+
+        for row in data_2024:
+            purpose = str(row.get('검사목적', '') or '').strip() or '미지정'
+            revenue = float(str(row.get('총금액', 0) or 0).replace(',', ''))
+            if purpose not in by_purpose:
+                by_purpose[purpose] = {'revenue_2025': 0, 'count_2025': 0, 'revenue_2024': 0, 'count_2024': 0}
+            by_purpose[purpose]['revenue_2024'] += revenue
+            by_purpose[purpose]['count_2024'] += 1
+
+        purpose_analysis = []
+        for purpose, data in by_purpose.items():
+            if data['revenue_2024'] > 0:
+                purp_growth = ((data['revenue_2025'] - data['revenue_2024']) / data['revenue_2024'] * 100)
+            else:
+                purp_growth = 100 if data['revenue_2025'] > 0 else 0
+            purpose_analysis.append({
+                'name': purpose,
+                'revenue_2024': data['revenue_2024'],
+                'revenue_2025': data['revenue_2025'],
+                'growth': round(purp_growth, 1),
+                'count_2025': data['count_2025'],
+                'share': round(data['revenue_2025'] / revenue_2025 * 100, 1) if revenue_2025 > 0 else 0
+            })
+
+        purpose_analysis.sort(key=lambda x: x['revenue_2025'], reverse=True)
+        result['analysis']['by_purpose'] = purpose_analysis[:10]
+
+        # 3. 검체유형별 분석
+        by_sample_type = {}
+        for row in data_2025:
+            sample_type = str(row.get('검체유형', '') or '').strip() or '미지정'
+            revenue = float(str(row.get('총금액', 0) or 0).replace(',', ''))
+            if sample_type not in by_sample_type:
+                by_sample_type[sample_type] = {'revenue_2025': 0, 'revenue_2024': 0}
+            by_sample_type[sample_type]['revenue_2025'] += revenue
+
+        for row in data_2024:
+            sample_type = str(row.get('검체유형', '') or '').strip() or '미지정'
+            revenue = float(str(row.get('총금액', 0) or 0).replace(',', ''))
+            if sample_type not in by_sample_type:
+                by_sample_type[sample_type] = {'revenue_2025': 0, 'revenue_2024': 0}
+            by_sample_type[sample_type]['revenue_2024'] += revenue
+
+        sample_analysis = []
+        for st, data in by_sample_type.items():
+            if data['revenue_2024'] > 0:
+                st_growth = ((data['revenue_2025'] - data['revenue_2024']) / data['revenue_2024'] * 100)
+            else:
+                st_growth = 100 if data['revenue_2025'] > 0 else 0
+            sample_analysis.append({
+                'name': st,
+                'revenue_2024': data['revenue_2024'],
+                'revenue_2025': data['revenue_2025'],
+                'growth': round(st_growth, 1)
+            })
+
+        sample_analysis.sort(key=lambda x: x['revenue_2025'], reverse=True)
+        result['analysis']['by_sample_type'] = sample_analysis[:15]
+
+        # 4. 지역별 분석
+        by_region = {}
+        for row in data_2025:
+            address = str(row.get('업체주소', '') or '').strip()
+            region = extract_sido(address)
+            if not region:
+                region = '미지정'
+            revenue = float(str(row.get('총금액', 0) or 0).replace(',', ''))
+            if region not in by_region:
+                by_region[region] = {'revenue_2025': 0, 'revenue_2024': 0, 'count_2025': 0}
+            by_region[region]['revenue_2025'] += revenue
+            by_region[region]['count_2025'] += 1
+
+        for row in data_2024:
+            address = str(row.get('업체주소', '') or '').strip()
+            region = extract_sido(address)
+            if not region:
+                region = '미지정'
+            revenue = float(str(row.get('총금액', 0) or 0).replace(',', ''))
+            if region not in by_region:
+                by_region[region] = {'revenue_2025': 0, 'revenue_2024': 0, 'count_2025': 0}
+            by_region[region]['revenue_2024'] += revenue
+
+        region_analysis = []
+        for region, data in by_region.items():
+            if data['revenue_2024'] > 0:
+                reg_growth = ((data['revenue_2025'] - data['revenue_2024']) / data['revenue_2024'] * 100)
+            else:
+                reg_growth = 100 if data['revenue_2025'] > 0 else 0
+            region_analysis.append({
+                'name': region,
+                'revenue_2024': data['revenue_2024'],
+                'revenue_2025': data['revenue_2025'],
+                'growth': round(reg_growth, 1),
+                'count_2025': data['count_2025']
+            })
+
+        region_analysis.sort(key=lambda x: x['revenue_2025'], reverse=True)
+        result['analysis']['by_region'] = region_analysis
+
+        # 5. 항목별 분석 (food_item 데이터)
+        by_item = {}
+        for row in food_2025:
+            item = str(row.get('항목명', '') or '').strip()
+            if not item:
+                continue
+            fee = row.get('항목수수료', 0) or 0
+            if isinstance(fee, str):
+                fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+            if item not in by_item:
+                by_item[item] = {'fee_2025': 0, 'count_2025': 0, 'fee_2024': 0, 'count_2024': 0}
+            by_item[item]['fee_2025'] += fee
+            by_item[item]['count_2025'] += 1
+
+        for row in food_2024:
+            item = str(row.get('항목명', '') or '').strip()
+            if not item:
+                continue
+            fee = row.get('항목수수료', 0) or 0
+            if isinstance(fee, str):
+                fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+            if item not in by_item:
+                by_item[item] = {'fee_2025': 0, 'count_2025': 0, 'fee_2024': 0, 'count_2024': 0}
+            by_item[item]['fee_2024'] += fee
+            by_item[item]['count_2024'] += 1
+
+        item_analysis = []
+        for item, data in by_item.items():
+            if data['fee_2024'] > 0:
+                item_growth = ((data['fee_2025'] - data['fee_2024']) / data['fee_2024'] * 100)
+            else:
+                item_growth = 100 if data['fee_2025'] > 0 else 0
+            item_analysis.append({
+                'name': item,
+                'fee_2024': data['fee_2024'],
+                'fee_2025': data['fee_2025'],
+                'growth': round(item_growth, 1),
+                'count_2025': data['count_2025']
+            })
+
+        item_analysis.sort(key=lambda x: x['fee_2025'], reverse=True)
+        result['analysis']['by_item'] = item_analysis[:20]
+
+        # 감소 항목 (위험 요소)
+        declining_items = [i for i in item_analysis if i['growth'] < 0 and i['fee_2024'] > 5000000]
+        declining_items.sort(key=lambda x: x['growth'])
+
+        # ===== 추천사항 생성 =====
+        recommendations = []
+
+        # 1. 전체 목표 분석
+        recommendations.append({
+            'category': '📊 목표 분석',
+            'title': f'{target_year}년 {target_revenue/100000000:.0f}억 달성 가능성',
+            'content': f'현재 추세(연 {growth_rate:.1f}% 성장) 유지 시 {target_year}년 예상 매출: {revenue_2025 * (1 + growth_rate/100)/100000000:.1f}억원',
+            'action': f'목표 달성을 위해 추가 {gap/100000000:.1f}억원 ({required_growth:.1f}% 성장) 필요',
+            'priority': 'high' if required_growth > growth_rate * 1.5 else 'medium'
+        })
+
+        # 2. 영업담당 개선
+        if underperforming_managers:
+            top_under = underperforming_managers[:3]
+            potential_gain = sum(m['potential'] for m in top_under)
+            recommendations.append({
+                'category': '👤 영업담당',
+                'title': '성장률 개선 필요 담당자',
+                'content': ', '.join([f"{m['name']}({m['growth']:+.1f}%)" for m in top_under]),
+                'action': f'이 담당자들이 평균 성장률 달성 시 약 {potential_gain/10000:.0f}만원 추가 가능',
+                'evidence': [{'name': m['name'], 'current': m['revenue_2025'], 'growth': m['growth']} for m in top_under],
+                'priority': 'high'
+            })
+
+        # 3. 고성장 영업담당 (롤모델)
+        high_growth_managers = [m for m in manager_analysis if m['growth'] > growth_rate * 1.5 and m['revenue_2025'] > 50000000]
+        if high_growth_managers:
+            recommendations.append({
+                'category': '⭐ 우수 사례',
+                'title': '고성장 영업담당 (벤치마킹 대상)',
+                'content': ', '.join([f"{m['name']}({m['growth']:+.1f}%)" for m in high_growth_managers[:3]]),
+                'action': '이들의 영업 전략 분석 및 공유 권장',
+                'priority': 'medium'
+            })
+
+        # 4. 검사목적별 기회
+        growing_purposes = [p for p in purpose_analysis if p['growth'] > 10 and p['revenue_2025'] > 100000000]
+        if growing_purposes:
+            recommendations.append({
+                'category': '🎯 검사목적',
+                'title': '성장 중인 검사목적 (집중 공략)',
+                'content': ', '.join([f"{p['name']}({p['growth']:+.1f}%)" for p in growing_purposes[:3]]),
+                'action': '이 분야 마케팅 강화 및 전문성 확보',
+                'evidence': growing_purposes[:3],
+                'priority': 'high'
+            })
+
+        # 5. 감소 항목 경고
+        if declining_items:
+            total_decline = sum(abs(i['fee_2025'] - i['fee_2024']) for i in declining_items[:5])
+            recommendations.append({
+                'category': '⚠️ 위험 요소',
+                'title': '매출 감소 항목',
+                'content': ', '.join([f"{i['name']}({i['growth']:.1f}%)" for i in declining_items[:5]]),
+                'action': f'감소 원인 분석 필요 (총 감소액: {total_decline/10000:.0f}만원)',
+                'evidence': declining_items[:5],
+                'priority': 'high'
+            })
+
+        # 6. 지역별 기회
+        growing_regions = [r for r in region_analysis if r['growth'] > growth_rate and r['revenue_2025'] > 50000000]
+        weak_regions = [r for r in region_analysis if r['growth'] < 0 and r['revenue_2024'] > 50000000]
+
+        if growing_regions:
+            recommendations.append({
+                'category': '📍 지역',
+                'title': '성장 지역 (확대 공략)',
+                'content': ', '.join([f"{r['name']}({r['growth']:+.1f}%)" for r in growing_regions[:5]]),
+                'action': '해당 지역 영업 인력/마케팅 확대 검토',
+                'priority': 'medium'
+            })
+
+        if weak_regions:
+            recommendations.append({
+                'category': '📍 지역',
+                'title': '감소 지역 (원인 분석 필요)',
+                'content': ', '.join([f"{r['name']}({r['growth']:.1f}%)" for r in weak_regions[:5]]),
+                'action': '경쟁사 동향 및 고객 이탈 원인 파악',
+                'priority': 'medium'
+            })
+
+        # 7. 실행 계획 제안
+        monthly_target = gap / 12
+        recommendations.append({
+            'category': '📋 실행 계획',
+            'title': '월별 추가 목표',
+            'content': f'목표 달성을 위해 월 평균 {monthly_target/10000:.0f}만원 추가 매출 필요',
+            'action': f'영업담당 1인당 월 {monthly_target/len([m for m in manager_analysis if m["revenue_2025"] > 0])/10000:.0f}만원 추가 목표 설정',
+            'priority': 'high'
+        })
+
+        result['recommendations'] = recommendations
+
+        return jsonify(result)
+
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()})
+
+
+def extract_sido(address):
+    """주소에서 시/도 추출"""
+    if not address:
+        return None
+    sido_patterns = ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종',
+                    '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주']
+    for pattern in sido_patterns:
+        if pattern in address:
+            return pattern
+    return None
 
 
 def preload_data():
