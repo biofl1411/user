@@ -107,6 +107,22 @@ def init_sqlite_db():
         )
     ''')
 
+    # 토큰 사용량 추적 테이블
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS token_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT,
+            year_month TEXT,
+            model TEXT,
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            total_tokens INTEGER,
+            cost_usd REAL,
+            cost_krw REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # 인덱스 생성 (빠른 검색용)
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_excel_year ON excel_data(year)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_excel_manager ON excel_data(영업담당)')
@@ -115,10 +131,102 @@ def init_sqlite_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_manager ON food_item_data(영업담당)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_purpose ON food_item_data(검사목적)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_item ON food_item_data(항목명)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_token_yearmonth ON token_usage(year_month)')
 
     conn.commit()
     conn.close()
     print("[SQLITE] 데이터베이스 초기화 완료")
+
+
+# 토큰 비용 설정 (USD per 1M tokens)
+TOKEN_COSTS = {
+    'gemini-2.0-flash': {'input': 0.075, 'output': 0.30},  # Gemini 2.0 Flash
+    'claude-3-haiku': {'input': 0.80, 'output': 4.00},
+    'claude-3-sonnet': {'input': 3.00, 'output': 15.00},
+    'claude-3-opus': {'input': 15.00, 'output': 75.00},
+}
+USD_TO_KRW = 1450  # 환율
+
+
+def record_token_usage(model, input_tokens, output_tokens):
+    """토큰 사용량 기록"""
+    import sqlite3
+    from datetime import datetime
+
+    total_tokens = input_tokens + output_tokens
+
+    # 비용 계산
+    cost_info = TOKEN_COSTS.get(model, {'input': 0.075, 'output': 0.30})
+    cost_usd = (input_tokens * cost_info['input'] / 1_000_000) + (output_tokens * cost_info['output'] / 1_000_000)
+    cost_krw = cost_usd * USD_TO_KRW
+
+    today = datetime.now().strftime('%Y-%m-%d')
+    year_month = datetime.now().strftime('%Y-%m')
+
+    try:
+        conn = sqlite3.connect(str(SQLITE_DB))
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO token_usage (date, year_month, model, input_tokens, output_tokens, total_tokens, cost_usd, cost_krw)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (today, year_month, model, input_tokens, output_tokens, total_tokens, cost_usd, cost_krw))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[TOKEN] 사용량 기록 오류: {e}")
+
+
+def get_token_usage_stats():
+    """토큰 사용량 통계 조회"""
+    import sqlite3
+    from datetime import datetime
+
+    current_month = datetime.now().strftime('%Y-%m')
+    # 저번달 계산
+    now = datetime.now()
+    if now.month == 1:
+        last_month = f"{now.year - 1}-12"
+    else:
+        last_month = f"{now.year}-{now.month - 1:02d}"
+
+    try:
+        conn = sqlite3.connect(str(SQLITE_DB))
+        cursor = conn.cursor()
+
+        # 이번달 통계
+        cursor.execute('''
+            SELECT COALESCE(SUM(total_tokens), 0), COALESCE(SUM(cost_usd), 0), COALESCE(SUM(cost_krw), 0)
+            FROM token_usage WHERE year_month = ?
+        ''', (current_month,))
+        this_month = cursor.fetchone()
+
+        # 저번달 통계
+        cursor.execute('''
+            SELECT COALESCE(SUM(total_tokens), 0), COALESCE(SUM(cost_usd), 0), COALESCE(SUM(cost_krw), 0)
+            FROM token_usage WHERE year_month = ?
+        ''', (last_month,))
+        prev_month = cursor.fetchone()
+
+        conn.close()
+
+        return {
+            'this_month': {
+                'tokens': int(this_month[0]),
+                'cost_usd': round(this_month[1], 4),
+                'cost_krw': round(this_month[2], 0)
+            },
+            'last_month': {
+                'tokens': int(prev_month[0]),
+                'cost_usd': round(prev_month[1], 4),
+                'cost_krw': round(prev_month[2], 0)
+            }
+        }
+    except Exception as e:
+        print(f"[TOKEN] 통계 조회 오류: {e}")
+        return {
+            'this_month': {'tokens': 0, 'cost_usd': 0, 'cost_krw': 0},
+            'last_month': {'tokens': 0, 'cost_usd': 0, 'cost_krw': 0}
+        }
 
 
 def check_sqlite_needs_update():
@@ -1389,6 +1497,11 @@ HTML_TEMPLATE = '''
     <div id="toast" class="toast"></div>
     <div class="header">
         <h1>📊 경영지표 대시보드</h1>
+        <!-- 토큰 사용량 표시 -->
+        <div id="tokenUsageDisplay" style="position: absolute; right: 20px; top: 15px; font-size: 11px; color: rgba(255,255,255,0.9); text-align: right; line-height: 1.6;">
+            <div>📅 이번달: <span id="thisMonthTokens">0</span> 토큰 | 💵 $<span id="thisMonthUSD">0</span> | 💰 ₩<span id="thisMonthKRW">0</span></div>
+            <div style="color: rgba(255,255,255,0.7);">📆 저번달: <span id="lastMonthTokens">0</span> 토큰 | 💵 $<span id="lastMonthUSD">0</span> | 💰 ₩<span id="lastMonthKRW">0</span></div>
+        </div>
         <div class="controls">
             <div class="date-group">
                 <label>📅 조회기간:</label>
@@ -5704,7 +5817,32 @@ HTML_TEMPLATE = '''
                     }
                 });
             }
+
+            // 토큰 사용량 로드
+            loadTokenUsage();
         });
+
+        // ========== 토큰 사용량 함수 ==========
+        async function loadTokenUsage() {
+            try {
+                const response = await fetch('/api/token-usage');
+                const data = await response.json();
+
+                if (data.success) {
+                    // 이번달
+                    document.getElementById('thisMonthTokens').textContent = data.this_month.tokens.toLocaleString();
+                    document.getElementById('thisMonthUSD').textContent = data.this_month.cost_usd.toFixed(4);
+                    document.getElementById('thisMonthKRW').textContent = Math.round(data.this_month.cost_krw).toLocaleString();
+
+                    // 저번달
+                    document.getElementById('lastMonthTokens').textContent = data.last_month.tokens.toLocaleString();
+                    document.getElementById('lastMonthUSD').textContent = data.last_month.cost_usd.toFixed(4);
+                    document.getElementById('lastMonthKRW').textContent = Math.round(data.last_month.cost_krw).toLocaleString();
+                }
+            } catch (error) {
+                console.error('토큰 사용량 로드 오류:', error);
+            }
+        }
     </script>
 </body>
 </html>
@@ -5915,6 +6053,21 @@ def refresh_cache():
     get_ai_data_summary(force_refresh=True)
     return jsonify({'status': 'ok', 'message': '캐시가 새로고침되었습니다.'})
 
+
+@app.route('/api/token-usage')
+def api_token_usage():
+    """토큰 사용량 조회 API"""
+    try:
+        stats = get_token_usage_stats()
+        return jsonify({
+            'success': True,
+            'this_month': stats['this_month'],
+            'last_month': stats['last_month']
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 # 기업 정보 파일 경로
 COMPANY_INFO_FILE = os.path.join(DATA_DIR, 'company_info.json')
 
@@ -6088,6 +6241,16 @@ JSON 형식만 응답:
                 result = json.loads(response.read().decode('utf-8'))
 
             print(f"[AI] Gemini API 응답 수신 성공")
+
+            # 토큰 사용량 기록
+            try:
+                usage_metadata = result.get('usageMetadata', {})
+                input_tokens = usage_metadata.get('promptTokenCount', len(system_prompt) // 4)
+                output_tokens = usage_metadata.get('candidatesTokenCount', 100)
+                record_token_usage('gemini-2.0-flash', input_tokens, output_tokens)
+                print(f"[AI] 토큰 사용: 입력={input_tokens}, 출력={output_tokens}")
+            except Exception as te:
+                print(f"[AI] 토큰 기록 오류: {te}")
 
             # 라운드 로빈: 성공 후에도 다음 키로 전환 (부하 분산)
             current_api_key_index = (current_api_key_index + 1) % total_keys
