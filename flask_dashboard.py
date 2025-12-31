@@ -101,7 +101,7 @@ def load_food_item_data(year, use_cache=True):
     # 필요한 컬럼만 로드
     required_columns = ['접수일자', '발행일', '검체유형', '업체명', '의뢰인명', '업체주소',
                        '항목명', '규격', '항목담당', '결과입력자', '입력일', '분석일',
-                       '항목단위', '시험결과', '시험치', '성적서결과', '판정', '시험목적',
+                       '항목단위', '시험결과', '시험치', '성적서결과', '판정', '검사목적',
                        '긴급여부', '항목수수료', '영업담당']
 
     all_data = []
@@ -158,7 +158,7 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
     total_count = 0
 
     for row in data:
-        purpose = str(row.get('시험목적', '') or '').strip()
+        purpose = str(row.get('검사목적', '') or '').strip()
         sample_type = str(row.get('검체유형', '') or '').strip()
         item_name = str(row.get('항목명', '') or '').strip()
         manager = str(row.get('영업담당', '') or '').strip() or '미지정'
@@ -179,8 +179,15 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
         # 필터 적용
         if purpose_filter and purpose_filter != '전체' and purpose != purpose_filter:
             continue
-        if sample_type_filter and sample_type_filter != '전체' and sample_type != sample_type_filter:
-            continue
+        # 검체유형 필터 (와일드카드 지원)
+        if sample_type_filter and sample_type_filter != '전체':
+            if sample_type_filter.endswith('*'):
+                # 와일드카드 패턴: "잔류농약*" -> 잔류농약으로 시작하는 모든 유형 매칭
+                prefix = sample_type_filter[:-1]  # '*' 제거
+                if not sample_type.startswith(prefix):
+                    continue
+            elif sample_type != sample_type_filter:
+                continue
         if item_filter and item_filter != '전체' and item_name != item_filter:
             continue
         if manager_filter and manager_filter != '전체' and manager != manager_filter:
@@ -1221,18 +1228,26 @@ HTML_TEMPLATE = '''
     <!-- 검사항목 탭 -->
     <div id="foodItem" class="tab-content">
         <div class="filter-row" style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-            <label>시험목적:</label>
+            <label>검사목적:</label>
             <select id="foodItemPurposeFilter" onchange="updateFoodItemTab()" style="padding: 5px;">
                 <option value="전체">전체</option>
             </select>
             <label>검체유형:</label>
             <input type="text" id="foodItemSampleTypeInput" placeholder="검체유형 입력..."
                    oninput="filterSampleTypeDropdown()" style="padding: 5px; width: 150px;">
-            <select id="foodItemSampleTypeFilter" onchange="updateFoodItemTab()" style="padding: 5px; width: 200px;">
+            <select id="foodItemSampleTypeFilter" onchange="onSampleTypeChange()" style="padding: 5px; width: 200px;">
                 <option value="전체">전체</option>
             </select>
-            <label>항목:</label>
-            <select id="foodItemItemFilter" onchange="updateFoodItemTab()" style="padding: 5px; width: 200px;">
+            <label>항목명1:</label>
+            <select id="foodItemItem1Filter" onchange="onItemSelect(1)" style="padding: 5px; width: 180px;">
+                <option value="전체">전체</option>
+            </select>
+            <label>항목명2:</label>
+            <select id="foodItemItem2Filter" onchange="onItemSelect(2)" style="padding: 5px; width: 180px;">
+                <option value="전체">전체</option>
+            </select>
+            <label>항목명3:</label>
+            <select id="foodItemItem3Filter" onchange="onItemSelect(3)" style="padding: 5px; width: 180px;">
                 <option value="전체">전체</option>
             </select>
             <label>영업담당:</label>
@@ -3254,20 +3269,28 @@ HTML_TEMPLATE = '''
             const year = document.getElementById('yearSelect').value;
             const purpose = document.getElementById('foodItemPurposeFilter').value;
             const sampleType = document.getElementById('foodItemSampleTypeFilter').value;
-            const item = document.getElementById('foodItemItemFilter').value;
+            const sampleTypeInput = document.getElementById('foodItemSampleTypeInput').value.trim();
+            const item = getSelectedItem();  // 최종 선택된 항목
             const manager = document.getElementById('foodItemManagerFilter').value;
+
+            // 와일드카드 매칭을 위한 sample_type 결정
+            let sampleTypeParam = sampleType;
+            if (sampleTypeInput && (sampleTypeInput.includes('잔류농약') || sampleTypeInput.includes('항생물질'))) {
+                // 와일드카드 패턴으로 전송 (백엔드에서 처리)
+                sampleTypeParam = sampleTypeInput + '*';
+            }
 
             showToast('검사항목 데이터 로딩 중...', 'loading');
 
             try {
-                const response = await fetch(`/api/food_item?year=${year}&purpose=${purpose}&sample_type=${sampleType}&item=${item}&manager=${manager}`);
+                const response = await fetch(`/api/food_item?year=${year}&purpose=${purpose}&sample_type=${encodeURIComponent(sampleTypeParam)}&item=${encodeURIComponent(item)}&manager=${manager}`);
                 foodItemData = await response.json();
                 foodItemData.year = parseInt(year);
 
                 // 비교 모드일 경우
                 if (document.getElementById('compareCheck').checked) {
                     const compareYear = document.getElementById('compareYearSelect').value;
-                    const compareResponse = await fetch(`/api/food_item?year=${compareYear}&purpose=${purpose}&sample_type=${sampleType}&item=${item}&manager=${manager}`);
+                    const compareResponse = await fetch(`/api/food_item?year=${compareYear}&purpose=${purpose}&sample_type=${encodeURIComponent(sampleTypeParam)}&item=${encodeURIComponent(item)}&manager=${manager}`);
                     compareFoodItemData = await compareResponse.json();
                     compareFoodItemData.year = parseInt(compareYear);
                 } else {
@@ -3290,7 +3313,7 @@ HTML_TEMPLATE = '''
         function initFoodItemFilters() {
             if (!foodItemData) return;
 
-            // 시험목적 필터
+            // 검사목적 필터
             const purposeSelect = document.getElementById('foodItemPurposeFilter');
             purposeSelect.innerHTML = '<option value="전체">전체</option>';
             foodItemData.purposes.forEach(p => {
@@ -3309,7 +3332,7 @@ HTML_TEMPLATE = '''
             });
 
             // 항목 필터 업데이트
-            updateItemFilter();
+            updateItemFilters();
         }
 
         function updateSampleTypeDropdown(types) {
@@ -3337,26 +3360,109 @@ HTML_TEMPLATE = '''
             }
         }
 
-        function updateItemFilter() {
-            if (!foodItemData) return;
+        // 검체유형에 따른 항목 목록 가져오기 (와일드카드 매칭 지원)
+        function getItemsForSampleType() {
+            if (!foodItemData) return [];
             const sampleType = document.getElementById('foodItemSampleTypeFilter').value;
-            const itemSelect = document.getElementById('foodItemItemFilter');
-            itemSelect.innerHTML = '<option value="전체">전체</option>';
+            const inputValue = document.getElementById('foodItemSampleTypeInput').value.trim();
 
             let items = [];
-            if (sampleType !== '전체' && foodItemData.by_sample_type_item && foodItemData.by_sample_type_item[sampleType]) {
+
+            // 와일드카드 패턴 매칭 (잔류농약, 항생물질 등)
+            if (inputValue && (inputValue.includes('잔류농약') || inputValue.includes('항생물질'))) {
+                // 입력값으로 시작하는 모든 검체유형의 항목 수집
+                const prefix = inputValue.replace(/\(.*\)/, '').trim();
+                Object.keys(foodItemData.by_sample_type_item || {}).forEach(st => {
+                    if (st.startsWith(prefix)) {
+                        (foodItemData.by_sample_type_item[st] || []).forEach(i => {
+                            if (!items.includes(i[0])) items.push(i[0]);
+                        });
+                    }
+                });
+            } else if (sampleType !== '전체' && foodItemData.by_sample_type_item && foodItemData.by_sample_type_item[sampleType]) {
                 items = foodItemData.by_sample_type_item[sampleType].map(i => i[0]);
             } else {
                 items = foodItemData.items.slice(0, 200);
             }
 
+            return items;
+        }
+
+        // 항목 드롭다운 업데이트 (cascading)
+        function updateItemFilters() {
+            if (!foodItemData) return;
+
+            const items = getItemsForSampleType();
+            const selected1 = document.getElementById('foodItemItem1Filter').value;
+            const selected2 = document.getElementById('foodItemItem2Filter').value;
+            const selected3 = document.getElementById('foodItemItem3Filter').value;
+
+            // 항목명1: 모든 항목
+            const item1Select = document.getElementById('foodItemItem1Filter');
+            item1Select.innerHTML = '<option value="전체">전체</option>';
             items.forEach(item => {
-                itemSelect.innerHTML += `<option value="${item}">${item}</option>`;
+                item1Select.innerHTML += `<option value="${item}">${item}</option>`;
             });
+            if (items.includes(selected1)) item1Select.value = selected1;
+
+            // 항목명2: 항목명1에서 선택한 것 제외
+            const items2 = items.filter(i => i !== selected1 || selected1 === '전체');
+            const item2Select = document.getElementById('foodItemItem2Filter');
+            item2Select.innerHTML = '<option value="전체">전체</option>';
+            items2.forEach(item => {
+                item2Select.innerHTML += `<option value="${item}">${item}</option>`;
+            });
+            if (items2.includes(selected2)) item2Select.value = selected2;
+
+            // 항목명3: 항목명1, 2에서 선택한 것 제외
+            const items3 = items.filter(i =>
+                (i !== selected1 || selected1 === '전체') &&
+                (i !== selected2 || selected2 === '전체')
+            );
+            const item3Select = document.getElementById('foodItemItem3Filter');
+            item3Select.innerHTML = '<option value="전체">전체</option>';
+            items3.forEach(item => {
+                item3Select.innerHTML += `<option value="${item}">${item}</option>`;
+            });
+            if (items3.includes(selected3)) item3Select.value = selected3;
+        }
+
+        // 검체유형 변경 시 호출
+        function onSampleTypeChange() {
+            // 항목 선택 초기화
+            document.getElementById('foodItemItem1Filter').value = '전체';
+            document.getElementById('foodItemItem2Filter').value = '전체';
+            document.getElementById('foodItemItem3Filter').value = '전체';
+            updateItemFilters();
+            loadFoodItemData();
+        }
+
+        // 항목 선택 시 호출 (cascading 업데이트)
+        function onItemSelect(level) {
+            // 하위 레벨 초기화
+            if (level === 1) {
+                document.getElementById('foodItemItem2Filter').value = '전체';
+                document.getElementById('foodItemItem3Filter').value = '전체';
+            } else if (level === 2) {
+                document.getElementById('foodItemItem3Filter').value = '전체';
+            }
+            updateItemFilters();
+            loadFoodItemData();
+        }
+
+        // 최종 선택된 항목 가져오기 (3 -> 2 -> 1 순서로 확인)
+        function getSelectedItem() {
+            const item3 = document.getElementById('foodItemItem3Filter').value;
+            if (item3 !== '전체') return item3;
+            const item2 = document.getElementById('foodItemItem2Filter').value;
+            if (item2 !== '전체') return item2;
+            const item1 = document.getElementById('foodItemItem1Filter').value;
+            if (item1 !== '전체') return item1;
+            return '전체';
         }
 
         function updateFoodItemTab() {
-            updateItemFilter();
+            updateItemFilters();
             loadFoodItemData();
         }
 
