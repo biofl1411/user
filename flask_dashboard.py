@@ -147,6 +147,8 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
     by_manager_item = {}  # 영업담당별-항목 데이터
     by_manager_fee = {}  # 영업담당별-수수료 데이터
     by_month_fee = {}  # 월별-수수료 데이터
+    by_purpose_sample_type = {}  # 검사목적별-검체유형 매핑
+    by_purpose_sample_type_item = {}  # 검사목적+검체유형별-항목 매핑
 
     purposes = set()
     sample_types = set()
@@ -175,6 +177,20 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
         if item_name: items.add(item_name)
         if manager and manager != '미지정': managers.add(manager)
         if analyzer and analyzer != '미지정': analyzers.add(analyzer)
+
+        # 검사목적별-검체유형 매핑 수집
+        if purpose and sample_type:
+            if purpose not in by_purpose_sample_type:
+                by_purpose_sample_type[purpose] = set()
+            by_purpose_sample_type[purpose].add(sample_type)
+
+        # 검사목적+검체유형별-항목 매핑 수집 (잔류농약, 항생물질 제외)
+        if purpose and sample_type and item_name:
+            if not (sample_type.startswith('잔류농약') or sample_type.startswith('항생물질')):
+                key = f"{purpose}|{sample_type}"
+                if key not in by_purpose_sample_type_item:
+                    by_purpose_sample_type_item[key] = set()
+                by_purpose_sample_type_item[key].add(item_name)
 
         # 필터 적용
         if purpose_filter and purpose_filter != '전체' and purpose != purpose_filter:
@@ -277,7 +293,9 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
         'managers': sorted(managers),
         'analyzers': sorted(analyzers),
         'total_fee': total_fee,
-        'total_count': total_count
+        'total_count': total_count,
+        'by_purpose_sample_type': {k: sorted(v) for k, v in by_purpose_sample_type.items()},
+        'by_purpose_sample_type_item': {k: sorted(v) for k, v in by_purpose_sample_type_item.items()}
     }
 
 def extract_region(address):
@@ -1229,7 +1247,7 @@ HTML_TEMPLATE = '''
     <div id="foodItem" class="tab-content">
         <div class="filter-row" style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
             <label>검사목적:</label>
-            <select id="foodItemPurposeFilter" onchange="updateFoodItemTab()" style="padding: 5px;">
+            <select id="foodItemPurposeFilter" onchange="onPurposeChange()" style="padding: 5px;">
                 <option value="전체">전체</option>
             </select>
             <label>검체유형:</label>
@@ -3322,7 +3340,7 @@ HTML_TEMPLATE = '''
 
             // 검체유형 필터 (전체 저장)
             allSampleTypes = [...foodItemData.sample_types];
-            updateSampleTypeDropdown(allSampleTypes);
+            updateSampleTypeDropdownByPurpose();
 
             // 영업담당 필터
             const managerSelect = document.getElementById('foodItemManagerFilter');
@@ -3333,6 +3351,22 @@ HTML_TEMPLATE = '''
 
             // 항목 필터 업데이트
             updateItemFilters();
+        }
+
+        // 검사목적에 따른 검체유형 필터링
+        function updateSampleTypeDropdownByPurpose() {
+            const purpose = document.getElementById('foodItemPurposeFilter').value;
+            let types = [];
+
+            if (purpose === '전체') {
+                types = allSampleTypes;
+            } else if (foodItemData.by_purpose_sample_type && foodItemData.by_purpose_sample_type[purpose]) {
+                types = foodItemData.by_purpose_sample_type[purpose];
+            } else {
+                types = allSampleTypes;
+            }
+
+            updateSampleTypeDropdown(types);
         }
 
         function updateSampleTypeDropdown(types) {
@@ -3349,38 +3383,70 @@ HTML_TEMPLATE = '''
 
         function filterSampleTypeDropdown() {
             const input = document.getElementById('foodItemSampleTypeInput').value.toLowerCase();
+            const purpose = document.getElementById('foodItemPurposeFilter').value;
+
+            // 검사목적에 맞는 검체유형만 필터링
+            let baseTypes = [];
+            if (purpose === '전체') {
+                baseTypes = allSampleTypes;
+            } else if (foodItemData.by_purpose_sample_type && foodItemData.by_purpose_sample_type[purpose]) {
+                baseTypes = foodItemData.by_purpose_sample_type[purpose];
+            } else {
+                baseTypes = allSampleTypes;
+            }
             if (!input) {
-                updateSampleTypeDropdown(allSampleTypes);
+                updateSampleTypeDropdown(baseTypes);
                 return;
             }
-            const filtered = allSampleTypes.filter(st => st.toLowerCase().includes(input));
+            const filtered = baseTypes.filter(st => st.toLowerCase().includes(input));
             updateSampleTypeDropdown(filtered);
             if (filtered.length === 1) {
                 document.getElementById('foodItemSampleTypeFilter').value = filtered[0];
             }
         }
 
-        // 검체유형에 따른 항목 목록 가져오기 (와일드카드 매칭 지원)
-        function getItemsForSampleType() {
-            if (!foodItemData) return [];
+        // 잔류농약/항생물질 여부 확인
+        function isSpecialSampleType() {
             const sampleType = document.getElementById('foodItemSampleTypeFilter').value;
             const inputValue = document.getElementById('foodItemSampleTypeInput').value.trim();
+            return sampleType.startsWith('잔류농약') || sampleType.startsWith('항생물질') ||
+                   inputValue.includes('잔류농약') || inputValue.includes('항생물질');
+        }
+
+        // 검체유형에 따른 항목 목록 가져오기 (검사목적+검체유형 기반)
+        function getItemsForSampleType() {
+            if (!foodItemData) return [];
+
+            // 잔류농약/항생물질은 항목 선택 불필요
+            if (isSpecialSampleType()) {
+                return [];
+            }
+
+            const purpose = document.getElementById('foodItemPurposeFilter').value;
+            const sampleType = document.getElementById('foodItemSampleTypeFilter').value;
 
             let items = [];
 
-            // 와일드카드 패턴 매칭 (잔류농약, 항생물질 등)
-            if (inputValue && (inputValue.includes('잔류농약') || inputValue.includes('항생물질'))) {
-                // 입력값으로 시작하는 모든 검체유형의 항목 수집
-                const prefix = inputValue.replace(/\(.*\)/, '').trim();
-                Object.keys(foodItemData.by_sample_type_item || {}).forEach(st => {
-                    if (st.startsWith(prefix)) {
-                        (foodItemData.by_sample_type_item[st] || []).forEach(i => {
-                            if (!items.includes(i[0])) items.push(i[0]);
+            // 검사목적+검체유형 조합으로 항목 조회
+            if (purpose !== '전체' && sampleType !== '전체') {
+                const key = `${purpose}|${sampleType}`;
+                if (foodItemData.by_purpose_sample_type_item && foodItemData.by_purpose_sample_type_item[key]) {
+                    items = foodItemData.by_purpose_sample_type_item[key];
+                }
+            } else if (sampleType !== '전체' && foodItemData.by_sample_type_item && foodItemData.by_sample_type_item[sampleType]) {
+                // 검체유형만 선택된 경우
+                items = foodItemData.by_sample_type_item[sampleType].map(i => i[0]);
+            } else if (purpose !== '전체') {
+                // 검사목적만 선택된 경우 - 해당 목적의 모든 항목
+                const purposeItems = new Set();
+                Object.keys(foodItemData.by_purpose_sample_type_item || {}).forEach(key => {
+                    if (key.startsWith(purpose + '|')) {
+                        foodItemData.by_purpose_sample_type_item[key].forEach(item => {
+                            purposeItems.add(item);
                         });
                     }
                 });
-            } else if (sampleType !== '전체' && foodItemData.by_sample_type_item && foodItemData.by_sample_type_item[sampleType]) {
-                items = foodItemData.by_sample_type_item[sampleType].map(i => i[0]);
+                items = [...purposeItems].sort();
             } else {
                 items = foodItemData.items.slice(0, 200);
             }
@@ -3392,13 +3458,32 @@ HTML_TEMPLATE = '''
         function updateItemFilters() {
             if (!foodItemData) return;
 
+            const item1Select = document.getElementById('foodItemItem1Filter');
+            const item2Select = document.getElementById('foodItemItem2Filter');
+            const item3Select = document.getElementById('foodItemItem3Filter');
+
+            // 잔류농약/항생물질인 경우 항목 드롭다운 비활성화
+            if (isSpecialSampleType()) {
+                item1Select.innerHTML = '<option value="전체">해당없음</option>';
+                item2Select.innerHTML = '<option value="전체">해당없음</option>';
+                item3Select.innerHTML = '<option value="전체">해당없음</option>';
+                item1Select.disabled = true;
+                item2Select.disabled = true;
+                item3Select.disabled = true;
+                return;
+            }
+
+            // 활성화
+            item1Select.disabled = false;
+            item2Select.disabled = false;
+            item3Select.disabled = false;
+
             const items = getItemsForSampleType();
-            const selected1 = document.getElementById('foodItemItem1Filter').value;
-            const selected2 = document.getElementById('foodItemItem2Filter').value;
-            const selected3 = document.getElementById('foodItemItem3Filter').value;
+            const selected1 = item1Select.value;
+            const selected2 = item2Select.value;
+            const selected3 = item3Select.value;
 
             // 항목명1: 모든 항목
-            const item1Select = document.getElementById('foodItemItem1Filter');
             item1Select.innerHTML = '<option value="전체">전체</option>';
             items.forEach(item => {
                 item1Select.innerHTML += `<option value="${item}">${item}</option>`;
@@ -3407,7 +3492,6 @@ HTML_TEMPLATE = '''
 
             // 항목명2: 항목명1에서 선택한 것 제외
             const items2 = items.filter(i => i !== selected1 || selected1 === '전체');
-            const item2Select = document.getElementById('foodItemItem2Filter');
             item2Select.innerHTML = '<option value="전체">전체</option>';
             items2.forEach(item => {
                 item2Select.innerHTML += `<option value="${item}">${item}</option>`;
@@ -3419,12 +3503,24 @@ HTML_TEMPLATE = '''
                 (i !== selected1 || selected1 === '전체') &&
                 (i !== selected2 || selected2 === '전체')
             );
-            const item3Select = document.getElementById('foodItemItem3Filter');
             item3Select.innerHTML = '<option value="전체">전체</option>';
             items3.forEach(item => {
                 item3Select.innerHTML += `<option value="${item}">${item}</option>`;
             });
             if (items3.includes(selected3)) item3Select.value = selected3;
+        }
+
+        // 검사목적 변경 시 호출
+        function onPurposeChange() {
+            // 검체유형, 항목 선택 초기화
+            document.getElementById('foodItemSampleTypeInput').value = '';
+            document.getElementById('foodItemSampleTypeFilter').value = '전체';
+            document.getElementById('foodItemItem1Filter').value = '전체';
+            document.getElementById('foodItemItem2Filter').value = '전체';
+            document.getElementById('foodItemItem3Filter').value = '전체';
+            updateSampleTypeDropdownByPurpose();
+            updateItemFilters();
+            loadFoodItemData();
         }
 
         // 검체유형 변경 시 호출
