@@ -1111,6 +1111,7 @@ HTML_TEMPLATE = '''
         <button class="tab" onclick="showTab('defect')">⚠️ 부적합</button>
         <button class="tab" onclick="showTab('foodItem')">🔬 검사항목</button>
         <button class="tab" onclick="showTab('aiAnalysis')" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">🤖 AI 분석</button>
+        <button class="tab" onclick="showTab('companyInfo')" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">🏢 기업 정보</button>
     </div>
 
     <!-- 개인별 탭 -->
@@ -1786,6 +1787,179 @@ HTML_TEMPLATE = '''
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 기업 정보 탭 -->
+    <div id="companyInfo" class="tab-content">
+        <div style="max-width: 1200px; margin: 0 auto; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; color: #333;">🏢 기업 정보 관리</h2>
+                <div>
+                    <button onclick="loadCompanyInfo()" style="padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">📥 불러오기</button>
+                    <button onclick="saveCompanyInfo()" style="padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 5px; cursor: pointer;">💾 저장하기</button>
+                </div>
+            </div>
+
+            <!-- 기본 정보 섹션 -->
+            <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h3 style="margin-top: 0; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">📋 기업 기본 정보</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">기업명</label>
+                        <input type="text" id="companyName" placeholder="회사명을 입력하세요" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">설립연도</label>
+                        <input type="text" id="foundedYear" placeholder="예: 2010" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
+                    </div>
+                    <div style="grid-column: span 2;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">사업 분야</label>
+                        <input type="text" id="businessField" placeholder="예: 식품 검사, 환경 분석, 품질 인증" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
+                    </div>
+                    <div style="grid-column: span 2;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">주요 서비스</label>
+                        <textarea id="mainServices" rows="2" placeholder="제공하는 주요 서비스를 설명하세요" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; resize: vertical;"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 경영 목표 섹션 -->
+            <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h3 style="margin-top: 0; color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;">🎯 경영 목표 및 지표</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">연간 매출 목표 (억원)</label>
+                        <input type="number" id="revenueTarget" placeholder="예: 50" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">연간 검사 건수 목표</label>
+                        <input type="number" id="inspectionTarget" placeholder="예: 100000" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
+                    </div>
+                    <div style="grid-column: span 2;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">핵심 성과 지표 (KPI)</label>
+                        <textarea id="kpiDescription" rows="2" placeholder="예: 고객 만족도 95% 이상, 검사 정확도 99.9%, 납기 준수율 98%" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; resize: vertical;"></textarea>
+                    </div>
+                    <div style="grid-column: span 2;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 5px;">경영 전략 및 중점 사항</label>
+                        <textarea id="businessStrategy" rows="3" placeholder="올해의 주요 경영 전략과 중점 추진 사항을 입력하세요" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; resize: vertical;"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 부서 및 인력 정보 섹션 -->
+            <div style="background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h3 style="margin-top: 0; color: #2c3e50; border-bottom: 2px solid #9b59b6; padding-bottom: 10px;">👥 부서별 조직 및 업무</h3>
+                <div style="overflow-x: auto;">
+                    <table id="departmentTable" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                        <thead>
+                            <tr style="background: #34495e; color: white;">
+                                <th style="padding: 12px; text-align: left; width: 15%;">부서</th>
+                                <th style="padding: 12px; text-align: center; width: 10%;">인원수</th>
+                                <th style="padding: 12px; text-align: left; width: 15%;">책임자</th>
+                                <th style="padding: 12px; text-align: left; width: 60%;">주요 업무</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold; background: #f8f9fa;">임원</td>
+                                <td style="padding: 5px;"><input type="number" id="dept_executive_count" value="0" min="0" style="width: 60px; padding: 5px; text-align: center; border: 1px solid #ddd; border-radius: 3px;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_executive_head" placeholder="대표이사" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_executive_role" placeholder="경영 총괄, 전략 수립, 대외 협력" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold; background: #f8f9fa;">총무</td>
+                                <td style="padding: 5px;"><input type="number" id="dept_admin_count" value="0" min="0" style="width: 60px; padding: 5px; text-align: center; border: 1px solid #ddd; border-radius: 3px;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_admin_head" placeholder="총무팀장" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_admin_role" placeholder="인사, 총무, 시설 관리, 구매" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold; background: #f8f9fa;">재무</td>
+                                <td style="padding: 5px;"><input type="number" id="dept_finance_count" value="0" min="0" style="width: 60px; padding: 5px; text-align: center; border: 1px solid #ddd; border-radius: 3px;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_finance_head" placeholder="재무팀장" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_finance_role" placeholder="회계, 세무, 예산 관리, 자금 운용" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold; background: #f8f9fa;">품질보증</td>
+                                <td style="padding: 5px;"><input type="number" id="dept_qa_count" value="0" min="0" style="width: 60px; padding: 5px; text-align: center; border: 1px solid #ddd; border-radius: 3px;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_qa_head" placeholder="품질보증팀장" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_qa_role" placeholder="품질 관리, 인증 관리, 고객 불만 처리" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold; background: #f8f9fa;">고객지원</td>
+                                <td style="padding: 5px;"><input type="number" id="dept_support_count" value="0" min="0" style="width: 60px; padding: 5px; text-align: center; border: 1px solid #ddd; border-radius: 3px;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_support_head" placeholder="고객지원팀장" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_support_role" placeholder="고객 상담, 접수, 결과 발송, CS 관리" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold; background: #f8f9fa;">분석실</td>
+                                <td style="padding: 5px;"><input type="number" id="dept_lab_count" value="0" min="0" style="width: 60px; padding: 5px; text-align: center; border: 1px solid #ddd; border-radius: 3px;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_lab_head" placeholder="분석실장" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_lab_role" placeholder="시료 분석, 검사 수행, 성적서 작성, 장비 관리" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold; background: #f8f9fa;">직영 영업부</td>
+                                <td style="padding: 5px;"><input type="number" id="dept_sales_count" value="0" min="0" style="width: 60px; padding: 5px; text-align: center; border: 1px solid #ddd; border-radius: 3px;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_sales_head" placeholder="영업부장" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_sales_role" placeholder="신규 고객 발굴, 기존 고객 관리, 매출 확대" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold; background: #f8f9fa;">지사</td>
+                                <td style="padding: 5px;"><input type="number" id="dept_branch_count" value="0" min="0" style="width: 60px; padding: 5px; text-align: center; border: 1px solid #ddd; border-radius: 3px;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_branch_head" placeholder="지사장" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_branch_role" placeholder="지역 영업, 시료 수거, 현장 서비스" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; font-weight: bold; background: #f8f9fa;">마케팅</td>
+                                <td style="padding: 5px;"><input type="number" id="dept_marketing_count" value="0" min="0" style="width: 60px; padding: 5px; text-align: center; border: 1px solid #ddd; border-radius: 3px;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_marketing_head" placeholder="마케팅팀장" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                                <td style="padding: 5px;"><input type="text" id="dept_marketing_role" placeholder="홍보, 브랜딩, 온라인 마케팅, 이벤트 기획" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 3px; box-sizing: border-box;"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 15px; padding: 10px; background: #ecf0f1; border-radius: 5px;">
+                    <strong>총 인원:</strong> <span id="totalEmployees">0</span>명
+                </div>
+            </div>
+
+            <!-- 영업부 인력 상세 -->
+            <div style="background: white; border-radius: 10px; padding: 20px; margin-top: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">👔 직영 영업부 인력</h3>
+                    <button onclick="addSalesPerson()" style="padding: 8px 15px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer;">+ 인력 추가</button>
+                </div>
+                <div id="salesPersonList">
+                    <!-- 동적으로 추가되는 영업부 인력 -->
+                </div>
+                <div id="salesPersonEmpty" style="color: #888; text-align: center; padding: 20px;">
+                    아직 등록된 영업 담당자가 없습니다. [+ 인력 추가] 버튼을 클릭해 추가하세요.
+                </div>
+            </div>
+
+            <!-- 지사 인력 상세 -->
+            <div style="background: white; border-radius: 10px; padding: 20px; margin-top: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0; color: #2c3e50; border-bottom: 2px solid #e67e22; padding-bottom: 10px;">🏬 지사 인력</h3>
+                    <button onclick="addBranchPerson()" style="padding: 8px 15px; background: #e67e22; color: white; border: none; border-radius: 5px; cursor: pointer;">+ 인력 추가</button>
+                </div>
+                <div id="branchPersonList">
+                    <!-- 동적으로 추가되는 지사 인력 -->
+                </div>
+                <div id="branchPersonEmpty" style="color: #888; text-align: center; padding: 20px;">
+                    아직 등록된 지사 담당자가 없습니다. [+ 인력 추가] 버튼을 클릭해 추가하세요.
+                </div>
+            </div>
+
+            <!-- AI 분석 참고사항 -->
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; padding: 20px; margin-top: 20px; color: white;">
+                <h3 style="margin-top: 0;">💡 AI 분석에 활용됩니다</h3>
+                <p style="margin-bottom: 0; opacity: 0.9;">
+                    입력하신 기업 정보는 AI 분석 탭에서 질문할 때 자동으로 참고되어,
+                    귀사의 상황에 맞는 맞춤형 분석과 조언을 제공합니다.
+                    정확한 정보를 입력할수록 더 유용한 인사이트를 얻을 수 있습니다.
+                </p>
             </div>
         </div>
     </div>
@@ -4683,6 +4857,261 @@ HTML_TEMPLATE = '''
                 </tr>
             `).join('');
         }
+
+        // ========== 기업 정보 관리 함수 ==========
+        function updateTotalEmployees() {
+            const depts = ['executive', 'admin', 'finance', 'qa', 'support', 'lab', 'sales', 'branch', 'marketing'];
+            let total = 0;
+            depts.forEach(dept => {
+                const count = parseInt(document.getElementById(`dept_${dept}_count`).value) || 0;
+                total += count;
+            });
+            document.getElementById('totalEmployees').textContent = total;
+        }
+
+        // 부서 인원수 변경 시 자동 계산
+        document.querySelectorAll('[id^="dept_"][id$="_count"]').forEach(input => {
+            input.addEventListener('change', updateTotalEmployees);
+            input.addEventListener('input', updateTotalEmployees);
+        });
+
+        function getCompanyInfo() {
+            const depts = ['executive', 'admin', 'finance', 'qa', 'support', 'lab', 'sales', 'branch', 'marketing'];
+            const deptNames = ['임원', '총무', '재무', '품질보증', '고객지원', '분석실', '직영 영업부', '지사', '마케팅'];
+
+            const departments = {};
+            depts.forEach((dept, idx) => {
+                departments[deptNames[idx]] = {
+                    count: parseInt(document.getElementById(`dept_${dept}_count`).value) || 0,
+                    head: document.getElementById(`dept_${dept}_head`).value || '',
+                    role: document.getElementById(`dept_${dept}_role`).value || ''
+                };
+            });
+
+            return {
+                companyName: document.getElementById('companyName').value || '',
+                foundedYear: document.getElementById('foundedYear').value || '',
+                businessField: document.getElementById('businessField').value || '',
+                mainServices: document.getElementById('mainServices').value || '',
+                revenueTarget: document.getElementById('revenueTarget').value || '',
+                inspectionTarget: document.getElementById('inspectionTarget').value || '',
+                kpiDescription: document.getElementById('kpiDescription').value || '',
+                businessStrategy: document.getElementById('businessStrategy').value || '',
+                departments: departments
+            };
+        }
+
+        function setCompanyInfo(data) {
+            document.getElementById('companyName').value = data.companyName || '';
+            document.getElementById('foundedYear').value = data.foundedYear || '';
+            document.getElementById('businessField').value = data.businessField || '';
+            document.getElementById('mainServices').value = data.mainServices || '';
+            document.getElementById('revenueTarget').value = data.revenueTarget || '';
+            document.getElementById('inspectionTarget').value = data.inspectionTarget || '';
+            document.getElementById('kpiDescription').value = data.kpiDescription || '';
+            document.getElementById('businessStrategy').value = data.businessStrategy || '';
+
+            const depts = ['executive', 'admin', 'finance', 'qa', 'support', 'lab', 'sales', 'branch', 'marketing'];
+            const deptNames = ['임원', '총무', '재무', '품질보증', '고객지원', '분석실', '직영 영업부', '지사', '마케팅'];
+
+            if (data.departments) {
+                depts.forEach((dept, idx) => {
+                    const deptData = data.departments[deptNames[idx]] || {};
+                    document.getElementById(`dept_${dept}_count`).value = deptData.count || 0;
+                    document.getElementById(`dept_${dept}_head`).value = deptData.head || '';
+                    document.getElementById(`dept_${dept}_role`).value = deptData.role || '';
+                });
+            }
+            updateTotalEmployees();
+        }
+
+        async function saveCompanyInfo() {
+            const data = getCompanyInfo();
+            try {
+                const response = await fetch('/api/company-info', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert('기업 정보가 저장되었습니다.');
+                } else {
+                    alert('저장 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (error) {
+                alert('저장 중 오류 발생: ' + error.message);
+            }
+        }
+
+        async function loadCompanyInfo() {
+            try {
+                const response = await fetch('/api/company-info');
+                const result = await response.json();
+                if (result.success && result.data) {
+                    setCompanyInfo(result.data);
+                    alert('기업 정보를 불러왔습니다.');
+                } else if (!result.data) {
+                    alert('저장된 기업 정보가 없습니다. 새로 입력해주세요.');
+                } else {
+                    alert('불러오기 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (error) {
+                alert('불러오기 중 오류 발생: ' + error.message);
+            }
+        }
+
+        // ========== 영업부/지사 인력 관리 ==========
+        let salesPersonCounter = 0;
+        let branchPersonCounter = 0;
+
+        function addSalesPerson(data = null) {
+            salesPersonCounter++;
+            const id = salesPersonCounter;
+            const container = document.getElementById('salesPersonList');
+            document.getElementById('salesPersonEmpty').style.display = 'none';
+
+            const div = document.createElement('div');
+            div.id = `salesPerson_${id}`;
+            div.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px; align-items: center;';
+            div.innerHTML = `
+                <input type="text" placeholder="이름" class="sales-name" value="${data?.name || ''}" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <input type="text" placeholder="담당 지역" class="sales-region" value="${data?.region || ''}" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <input type="text" placeholder="담당 업무 (예: 신규 개척, 기존 고객 관리)" class="sales-role" value="${data?.role || ''}" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button onclick="removeSalesPerson(${id})" style="padding: 8px 12px; background: #e74c3c; color: white; border: none; border-radius: 4px; cursor: pointer;">삭제</button>
+            `;
+            container.appendChild(div);
+            updateSalesCount();
+        }
+
+        function removeSalesPerson(id) {
+            const element = document.getElementById(`salesPerson_${id}`);
+            if (element) {
+                element.remove();
+                updateSalesCount();
+                if (document.getElementById('salesPersonList').children.length === 0) {
+                    document.getElementById('salesPersonEmpty').style.display = 'block';
+                }
+            }
+        }
+
+        function updateSalesCount() {
+            const count = document.getElementById('salesPersonList').children.length;
+            document.getElementById('dept_sales_count').value = count;
+            updateTotalEmployees();
+        }
+
+        function addBranchPerson(data = null) {
+            branchPersonCounter++;
+            const id = branchPersonCounter;
+            const container = document.getElementById('branchPersonList');
+            document.getElementById('branchPersonEmpty').style.display = 'none';
+
+            const div = document.createElement('div');
+            div.id = `branchPerson_${id}`;
+            div.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 10px; padding: 10px; background: #fdf2e9; border-radius: 5px; margin-bottom: 10px; align-items: center;';
+            div.innerHTML = `
+                <input type="text" placeholder="이름" class="branch-name" value="${data?.name || ''}" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <input type="text" placeholder="담당 지역" class="branch-region" value="${data?.region || ''}" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <input type="text" placeholder="담당 업무 (예: 시료 수거, 현장 영업)" class="branch-role" value="${data?.role || ''}" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button onclick="removeBranchPerson(${id})" style="padding: 8px 12px; background: #e74c3c; color: white; border: none; border-radius: 4px; cursor: pointer;">삭제</button>
+            `;
+            container.appendChild(div);
+            updateBranchCount();
+        }
+
+        function removeBranchPerson(id) {
+            const element = document.getElementById(`branchPerson_${id}`);
+            if (element) {
+                element.remove();
+                updateBranchCount();
+                if (document.getElementById('branchPersonList').children.length === 0) {
+                    document.getElementById('branchPersonEmpty').style.display = 'block';
+                }
+            }
+        }
+
+        function updateBranchCount() {
+            const count = document.getElementById('branchPersonList').children.length;
+            document.getElementById('dept_branch_count').value = count;
+            updateTotalEmployees();
+        }
+
+        function getSalesPersonnel() {
+            const personnel = [];
+            document.querySelectorAll('#salesPersonList > div').forEach(div => {
+                personnel.push({
+                    name: div.querySelector('.sales-name').value || '',
+                    region: div.querySelector('.sales-region').value || '',
+                    role: div.querySelector('.sales-role').value || ''
+                });
+            });
+            return personnel;
+        }
+
+        function getBranchPersonnel() {
+            const personnel = [];
+            document.querySelectorAll('#branchPersonList > div').forEach(div => {
+                personnel.push({
+                    name: div.querySelector('.branch-name').value || '',
+                    region: div.querySelector('.branch-region').value || '',
+                    role: div.querySelector('.branch-role').value || ''
+                });
+            });
+            return personnel;
+        }
+
+        function setSalesPersonnel(personnel) {
+            document.getElementById('salesPersonList').innerHTML = '';
+            salesPersonCounter = 0;
+            if (personnel && personnel.length > 0) {
+                document.getElementById('salesPersonEmpty').style.display = 'none';
+                personnel.forEach(p => addSalesPerson(p));
+            } else {
+                document.getElementById('salesPersonEmpty').style.display = 'block';
+            }
+        }
+
+        function setBranchPersonnel(personnel) {
+            document.getElementById('branchPersonList').innerHTML = '';
+            branchPersonCounter = 0;
+            if (personnel && personnel.length > 0) {
+                document.getElementById('branchPersonEmpty').style.display = 'none';
+                personnel.forEach(p => addBranchPerson(p));
+            } else {
+                document.getElementById('branchPersonEmpty').style.display = 'block';
+            }
+        }
+
+        // getCompanyInfo와 setCompanyInfo 함수 업데이트 (원본 함수 재정의)
+        const originalGetCompanyInfo = getCompanyInfo;
+        getCompanyInfo = function() {
+            const base = originalGetCompanyInfo();
+            base.salesPersonnel = getSalesPersonnel();
+            base.branchPersonnel = getBranchPersonnel();
+            return base;
+        };
+
+        const originalSetCompanyInfo = setCompanyInfo;
+        setCompanyInfo = function(data) {
+            originalSetCompanyInfo(data);
+            setSalesPersonnel(data.salesPersonnel || []);
+            setBranchPersonnel(data.branchPersonnel || []);
+        };
+
+        // 페이지 로드 시 기업 정보 자동 로드
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch('/api/company-info');
+                const result = await response.json();
+                if (result.success && result.data) {
+                    setCompanyInfo(result.data);
+                    console.log('[CompanyInfo] 기업 정보 자동 로드 완료');
+                }
+            } catch (error) {
+                console.log('[CompanyInfo] 저장된 기업 정보 없음');
+            }
+        });
     </script>
 </body>
 </html>
@@ -4893,6 +5322,89 @@ def refresh_cache():
     get_ai_data_summary(force_refresh=True)
     return jsonify({'status': 'ok', 'message': '캐시가 새로고침되었습니다.'})
 
+# 기업 정보 파일 경로
+COMPANY_INFO_FILE = os.path.join(DATA_PATH, 'company_info.json')
+
+@app.route('/api/company-info', methods=['GET'])
+def get_company_info():
+    """기업 정보 조회"""
+    try:
+        if os.path.exists(COMPANY_INFO_FILE):
+            with open(COMPANY_INFO_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            print(f"[CompanyInfo] 기업 정보 로드 성공: {data.get('companyName', 'N/A')}")
+            return jsonify({'success': True, 'data': data})
+        else:
+            print("[CompanyInfo] 저장된 기업 정보 없음")
+            return jsonify({'success': True, 'data': None})
+    except Exception as e:
+        print(f"[CompanyInfo] 로드 오류: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/company-info', methods=['POST'])
+def save_company_info():
+    """기업 정보 저장"""
+    try:
+        data = request.json
+        with open(COMPANY_INFO_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"[CompanyInfo] 기업 정보 저장 완료: {data.get('companyName', 'N/A')}")
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"[CompanyInfo] 저장 오류: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+def get_company_context():
+    """AI 분석용 기업 정보 컨텍스트 생성"""
+    try:
+        if os.path.exists(COMPANY_INFO_FILE):
+            with open(COMPANY_INFO_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # 부서 정보 요약
+            dept_summary = []
+            total_employees = 0
+            if data.get('departments'):
+                for dept_name, dept_info in data['departments'].items():
+                    count = dept_info.get('count', 0)
+                    if count > 0:
+                        total_employees += count
+                        role = dept_info.get('role', '')
+                        dept_summary.append(f"{dept_name}({count}명): {role}")
+
+            # 영업부 인력 요약
+            sales_summary = []
+            if data.get('salesPersonnel'):
+                for person in data['salesPersonnel']:
+                    if person.get('name'):
+                        sales_summary.append(f"{person['name']}({person.get('region', '')})")
+
+            # 지사 인력 요약
+            branch_summary = []
+            if data.get('branchPersonnel'):
+                for person in data['branchPersonnel']:
+                    if person.get('name'):
+                        branch_summary.append(f"{person['name']}({person.get('region', '')})")
+
+            context = f"""[기업 정보]
+- 기업명: {data.get('companyName', '미입력')}
+- 설립연도: {data.get('foundedYear', '미입력')}
+- 사업분야: {data.get('businessField', '미입력')}
+- 주요서비스: {data.get('mainServices', '미입력')}
+- 연간매출목표: {data.get('revenueTarget', '미입력')}억원
+- 연간검사목표: {data.get('inspectionTarget', '미입력')}건
+- KPI: {data.get('kpiDescription', '미입력')}
+- 경영전략: {data.get('businessStrategy', '미입력')}
+- 총인원: {total_employees}명
+- 조직구성: {'; '.join(dept_summary[:5]) if dept_summary else '미입력'}
+- 영업담당자: {', '.join(sales_summary) if sales_summary else '미입력'}
+- 지사담당자: {', '.join(branch_summary) if branch_summary else '미입력'}"""
+            return context
+        return ""
+    except Exception as e:
+        print(f"[CompanyInfo] 컨텍스트 생성 오류: {e}")
+        return ""
+
 @app.route('/api/ai/analyze', methods=['POST'])
 def ai_analyze():
     """AI 분석 API - Gemini로 자연어 질문 분석"""
@@ -4930,6 +5442,12 @@ def ai_analyze():
 - 총 매출: {stats_2025['total_fee']/100000000:.2f}억원
 - TOP 검사목적: {', '.join([f"{p[0]}({p[1]['fee']/10000:.0f}만)" for p in top_purposes])}
 - TOP 영업담당: {', '.join([f"{m[0]}({m[1]['fee']/10000:.0f}만)" for m in top_managers])}"""
+
+    # 기업 정보 컨텍스트 추가
+    company_context = get_company_context()
+    if company_context:
+        stats_text = company_context + "\n\n" + stats_text
+        print(f"[AI] 기업 정보 컨텍스트 추가됨")
 
     # 간소화된 Gemini 프롬프트 (토큰 절약)
     system_prompt = f"""데이터 분석 도우미입니다. 질문을 JSON으로 변환하세요.
