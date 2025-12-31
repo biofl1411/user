@@ -6097,13 +6097,13 @@ def goal_analysis():
         selected_items = filters.get('items', [])
         selected_analyzers = filters.get('analyzers', [])
 
-        # 데이터 로드 (food_item 데이터 사용 - 항목수수료 포함)
-        food_2024 = load_food_item_data('2024')
-        food_2025 = load_food_item_data('2025')
+        # 데이터 로드 (메인 Excel 데이터 사용 - 공급가액 기준)
+        data_2024 = load_excel_data('2024')
+        data_2025 = load_excel_data('2025')
 
         def get_fee(row):
-            """항목수수료 추출"""
-            fee = row.get('항목수수료', 0) or 0
+            """공급가액 추출"""
+            fee = row.get('공급가액', 0) or 0
             if isinstance(fee, str):
                 fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
             return float(fee)
@@ -6135,11 +6135,11 @@ def goal_analysis():
                 return False
             return True
 
-        # 연도별 매출 계산 (항목수수료 기준)
-        revenue_2024 = sum(get_fee(row) for row in food_2024 if match_filter(
+        # 연도별 매출 계산 (공급가액 기준)
+        revenue_2024 = sum(get_fee(row) for row in data_2024 if match_filter(
             row, selected_managers, selected_teams, selected_months, selected_purposes,
             selected_regions, selected_sample_types, selected_items, selected_analyzers))
-        revenue_2025 = sum(get_fee(row) for row in food_2025 if match_filter(
+        revenue_2025 = sum(get_fee(row) for row in data_2025 if match_filter(
             row, selected_managers, selected_teams, selected_months, selected_purposes,
             selected_regions, selected_sample_types, selected_items, selected_analyzers))
 
@@ -6167,7 +6167,7 @@ def goal_analysis():
 
         # 1. 영업담당별 분석
         by_manager = {}
-        for row in food_2025:
+        for row in data_2025:
             if not match_filter(row, [], selected_teams, selected_months, selected_purposes,
                                selected_regions, selected_sample_types, selected_items, selected_analyzers):
                 continue
@@ -6178,7 +6178,7 @@ def goal_analysis():
             by_manager[manager]['revenue_2025'] += revenue
             by_manager[manager]['count_2025'] += 1
 
-        for row in food_2024:
+        for row in data_2024:
             if not match_filter(row, [], selected_teams, selected_months, selected_purposes,
                                selected_regions, selected_sample_types, selected_items, selected_analyzers):
                 continue
@@ -6217,7 +6217,7 @@ def goal_analysis():
 
         # 2. 검사목적별 분석
         by_purpose = {}
-        for row in food_2025:
+        for row in data_2025:
             if not match_filter(row, selected_managers, selected_teams, selected_months, [],
                                selected_regions, selected_sample_types, selected_items, selected_analyzers):
                 continue
@@ -6228,7 +6228,7 @@ def goal_analysis():
             by_purpose[purpose]['revenue_2025'] += revenue
             by_purpose[purpose]['count_2025'] += 1
 
-        for row in food_2024:
+        for row in data_2024:
             if not match_filter(row, selected_managers, selected_teams, selected_months, [],
                                selected_regions, selected_sample_types, selected_items, selected_analyzers):
                 continue
@@ -6259,7 +6259,7 @@ def goal_analysis():
 
         # 3. 검체유형별 분석
         by_sample_type = {}
-        for row in food_2025:
+        for row in data_2025:
             if not match_filter(row, selected_managers, selected_teams, selected_months, selected_purposes,
                                selected_regions, [], selected_items, selected_analyzers):
                 continue
@@ -6269,7 +6269,7 @@ def goal_analysis():
                 by_sample_type[sample_type] = {'revenue_2025': 0, 'revenue_2024': 0}
             by_sample_type[sample_type]['revenue_2025'] += revenue
 
-        for row in food_2024:
+        for row in data_2024:
             if not match_filter(row, selected_managers, selected_teams, selected_months, selected_purposes,
                                selected_regions, [], selected_items, selected_analyzers):
                 continue
@@ -6297,7 +6297,7 @@ def goal_analysis():
 
         # 4. 지역별 분석
         by_region = {}
-        for row in food_2025:
+        for row in data_2025:
             if not match_filter(row, selected_managers, selected_teams, selected_months, selected_purposes,
                                [], selected_sample_types, selected_items, selected_analyzers):
                 continue
@@ -6311,7 +6311,7 @@ def goal_analysis():
             by_region[region]['revenue_2025'] += revenue
             by_region[region]['count_2025'] += 1
 
-        for row in food_2024:
+        for row in data_2024:
             if not match_filter(row, selected_managers, selected_teams, selected_months, selected_purposes,
                                [], selected_sample_types, selected_items, selected_analyzers):
                 continue
@@ -6343,7 +6343,7 @@ def goal_analysis():
 
         # 5. 항목별 분석 (food_item 데이터)
         by_item = {}
-        for row in food_2025:
+        for row in data_2025:
             if not match_filter(row, selected_managers, selected_teams, selected_months, selected_purposes,
                                selected_regions, selected_sample_types, [], selected_analyzers):
                 continue
@@ -6356,7 +6356,7 @@ def goal_analysis():
             by_item[item]['fee_2025'] += fee
             by_item[item]['count_2025'] += 1
 
-        for row in food_2024:
+        for row in data_2024:
             if not match_filter(row, selected_managers, selected_teams, selected_months, selected_purposes,
                                selected_regions, selected_sample_types, [], selected_analyzers):
                 continue
@@ -6494,7 +6494,7 @@ def goal_analysis():
         all_analyzers = set()
         all_regions = set()
 
-        for row in food_2025:
+        for row in data_2025:
             if row.get('영업담당'): all_managers.add(str(row.get('영업담당')).strip())
             if row.get('검사목적'): all_purposes.add(str(row.get('검사목적')).strip())
             if row.get('검체유형'): all_sample_types.add(str(row.get('검체유형')).strip())
