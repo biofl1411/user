@@ -5031,12 +5031,14 @@ def goal_analysis():
             })
 
         # 7. 실행 계획 제안
-        monthly_target = gap / 12
+        monthly_target = gap / 12 if gap > 0 else 0
+        active_managers = len([m for m in manager_analysis if m['revenue_2025'] > 0])
+        per_manager_target = (monthly_target / active_managers / 10000) if active_managers > 0 else 0
         recommendations.append({
             'category': '📋 실행 계획',
             'title': '월별 추가 목표',
             'content': f'목표 달성을 위해 월 평균 {monthly_target/10000:.0f}만원 추가 매출 필요',
-            'action': f'영업담당 1인당 월 {monthly_target/len([m for m in manager_analysis if m["revenue_2025"] > 0])/10000:.0f}만원 추가 목표 설정',
+            'action': f'영업담당 1인당 월 {per_manager_target:.0f}만원 추가 목표 설정 ({active_managers}명 기준)',
             'priority': 'high'
         })
 
