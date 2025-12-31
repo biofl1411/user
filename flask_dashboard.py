@@ -5695,7 +5695,7 @@ def refresh_cache():
     return jsonify({'status': 'ok', 'message': '캐시가 새로고침되었습니다.'})
 
 # 기업 정보 파일 경로
-COMPANY_INFO_FILE = os.path.join(DATA_PATH, 'company_info.json')
+COMPANY_INFO_FILE = os.path.join(DATA_DIR, 'company_info.json')
 
 @app.route('/api/company-info', methods=['GET'])
 def get_company_info():
