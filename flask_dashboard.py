@@ -23,6 +23,8 @@ DATA_DIR = Path("/home/biofl/business_metrics/data")
 # 데이터 캐시 (메모리에 저장)
 DATA_CACHE = {}
 CACHE_TIME = {}
+FILE_MTIME = {}  # 파일 수정 시간 추적
+AI_SUMMARY_CACHE = {}  # AI용 데이터 요약 캐시
 
 # 설정
 MANAGER_TO_BRANCH = {
@@ -141,6 +143,136 @@ def load_food_item_data(year, use_cache=True):
     CACHE_TIME[cache_key] = time.time()
 
     return all_data
+
+
+def check_data_changed(year):
+    """데이터 파일 변경 감지"""
+    data_path = DATA_DIR / str(year)
+    if not data_path.exists():
+        return False
+
+    files = sorted(data_path.glob("*.xlsx"))
+    current_mtimes = {}
+
+    for f in files:
+        current_mtimes[str(f)] = f.stat().st_mtime
+
+    cache_key = f"mtime_{year}"
+    old_mtimes = FILE_MTIME.get(cache_key, {})
+
+    if current_mtimes != old_mtimes:
+        FILE_MTIME[cache_key] = current_mtimes
+        return True
+
+    return False
+
+
+def get_ai_data_summary(force_refresh=False):
+    """AI 분석용 데이터 요약 생성 (캐시됨)"""
+    import time
+
+    cache_key = 'ai_summary'
+
+    # 데이터 변경 확인
+    data_changed = check_data_changed('2024') or check_data_changed('2025')
+
+    # 캐시 유효성 확인 (1시간 또는 데이터 변경 시)
+    if not force_refresh and cache_key in AI_SUMMARY_CACHE:
+        cache_age = time.time() - AI_SUMMARY_CACHE.get('_time', 0)
+        if cache_age < 3600 and not data_changed:
+            print(f"[AI-CACHE] 요약 캐시 사용 (나이: {cache_age:.0f}초)")
+            return AI_SUMMARY_CACHE[cache_key]
+
+    print(f"[AI-CACHE] 데이터 요약 생성 중...")
+    start_time = time.time()
+
+    # 데이터 로드
+    food_2024 = load_food_item_data('2024')
+    food_2025 = load_food_item_data('2025')
+
+    # 요약 통계 계산
+    summary = {
+        '2024': {'total_count': 0, 'total_fee': 0, 'by_purpose': {}, 'by_sample_type': {},
+                 'by_manager': {}, 'by_item': {}, 'monthly': {}},
+        '2025': {'total_count': 0, 'total_fee': 0, 'by_purpose': {}, 'by_sample_type': {},
+                 'by_manager': {}, 'by_item': {}, 'monthly': {}},
+        'filter_values': {'purposes': set(), 'sample_types': set(), 'items': set(), 'managers': set()}
+    }
+
+    for year, data in [('2024', food_2024), ('2025', food_2025)]:
+        for row in data:
+            purpose = str(row.get('검사목적', '') or '').strip()
+            sample_type = str(row.get('검체유형', '') or '').strip()
+            item_name = str(row.get('항목명', '') or '').strip()
+            manager = str(row.get('영업담당', '') or '').strip() or '미지정'
+            fee = row.get('항목수수료', 0) or 0
+            date = row.get('접수일자')
+
+            if isinstance(fee, str):
+                fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+
+            summary[year]['total_count'] += 1
+            summary[year]['total_fee'] += fee
+
+            # 목적별
+            if purpose:
+                if purpose not in summary[year]['by_purpose']:
+                    summary[year]['by_purpose'][purpose] = {'count': 0, 'fee': 0}
+                summary[year]['by_purpose'][purpose]['count'] += 1
+                summary[year]['by_purpose'][purpose]['fee'] += fee
+                summary['filter_values']['purposes'].add(purpose)
+
+            # 검체유형별
+            if sample_type:
+                if sample_type not in summary[year]['by_sample_type']:
+                    summary[year]['by_sample_type'][sample_type] = {'count': 0, 'fee': 0}
+                summary[year]['by_sample_type'][sample_type]['count'] += 1
+                summary[year]['by_sample_type'][sample_type]['fee'] += fee
+                summary['filter_values']['sample_types'].add(sample_type)
+
+            # 영업담당별
+            if manager not in summary[year]['by_manager']:
+                summary[year]['by_manager'][manager] = {'count': 0, 'fee': 0}
+            summary[year]['by_manager'][manager]['count'] += 1
+            summary[year]['by_manager'][manager]['fee'] += fee
+            summary['filter_values']['managers'].add(manager)
+
+            # 항목별 (TOP 50만)
+            if item_name:
+                if item_name not in summary[year]['by_item']:
+                    summary[year]['by_item'][item_name] = {'count': 0, 'fee': 0}
+                summary[year]['by_item'][item_name]['count'] += 1
+                summary[year]['by_item'][item_name]['fee'] += fee
+                summary['filter_values']['items'].add(item_name)
+
+            # 월별
+            if date and hasattr(date, 'month'):
+                m = date.month
+                if m not in summary[year]['monthly']:
+                    summary[year]['monthly'][m] = {'count': 0, 'fee': 0}
+                summary[year]['monthly'][m]['count'] += 1
+                summary[year]['monthly'][m]['fee'] += fee
+
+    # set을 sorted list로 변환
+    summary['filter_values']['purposes'] = sorted(summary['filter_values']['purposes'])
+    summary['filter_values']['sample_types'] = sorted(summary['filter_values']['sample_types'])
+    summary['filter_values']['items'] = sorted(summary['filter_values']['items'])[:100]  # 상위 100개만
+    summary['filter_values']['managers'] = sorted(summary['filter_values']['managers'])
+
+    # 항목별 데이터 정렬 (상위 50개만 유지)
+    for year in ['2024', '2025']:
+        sorted_items = sorted(summary[year]['by_item'].items(),
+                             key=lambda x: x[1]['fee'], reverse=True)[:50]
+        summary[year]['by_item'] = dict(sorted_items)
+
+    elapsed = time.time() - start_time
+    print(f"[AI-CACHE] 요약 생성 완료: {elapsed:.1f}초 소요")
+
+    AI_SUMMARY_CACHE[cache_key] = summary
+    AI_SUMMARY_CACHE['_time'] = time.time()
+
+    return summary
+
 
 def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
                            item_filter=None, manager_filter=None):
@@ -3999,6 +4131,19 @@ HTML_TEMPLATE = '''
         function displayAiResult(data) {
             document.getElementById('aiResult').style.display = 'block';
 
+            // direct_answer 타입 특별 처리
+            if (data.analysis_type === 'direct_answer') {
+                document.getElementById('aiDescription').innerHTML = `
+                    <strong>📝 분석 내용:</strong> ${data.description || '직접 답변'}<br>
+                    <div style="margin-top: 10px; padding: 15px; background: #e3f2fd; border-radius: 8px; font-size: 1.1em;">
+                        ${data.direct_answer}
+                    </div>
+                `;
+                document.getElementById('aiTableContainer').innerHTML = '';
+                document.getElementById('aiInsight').innerHTML = '💡 <strong>인사이트:</strong> AI가 캐시된 데이터를 기반으로 직접 답변을 생성했습니다.';
+                return;
+            }
+
             // 설명 표시
             const desc = data.description || '분석 완료';
             const parsed = data.parsed_query || {};
@@ -4452,13 +4597,17 @@ def get_columns():
 @app.route('/api/cache/refresh')
 def refresh_cache():
     """캐시 새로고침"""
-    global DATA_CACHE, CACHE_TIME
+    global DATA_CACHE, CACHE_TIME, AI_SUMMARY_CACHE, FILE_MTIME
     DATA_CACHE = {}
     CACHE_TIME = {}
-    print("[CACHE] 캐시 초기화됨")
+    AI_SUMMARY_CACHE = {}
+    FILE_MTIME = {}
+    print("[CACHE] 모든 캐시 초기화됨")
     # 데이터 미리 로드
     for year in ['2024', '2025']:
         load_excel_data(year, use_cache=False)
+    # AI 요약 캐시도 미리 생성
+    get_ai_data_summary(force_refresh=True)
     return jsonify({'status': 'ok', 'message': '캐시가 새로고침되었습니다.'})
 
 @app.route('/api/ai/analyze', methods=['POST'])
@@ -4466,117 +4615,162 @@ def ai_analyze():
     """AI 분석 API - Gemini로 자연어 질문 분석"""
     import urllib.request
     import urllib.error
+    import time
 
     query = request.json.get('query', '')
+    print(f"[AI] === 분석 요청 시작 ===")
+    print(f"[AI] 질문: {query}")
+
     if not query:
+        print(f"[AI] 오류: 질문 없음")
         return jsonify({'error': '질문을 입력해주세요.'})
 
     api_key = GEMINI_API_KEY
     if not api_key:
-        return jsonify({'error': 'GEMINI_API_KEY가 설정되지 않았습니다.'})
+        print(f"[AI] 오류: API 키 없음")
+        return jsonify({'error': 'GEMINI_API_KEY가 설정되지 않았습니다. 서버 시작 시 export GEMINI_API_KEY="키값" 필요'})
 
-    # 현재 데이터 요약 정보 수집
-    data_2024 = load_excel_data('2024')
-    data_2025 = load_excel_data('2025')
-    food_2024 = load_food_item_data('2024')
-    food_2025 = load_food_item_data('2025')
+    print(f"[AI] API 키 확인됨: {api_key[:10]}...")
 
-    # 사용 가능한 필터 값들 수집
-    purposes = set()
-    sample_types = set()
-    items = set()
-    managers = set()
+    # 캐시된 데이터 요약 사용 (변경 감지 포함)
+    data_summary = get_ai_data_summary()
+    filter_values = data_summary['filter_values']
+    print(f"[AI] 캐시된 요약 사용: 목적 {len(filter_values['purposes'])}개, 유형 {len(filter_values['sample_types'])}개")
 
-    for row in food_2025:
-        if row.get('검사목적'): purposes.add(str(row.get('검사목적')))
-        if row.get('검체유형'): sample_types.add(str(row.get('검체유형')))
-        if row.get('항목명'): items.add(str(row.get('항목명')))
-        if row.get('영업담당'): managers.add(str(row.get('영업담당')))
+    # 2025년 주요 통계 요약 (Gemini에 컨텍스트 제공)
+    stats_2025 = data_summary['2025']
+    top_purposes = sorted(stats_2025['by_purpose'].items(), key=lambda x: x[1]['fee'], reverse=True)[:5]
+    top_managers = sorted(stats_2025['by_manager'].items(), key=lambda x: x[1]['fee'], reverse=True)[:5]
 
-    # Gemini에게 보낼 프롬프트
-    system_prompt = f"""당신은 경영지표 데이터 분석 도우미입니다.
-사용자의 자연어 질문을 분석하여 데이터 조회에 필요한 조건을 JSON으로 추출해주세요.
+    stats_text = f"""2025년 현황:
+- 총 건수: {stats_2025['total_count']:,}건
+- 총 매출: {stats_2025['total_fee']/100000000:.2f}억원
+- TOP 검사목적: {', '.join([f"{p[0]}({p[1]['fee']/10000:.0f}만)" for p in top_purposes])}
+- TOP 영업담당: {', '.join([f"{m[0]}({m[1]['fee']/10000:.0f}만)" for m in top_managers])}"""
 
-사용 가능한 데이터:
+    # 간소화된 Gemini 프롬프트 (토큰 절약)
+    system_prompt = f"""데이터 분석 도우미입니다. 질문을 JSON으로 변환하세요.
+
+{stats_text}
+
+가능한 값:
 - 연도: 2024, 2025
-- 검사목적: {', '.join(list(purposes)[:20])}...
-- 검체유형: {', '.join(list(sample_types)[:20])}...
-- 항목명: {', '.join(list(items)[:30])}...
-- 영업담당: {', '.join(list(managers)[:15])}
+- 검사목적: {', '.join(filter_values['purposes'][:10])}
+- 검체유형: {', '.join(filter_values['sample_types'][:10])}
+- 항목명: {', '.join(filter_values['items'][:15])}
+- 영업담당: {', '.join(filter_values['managers'][:10])}
 
-분석 유형:
-1. monthly_trend: 월별 추이 분석
-2. comparison: 비교 분석 (항목 포함 vs 제외)
-3. top_items: TOP N 항목
-4. summary: 요약 통계
+분석유형: monthly_trend(월별추이), comparison(비교), top_items(TOP N), summary(요약), direct_answer(직접답변)
 
-반드시 아래 JSON 형식으로만 응답하세요:
-{{
-    "analysis_type": "monthly_trend|comparison|top_items|summary",
-    "year": "2024|2025",
-    "purpose": "검사목적 값 또는 null",
-    "sample_type": "검체유형 값 또는 null",
-    "item": "항목명 값 또는 null",
-    "exclude_item": "제외할 항목명 또는 null",
-    "manager": "영업담당 값 또는 null",
-    "top_n": 숫자 또는 null,
-    "description": "분석 설명 (한글)"
-}}"""
+JSON 형식만 응답:
+{{"analysis_type":"타입","year":"2024|2025","purpose":null,"sample_type":null,"item":null,"manager":null,"top_n":10,"description":"설명","direct_answer":"직접 답변이 가능하면 여기에 작성"}}"""
 
-    try:
-        # Gemini API 호출
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={api_key}"
+    print(f"[AI] 프롬프트 길이: {len(system_prompt)}자")
 
-        payload = {
-            "contents": [{
-                "parts": [
-                    {"text": system_prompt},
-                    {"text": f"사용자 질문: {query}"}
-                ]
-            }],
-            "generationConfig": {
-                "temperature": 0.1,
-                "maxOutputTokens": 1000
-            }
-        }
+    # Gemini API 호출 (재시도 로직 포함)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={api_key}"
 
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode('utf-8'),
-            headers={'Content-Type': 'application/json'},
-            method='POST'
-        )
+    payload = {
+        "contents": [{"parts": [{"text": system_prompt + f"\n\n질문: {query}"}]}],
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 500}
+    }
 
-        with urllib.request.urlopen(req, timeout=30) as response:
-            result = json.loads(response.read().decode('utf-8'))
+    max_retries = 3
+    retry_delay = 2
 
-        # Gemini 응답에서 JSON 추출
-        ai_response = result['candidates'][0]['content']['parts'][0]['text']
-        print(f"[AI] Gemini 응답: {ai_response}")
+    for attempt in range(max_retries):
+        try:
+            print(f"[AI] Gemini API 호출 시도 {attempt + 1}/{max_retries}")
 
-        # JSON 파싱 (코드블록 제거)
-        json_str = ai_response.strip()
-        if '```json' in json_str:
-            json_str = json_str.split('```json')[1].split('```')[0]
-        elif '```' in json_str:
-            json_str = json_str.split('```')[1].split('```')[0]
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
 
-        parsed = json.loads(json_str.strip())
-        print(f"[AI] 파싱된 조건: {parsed}")
+            with urllib.request.urlopen(req, timeout=30) as response:
+                result = json.loads(response.read().decode('utf-8'))
 
-        # 데이터 조회 및 분석 실행
-        analysis_result = execute_analysis(parsed, food_2024, food_2025, data_2024, data_2025)
-        analysis_result['parsed_query'] = parsed
+            print(f"[AI] Gemini API 응답 수신 성공")
 
-        return jsonify(analysis_result)
+            # Gemini 응답에서 JSON 추출
+            ai_response = result['candidates'][0]['content']['parts'][0]['text']
+            print(f"[AI] Gemini 원본 응답: {ai_response[:200]}...")
 
-    except urllib.error.URLError as e:
-        return jsonify({'error': f'API 연결 실패: {str(e)}'})
-    except json.JSONDecodeError as e:
-        return jsonify({'error': f'응답 파싱 실패: {str(e)}', 'raw_response': ai_response if 'ai_response' in locals() else ''})
-    except Exception as e:
-        import traceback
-        return jsonify({'error': f'분석 실패: {str(e)}', 'traceback': traceback.format_exc()})
+            # JSON 파싱 (코드블록 제거)
+            json_str = ai_response.strip()
+            if '```json' in json_str:
+                json_str = json_str.split('```json')[1].split('```')[0]
+            elif '```' in json_str:
+                json_str = json_str.split('```')[1].split('```')[0]
+
+            parsed = json.loads(json_str.strip())
+            print(f"[AI] 파싱 성공: {parsed}")
+
+            # direct_answer 타입이면 바로 응답 반환
+            if parsed.get('analysis_type') == 'direct_answer' and parsed.get('direct_answer'):
+                print(f"[AI] 직접 답변 반환")
+                return jsonify({
+                    'success': True,
+                    'analysis_type': 'direct_answer',
+                    'description': parsed.get('description', ''),
+                    'direct_answer': parsed.get('direct_answer'),
+                    'parsed_query': parsed
+                })
+
+            # 데이터 조회 및 분석 실행 (캐시된 데이터 사용)
+            food_2024 = load_food_item_data('2024')
+            food_2025 = load_food_item_data('2025')
+            data_2024 = load_excel_data('2024')
+            data_2025 = load_excel_data('2025')
+
+            analysis_result = execute_analysis(parsed, food_2024, food_2025, data_2024, data_2025)
+            analysis_result['parsed_query'] = parsed
+
+            print(f"[AI] 분석 완료: {analysis_result.get('analysis_type')}, 건수: {analysis_result.get('total_count')}")
+            return jsonify(analysis_result)
+
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8') if e.fp else ''
+            print(f"[AI] HTTP 오류 {e.code}: {e.reason}")
+            print(f"[AI] 오류 상세: {error_body[:500]}")
+
+            if e.code == 429:  # Too Many Requests
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (2 ** attempt)  # exponential backoff
+                    print(f"[AI] 429 오류 - {wait_time}초 후 재시도...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    return jsonify({
+                        'error': f'API 요청 한도 초과 (429). {retry_delay * 4}초 후 다시 시도해주세요.',
+                        'retry_after': retry_delay * 4
+                    })
+            elif e.code == 404:
+                return jsonify({'error': f'API 모델을 찾을 수 없습니다 (404). 모델명 확인 필요.'})
+            else:
+                return jsonify({'error': f'API 오류 {e.code}: {e.reason}'})
+
+        except urllib.error.URLError as e:
+            print(f"[AI] URL 오류: {e.reason}")
+            return jsonify({'error': f'API 연결 실패: {str(e.reason)}'})
+
+        except json.JSONDecodeError as e:
+            print(f"[AI] JSON 파싱 오류: {e}")
+            print(f"[AI] 파싱 시도한 문자열: {json_str[:300] if 'json_str' in locals() else 'N/A'}")
+            return jsonify({
+                'error': f'응답 파싱 실패. Gemini가 올바른 JSON을 반환하지 않았습니다.',
+                'raw_response': ai_response[:500] if 'ai_response' in locals() else ''
+            })
+
+        except Exception as e:
+            import traceback
+            print(f"[AI] 예외 발생: {e}")
+            print(f"[AI] 트레이스백: {traceback.format_exc()}")
+            return jsonify({'error': f'분석 실패: {str(e)}'})
+
+    return jsonify({'error': '최대 재시도 횟수 초과'})
 
 
 def execute_analysis(params, food_2024, food_2025, data_2024, data_2025):
