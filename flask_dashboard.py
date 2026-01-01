@@ -3035,12 +3035,15 @@ HTML_TEMPLATE = '''
                 document.getElementById('goalCompare').innerHTML = `성장률: <span class="${salesUp ? 'up' : 'down'}" style="color: var(--${salesUp ? 'success' : 'danger'}); font-weight: 600;">${salesUp ? '+' : ''}${salesDiff}%</span>`;
                 document.getElementById('goalCompare').style.display = 'block';
 
-                // 목표달성률 오버레이 (증감률 크게, 금액 작게)
+                // 목표달성률 오버레이 (증감률 크게, 금액 차이 표시)
+                const salesDiffAmount = totalSales - compSales;
+                const diffAmountStr = (salesDiffAmount >= 0 ? '+' : '') + formatCurrency(salesDiffAmount);
                 document.getElementById('goalOverlay').innerHTML = `
                     <div class="overlay-year-badge">${compareData.year}년 대비</div>
                     <div class="overlay-label">전년대비 성장률</div>
                     <div class="overlay-value" style="color: var(--${salesUp ? 'success' : 'danger'});">${salesUp ? '+' : ''}${salesDiff}%</div>
-                    <div class="overlay-change">전년 매출: <span>${formatCurrency(compSales)}</span></div>
+                    <div class="overlay-sub">전년 매출: ${formatCurrency(compSales)}</div>
+                    <div class="overlay-change">차이: <span class="${salesUp ? 'up' : 'down'}">${diffAmountStr}</span></div>
                 `;
             } else {
                 ['compareTotalSales', 'compareTotalCount', 'compareAvgPrice', 'goalCompare'].forEach(id => {
