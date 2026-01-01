@@ -657,6 +657,21 @@ MANAGER_TO_BRANCH = {
     "ISA": "기타",
 }
 
+# 부서별 매핑 (메인 대시보드 부서별 카드용)
+MANAGER_TO_DEPARTMENT = {
+    "본사접수": "본사",
+    "마케팅": "마케팅",
+    # 지사 소속 영업담당자들은 영업부로 분류
+    "장동욱": "영업부", "박은태": "영업부", "지병훈": "영업부",
+    "도준구": "영업부",
+    "심태보": "영업부", "정유경": "영업부",
+    "이강현": "영업부",
+    "이성복": "영업부",
+}
+
+# 지사에 포함될 담당자 목록 (지사 카드용)
+BRANCH_MEMBERS = {"장동욱", "박은태", "지병훈", "도준구", "심태보", "정유경", "이강현", "이성복"}
+
 # 개인별 분석에서 제외할 영업담당 (외부 기관 등)
 EXCLUDED_MANAGERS = {"IBK", "미지정"}
 
@@ -1135,6 +1150,7 @@ def process_data(data, purpose_filter=None):
     by_sample_type_purpose = {}  # 검체유형별-목적 데이터
     by_urgent_month = {}  # 월별 긴급 데이터
     by_branch_month_clients = {}  # 지사별 월별 거래처 (중복 분석용)
+    by_department = {}  # 부서별 데이터 (본사, 마케팅, 영업부, 지사)
     purposes = set()
     sample_types = set()  # 검체유형 목록
     total_sales = 0
@@ -1185,6 +1201,20 @@ def process_data(data, purpose_filter=None):
         by_branch[branch]['sales'] += sales
         by_branch[branch]['count'] += 1
         by_branch[branch]['managers'].add(manager)
+
+        # 부서별 (본사, 마케팅, 영업부, 지사)
+        department = MANAGER_TO_DEPARTMENT.get(manager, '기타')
+        if department not in by_department:
+            by_department[department] = {'sales': 0, 'count': 0}
+        by_department[department]['sales'] += sales
+        by_department[department]['count'] += 1
+
+        # 지사 카드용 (영업부 소속 담당자들의 합계)
+        if manager in BRANCH_MEMBERS:
+            if '지사' not in by_department:
+                by_department['지사'] = {'sales': 0, 'count': 0}
+            by_department['지사']['sales'] += sales
+            by_department['지사']['count'] += 1
 
         # 월별
         month = 0
@@ -1555,6 +1585,7 @@ def process_data(data, purpose_filter=None):
         'sample_types': sorted(list(sample_types)),
         'branch_client_retention': branch_client_retention,
         'total_client_retention': total_retention,
+        'by_department': by_department,
         'total_sales': total_sales,
         'total_count': total_count
     }
@@ -2084,6 +2115,108 @@ HTML_TEMPLATE = '''
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 16px;
+        }
+
+        /* 부서별 카드 스타일 */
+        .dept-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border: 1px solid var(--gray-100);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.2s ease;
+        }
+
+        .dept-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+        }
+
+        .dept-card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .dept-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .dept-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-800);
+        }
+
+        .dept-card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .dept-stat {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .dept-label {
+            font-size: 13px;
+            color: var(--gray-500);
+        }
+
+        .dept-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--gray-800);
+        }
+
+        .dept-card-compare {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px dashed var(--gray-200);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .dept-card-compare .compare-label {
+            font-size: 12px;
+            color: var(--gray-400);
+        }
+
+        .dept-card-compare .compare-value {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .dept-card-compare .compare-value.positive {
+            color: var(--success);
+        }
+
+        .dept-card-compare .compare-value.negative {
+            color: var(--danger);
+        }
+
+        @media (max-width: 1200px) {
+            .department-cards {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .department-cards {
+                grid-template-columns: 1fr !important;
+            }
         }
 
         .purpose-kpi-card {
@@ -2983,6 +3116,134 @@ HTML_TEMPLATE = '''
                 </div>
                 <div class="purpose-kpi-grid" id="purposeGrid"></div>
             </section>
+
+            <!-- 부서별 현황 카드 -->
+            <section class="department-section" style="margin-top: 24px;">
+                <div class="section-title-bar">
+                    <div class="section-title">🏢 부서별 현황</div>
+                </div>
+                <div class="department-cards" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 16px;">
+                    <!-- 본사 카드 -->
+                    <div class="dept-card" id="deptCardBonsa">
+                        <div class="dept-card-header">
+                            <div class="dept-icon" style="background: linear-gradient(135deg, #6366f1, #8b5cf6);">🏛️</div>
+                            <div class="dept-name">본사</div>
+                        </div>
+                        <div class="dept-card-body">
+                            <div class="dept-stat">
+                                <span class="dept-label">총 매출</span>
+                                <span class="dept-value" id="deptBonsaSales">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">건수</span>
+                                <span class="dept-value" id="deptBonsaCount">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">평균단가</span>
+                                <span class="dept-value" id="deptBonsaAvg">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">매출비율</span>
+                                <span class="dept-value" id="deptBonsaRatio">-</span>
+                            </div>
+                        </div>
+                        <div class="dept-card-compare" id="deptBonsaCompare" style="display: none;">
+                            <div class="compare-label">전년 대비</div>
+                            <div class="compare-value" id="deptBonsaGrowth">-</div>
+                        </div>
+                    </div>
+
+                    <!-- 마케팅 카드 -->
+                    <div class="dept-card" id="deptCardMarketing">
+                        <div class="dept-card-header">
+                            <div class="dept-icon" style="background: linear-gradient(135deg, #10b981, #059669);">📢</div>
+                            <div class="dept-name">마케팅</div>
+                        </div>
+                        <div class="dept-card-body">
+                            <div class="dept-stat">
+                                <span class="dept-label">총 매출</span>
+                                <span class="dept-value" id="deptMarketingSales">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">건수</span>
+                                <span class="dept-value" id="deptMarketingCount">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">평균단가</span>
+                                <span class="dept-value" id="deptMarketingAvg">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">매출비율</span>
+                                <span class="dept-value" id="deptMarketingRatio">-</span>
+                            </div>
+                        </div>
+                        <div class="dept-card-compare" id="deptMarketingCompare" style="display: none;">
+                            <div class="compare-label">전년 대비</div>
+                            <div class="compare-value" id="deptMarketingGrowth">-</div>
+                        </div>
+                    </div>
+
+                    <!-- 영업부 카드 -->
+                    <div class="dept-card" id="deptCardSales">
+                        <div class="dept-card-header">
+                            <div class="dept-icon" style="background: linear-gradient(135deg, #f59e0b, #d97706);">💼</div>
+                            <div class="dept-name">영업부</div>
+                        </div>
+                        <div class="dept-card-body">
+                            <div class="dept-stat">
+                                <span class="dept-label">총 매출</span>
+                                <span class="dept-value" id="deptSalesSales">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">건수</span>
+                                <span class="dept-value" id="deptSalesCount">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">평균단가</span>
+                                <span class="dept-value" id="deptSalesAvg">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">매출비율</span>
+                                <span class="dept-value" id="deptSalesRatio">-</span>
+                            </div>
+                        </div>
+                        <div class="dept-card-compare" id="deptSalesCompare" style="display: none;">
+                            <div class="compare-label">전년 대비</div>
+                            <div class="compare-value" id="deptSalesGrowth">-</div>
+                        </div>
+                    </div>
+
+                    <!-- 지사 카드 -->
+                    <div class="dept-card" id="deptCardBranch">
+                        <div class="dept-card-header">
+                            <div class="dept-icon" style="background: linear-gradient(135deg, #ec4899, #db2777);">🏬</div>
+                            <div class="dept-name">지사</div>
+                        </div>
+                        <div class="dept-card-body">
+                            <div class="dept-stat">
+                                <span class="dept-label">총 매출</span>
+                                <span class="dept-value" id="deptBranchSales">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">건수</span>
+                                <span class="dept-value" id="deptBranchCount">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">평균단가</span>
+                                <span class="dept-value" id="deptBranchAvg">-</span>
+                            </div>
+                            <div class="dept-stat">
+                                <span class="dept-label">매출비율</span>
+                                <span class="dept-value" id="deptBranchRatio">-</span>
+                            </div>
+                        </div>
+                        <div class="dept-card-compare" id="deptBranchCompare" style="display: none;">
+                            <div class="compare-label">전년 대비</div>
+                            <div class="compare-value" id="deptBranchGrowth">-</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </div>
 
         <!-- 개인별 탭 -->
@@ -3627,6 +3888,7 @@ HTML_TEMPLATE = '''
         function updateAll() {
             updateSummary();
             updatePurposeGrid();
+            updateDepartmentCards();  // 부서별 카드 업데이트
             updatePersonalTab();  // 개인별 탭 전체 업데이트
             updateTeamTab();      // 팀별 탭 전체 업데이트
             updateManagerChart();
@@ -3730,6 +3992,61 @@ HTML_TEMPLATE = '''
             const isUp = parseFloat(diff) >= 0;
             el.className = 'kpi-trend ' + (isUp ? 'up' : 'down');
             el.innerHTML = `<span>${isUp ? '↑' : '↓'} ${isUp ? '+' : ''}${diff}%</span>`;
+        }
+
+        // 부서별 카드 업데이트
+        function updateDepartmentCards() {
+            const dept = currentData.by_department || {};
+            const totalSales = currentData.total_sales || 1;
+            const compareDept = compareData ? (compareData.by_department || {}) : {};
+
+            // 부서별 데이터 매핑
+            const deptMapping = [
+                { key: '본사', prefix: 'Bonsa' },
+                { key: '마케팅', prefix: 'Marketing' },
+                { key: '영업부', prefix: 'Sales' },
+                { key: '지사', prefix: 'Branch' }
+            ];
+
+            deptMapping.forEach(({ key, prefix }) => {
+                const data = dept[key] || { sales: 0, count: 0 };
+                const sales = data.sales || 0;
+                const count = data.count || 0;
+                const avg = count > 0 ? sales / count : 0;
+                const ratio = totalSales > 0 ? (sales / totalSales * 100) : 0;
+
+                // 값 업데이트
+                const salesEl = document.getElementById(`dept${prefix}Sales`);
+                const countEl = document.getElementById(`dept${prefix}Count`);
+                const avgEl = document.getElementById(`dept${prefix}Avg`);
+                const ratioEl = document.getElementById(`dept${prefix}Ratio`);
+
+                if (salesEl) salesEl.textContent = formatCurrency(sales);
+                if (countEl) countEl.textContent = count.toLocaleString() + '건';
+                if (avgEl) avgEl.textContent = formatCurrency(avg);
+                if (ratioEl) ratioEl.textContent = ratio.toFixed(1) + '%';
+
+                // 전년 대비
+                const compareEl = document.getElementById(`dept${prefix}Compare`);
+                const growthEl = document.getElementById(`dept${prefix}Growth`);
+
+                if (compareData && compareDept[key]) {
+                    const compSales = compareDept[key].sales || 0;
+                    if (compSales > 0) {
+                        const growth = ((sales - compSales) / compSales * 100).toFixed(1);
+                        const isPositive = parseFloat(growth) >= 0;
+                        if (compareEl) compareEl.style.display = 'flex';
+                        if (growthEl) {
+                            growthEl.textContent = (isPositive ? '+' : '') + growth + '%';
+                            growthEl.className = 'compare-value ' + (isPositive ? 'positive' : 'negative');
+                        }
+                    } else {
+                        if (compareEl) compareEl.style.display = 'none';
+                    }
+                } else {
+                    if (compareEl) compareEl.style.display = 'none';
+                }
+            });
         }
 
         function updatePurposeGrid() {
