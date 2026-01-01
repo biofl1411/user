@@ -2563,11 +2563,7 @@ HTML_TEMPLATE = '''
                 <div class="kpi-label">총 매출</div>
                 <div class="kpi-value" id="totalSales">-</div>
                 <div class="kpi-compare" id="compareTotalSales" style="display: none;"></div>
-                <div class="kpi-overlay" id="salesOverlay" style="display: none;">
-                    <div class="kpi-overlay-year" id="salesOverlayYear">2024년</div>
-                    <div class="kpi-overlay-value" id="salesOverlayValue">-</div>
-                    <div class="kpi-overlay-diff" id="salesOverlayDiff">전년대비 0%</div>
-                </div>
+                <div class="kpi-overlay" id="salesOverlay"></div>
             </div>
 
             <div class="kpi-card count">
@@ -2578,11 +2574,7 @@ HTML_TEMPLATE = '''
                 <div class="kpi-label">총 건수</div>
                 <div class="kpi-value" id="totalCount">-</div>
                 <div class="kpi-compare" id="compareTotalCount" style="display: none;"></div>
-                <div class="kpi-overlay" id="countOverlay" style="display: none;">
-                    <div class="kpi-overlay-year" id="countOverlayYear">2024년</div>
-                    <div class="kpi-overlay-value" id="countOverlayValue">-</div>
-                    <div class="kpi-overlay-diff" id="countOverlayDiff">전년대비 0%</div>
-                </div>
+                <div class="kpi-overlay" id="countOverlay"></div>
             </div>
 
             <div class="kpi-card price">
@@ -2593,11 +2585,7 @@ HTML_TEMPLATE = '''
                 <div class="kpi-label">평균 단가</div>
                 <div class="kpi-value" id="avgPrice">-</div>
                 <div class="kpi-compare" id="compareAvgPrice" style="display: none;"></div>
-                <div class="kpi-overlay" id="priceOverlay" style="display: none;">
-                    <div class="kpi-overlay-year" id="priceOverlayYear">2024년</div>
-                    <div class="kpi-overlay-value" id="priceOverlayValue">-</div>
-                    <div class="kpi-overlay-diff" id="priceOverlayDiff">전년대비 0%</div>
-                </div>
+                <div class="kpi-overlay" id="priceOverlay"></div>
             </div>
 
             <div class="kpi-card goal">
@@ -2608,6 +2596,7 @@ HTML_TEMPLATE = '''
                 <div class="kpi-value" id="goalRate">-</div>
                 <div class="kpi-compare">목표: <span id="goalTarget">70억</span></div>
                 <div class="kpi-compare" id="goalCompare" style="display: none;"></div>
+                <div class="kpi-overlay" id="goalOverlay"></div>
             </div>
         </section>
 
@@ -3045,6 +3034,15 @@ HTML_TEMPLATE = '''
                 // 목표달성률에 전년대비 성장률 표시
                 document.getElementById('goalCompare').innerHTML = `성장률: <span class="${salesUp ? 'up' : 'down'}" style="color: var(--${salesUp ? 'success' : 'danger'}); font-weight: 600;">${salesUp ? '+' : ''}${salesDiff}%</span>`;
                 document.getElementById('goalCompare').style.display = 'block';
+
+                // 목표달성률 오버레이 (전년대비 증감률)
+                const compGoalRate = ((compSales / goalTarget) * 100).toFixed(1);
+                document.getElementById('goalOverlay').innerHTML = `
+                    <div class="overlay-year-badge">${compareData.year}년</div>
+                    <div class="overlay-label">전년도 달성률</div>
+                    <div class="overlay-value">${compGoalRate}%</div>
+                    <div class="overlay-change">성장률: <span class="${salesUp ? 'up' : 'down'}">${salesUp ? '+' : ''}${salesDiff}%</span></div>
+                `;
             } else {
                 ['compareTotalSales', 'compareTotalCount', 'compareAvgPrice', 'goalCompare'].forEach(id => {
                     const el = document.getElementById(id);
@@ -3052,7 +3050,7 @@ HTML_TEMPLATE = '''
                 });
                 ['salesTrend', 'countTrend', 'priceTrend'].forEach(id => document.getElementById(id).style.visibility = 'hidden');
                 // 오버레이 비우기
-                ['salesOverlay', 'countOverlay', 'priceOverlay'].forEach(id => document.getElementById(id).innerHTML = '');
+                ['salesOverlay', 'countOverlay', 'priceOverlay', 'goalOverlay'].forEach(id => document.getElementById(id).innerHTML = '');
             }
         }
 
