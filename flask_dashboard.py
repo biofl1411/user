@@ -1158,8 +1158,10 @@ def process_data(data, purpose_filter=None):
         client = str(row.get('거래처', '') or '').strip() or '미지정'
         defect = str(row.get('부적합항목', '') or '').strip()
         sample_type = str(row.get('검체유형', '') or '').strip()
-        urgent = str(row.get('긴급여부', '') or '').strip().upper()
-        is_urgent = urgent in ['Y', '예', '1', 'O', '긴급', 'TRUE', 'YES', 'T', '참']
+        urgent_raw = str(row.get('긴급여부', '') or '').strip()
+        is_urgent_12h = urgent_raw == '12시긴급'
+        is_urgent_normal = urgent_raw == '긴급'
+        is_urgent = is_urgent_12h or is_urgent_normal
         if sample_type:
             sample_types.add(sample_type)
 
@@ -1168,10 +1170,14 @@ def process_data(data, purpose_filter=None):
 
         # 매니저별
         if manager not in by_manager:
-            by_manager[manager] = {'sales': 0, 'count': 0, 'clients': {}, 'urgent': 0}
+            by_manager[manager] = {'sales': 0, 'count': 0, 'clients': {}, 'urgent': 0, 'urgent_12h': 0, 'urgent_normal': 0}
         by_manager[manager]['sales'] += sales
         by_manager[manager]['count'] += 1
-        if is_urgent:
+        if is_urgent_12h:
+            by_manager[manager]['urgent_12h'] += 1
+            by_manager[manager]['urgent'] += 1
+        elif is_urgent_normal:
+            by_manager[manager]['urgent_normal'] += 1
             by_manager[manager]['urgent'] += 1
         if client not in by_manager[manager]['clients']:
             by_manager[manager]['clients'][client] = {'sales': 0, 'count': 0}
@@ -1455,7 +1461,7 @@ def process_data(data, purpose_filter=None):
         ]
 
     return {
-        'by_manager': [(m, {'sales': d['sales'], 'count': d['count'], 'urgent': d.get('urgent', 0)}) for m, d in sorted_managers],
+        'by_manager': [(m, {'sales': d['sales'], 'count': d['count'], 'urgent': d.get('urgent', 0), 'urgent_12h': d.get('urgent_12h', 0), 'urgent_normal': d.get('urgent_normal', 0)}) for m, d in sorted_managers],
         'by_branch': [(k, {'sales': v['sales'], 'count': v['count'], 'managers': len(v['managers'])})
                       for k, v in sorted_branches],
         'by_month': sorted(by_month.items()),
@@ -4067,41 +4073,60 @@ HTML_TEMPLATE = '''
             });
         }
 
-        // 긴급 접수 건수 차트
+        // 긴급 접수 건수 차트 (12시긴급 + 긴급 분리)
         function updateUrgentChart() {
             const ctx = document.getElementById('urgentChart');
             if (!ctx) return;
             if (charts.urgent) charts.urgent.destroy();
 
             const managers = currentData.by_manager || [];
-            const urgentData = managers.map(m => ({ name: m[0], urgent: m[1].urgent || 0 })).sort((a, b) => b.urgent - a.urgent);
-            const maxUrgent = Math.max(...urgentData.map(d => d.urgent)) || 1;
+            const urgentData = managers.map(m => ({
+                name: m[0],
+                urgent_12h: m[1].urgent_12h || 0,
+                urgent_normal: m[1].urgent_normal || 0,
+                total: (m[1].urgent_12h || 0) + (m[1].urgent_normal || 0)
+            })).sort((a, b) => b.total - a.total);
 
-            // 데이터셋 구성
-            const datasets = [{
-                label: currentData.year + '년 긴급',
-                data: urgentData.map(d => d.urgent),
-                backgroundColor: urgentData.map(d => {
-                    const ratio = d.urgent / maxUrgent;
-                    if (ratio >= 0.8) return 'rgba(239, 68, 68, 0.8)';
-                    if (ratio >= 0.5) return 'rgba(245, 158, 11, 0.8)';
-                    return 'rgba(99, 102, 241, 0.8)';
-                }),
-                borderRadius: 6,
-            }];
+            // 데이터셋 구성 (12시긴급, 일반긴급 분리)
+            const datasets = [
+                {
+                    label: '12시긴급',
+                    data: urgentData.map(d => d.urgent_12h),
+                    backgroundColor: 'rgba(220, 38, 38, 0.8)',
+                    borderRadius: 6,
+                    stack: 'current',
+                },
+                {
+                    label: '긴급',
+                    data: urgentData.map(d => d.urgent_normal),
+                    backgroundColor: 'rgba(245, 158, 11, 0.8)',
+                    borderRadius: 6,
+                    stack: 'current',
+                }
+            ];
 
             // 전년도 비교 데이터 추가
             if (compareData && compareData.by_manager) {
                 const compManagerMap = Object.fromEntries((compareData.by_manager || []).map(m => [m[0], m[1]]));
-                const compData = urgentData.map(d => {
-                    const comp = compManagerMap[d.name];
-                    return comp ? (comp.urgent || 0) : 0;
+                datasets.push({
+                    label: compareData.year + '년 12시긴급',
+                    data: urgentData.map(d => {
+                        const comp = compManagerMap[d.name];
+                        return comp ? (comp.urgent_12h || 0) : 0;
+                    }),
+                    backgroundColor: 'rgba(220, 38, 38, 0.3)',
+                    borderRadius: 6,
+                    stack: 'compare',
                 });
                 datasets.push({
                     label: compareData.year + '년 긴급',
-                    data: compData,
-                    backgroundColor: 'rgba(156, 163, 175, 0.5)',
+                    data: urgentData.map(d => {
+                        const comp = compManagerMap[d.name];
+                        return comp ? (comp.urgent_normal || 0) : 0;
+                    }),
+                    backgroundColor: 'rgba(245, 158, 11, 0.3)',
                     borderRadius: 6,
+                    stack: 'compare',
                 });
             }
 
@@ -4114,8 +4139,11 @@ HTML_TEMPLATE = '''
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: compareData ? true : false, position: 'top' } },
-                    scales: { y: { beginAtZero: true } }
+                    plugins: { legend: { display: true, position: 'top' } },
+                    scales: {
+                        x: { stacked: true },
+                        y: { stacked: true, beginAtZero: true }
+                    }
                 }
             });
         }
@@ -4435,6 +4463,7 @@ HTML_TEMPLATE = '''
                     <th class="text-right">${currentData.year}년 평균단가</th>
                     <th class="text-right">${compareData.year}년</th>
                     <th class="text-right">${compareData.year}년 평균단가</th>
+                    <th class="text-right">12시긴급</th>
                     <th class="text-right">긴급</th>
                     <th class="text-right">증감</th>
                     <th>비중</th>
@@ -4450,14 +4479,16 @@ HTML_TEMPLATE = '''
                     const percent = (d[1].sales / total * 100).toFixed(1);
                     const avgPrice = (d[1].count || 0) > 0 ? d[1].sales / d[1].count : 0;
                     const compAvgPrice = compCount > 0 ? compSales / compCount : 0;
-                    const urgent = d[1].urgent || 0;
+                    const urgent12h = d[1].urgent_12h || 0;
+                    const urgentNormal = d[1].urgent_normal || 0;
                     return `<tr>
                         <td><strong>${d[0]}</strong></td>
                         <td class="text-right">${formatCurrency(d[1].sales)}</td>
                         <td class="text-right">${formatCurrency(avgPrice)}</td>
                         <td class="text-right" style="color: var(--gray-400);">${formatCurrency(compSales)}</td>
                         <td class="text-right" style="color: var(--gray-400);">${formatCurrency(compAvgPrice)}</td>
-                        <td class="text-right"><span class="urgent-badge">🚨 ${urgent}건</span></td>
+                        <td class="text-right"><span class="urgent-badge" style="background: #dc2626;">⏰ ${urgent12h}</span></td>
+                        <td class="text-right"><span class="urgent-badge">🚨 ${urgentNormal}</span></td>
                         <td class="text-right"><span class="change-badge ${diff >= 0 ? 'positive' : 'negative'}">${diff >= 0 ? '+' : ''}${diffRate}%</span></td>
                         <td><div class="progress-cell"><div class="progress-bar"><div class="progress-fill" style="width: ${percent}%;"></div></div><span class="progress-value">${percent}%</span></div></td>
                         <td class="text-center"><button class="btn-detail" onclick="showManagerDetail('${d[0]}')">상세</button></td>
@@ -4470,6 +4501,7 @@ HTML_TEMPLATE = '''
                     <th class="text-right">건수</th>
                     <th class="text-right">평균단가</th>
                     <th class="text-right">일평균</th>
+                    <th class="text-right">12시긴급</th>
                     <th class="text-right">긴급</th>
                     <th>비중</th>
                     <th class="text-center">상세</th>
@@ -4478,14 +4510,16 @@ HTML_TEMPLATE = '''
                     const percent = (d[1].sales / total * 100).toFixed(1);
                     const avgPrice = (d[1].count || 0) > 0 ? d[1].sales / d[1].count : 0;
                     const dailyAvg = d[1].sales / workingDays;
-                    const urgent = d[1].urgent || 0;
+                    const urgent12h = d[1].urgent_12h || 0;
+                    const urgentNormal = d[1].urgent_normal || 0;
                     return `<tr>
                         <td><strong>${d[0]}</strong></td>
                         <td class="text-right">${formatCurrency(d[1].sales)}</td>
                         <td class="text-right">${(d[1].count || 0).toLocaleString()}</td>
                         <td class="text-right">${formatCurrency(avgPrice)}</td>
                         <td class="text-right">${formatCurrency(dailyAvg)}</td>
-                        <td class="text-right"><span class="urgent-badge">🚨 ${urgent}건</span></td>
+                        <td class="text-right"><span class="urgent-badge" style="background: #dc2626;">⏰ ${urgent12h}</span></td>
+                        <td class="text-right"><span class="urgent-badge">🚨 ${urgentNormal}</span></td>
                         <td><div class="progress-cell"><div class="progress-bar"><div class="progress-fill" style="width: ${percent}%;"></div></div><span class="progress-value">${percent}%</span></div></td>
                         <td class="text-center"><button class="btn-detail" onclick="showManagerDetail('${d[0]}')">상세</button></td>
                     </tr>`;
