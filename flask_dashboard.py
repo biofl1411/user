@@ -5780,7 +5780,30 @@ HTML_TEMPLATE = '''
             const container = document.getElementById('aiTableContainer');
             let html = '';
 
-            if (data.analysis_type === 'monthly_trend' && data.chart_data) {
+            if (data.analysis_type === 'year_comparison' && data.comparison) {
+                // 연도간 비교 분석
+                const c = data.comparison;
+                const mainYear = c.main_year || {};
+                const compareYear = c.compare_year || {};
+                const diff = c.difference || {};
+
+                html = `<table><thead><tr><th>구분</th><th>건수</th><th>매출(공급가액)</th></tr></thead><tbody>`;
+                html += `<tr><td>${mainYear.year || '2025'}년</td><td>${(mainYear.count || 0).toLocaleString()}</td><td>${formatCurrency(mainYear.sales || 0)}</td></tr>`;
+                html += `<tr><td>${compareYear.year || '2024'}년</td><td>${(compareYear.count || 0).toLocaleString()}</td><td>${formatCurrency(compareYear.sales || 0)}</td></tr>`;
+
+                const diffColor = diff.sales >= 0 ? '#2e7d32' : '#c62828';
+                const diffSign = diff.sales >= 0 ? '+' : '';
+                html += `<tr style="font-weight: bold; color: ${diffColor};"><td>차이</td><td>${diffSign}${(diff.count || 0).toLocaleString()}</td><td>${diffSign}${formatCurrency(diff.sales || 0)} (${diffSign}${diff.growth_rate || 0}%)</td></tr>`;
+                html += `</tbody></table>`;
+            } else if ((data.analysis_type === 'top_managers' || data.analysis_type === 'top_purposes') && data.top_items) {
+                // 영업담당별/검사목적별 TOP N
+                const label = data.analysis_type === 'top_managers' ? '영업담당' : '검사목적';
+                html = `<table><thead><tr><th>순위</th><th>${label}</th><th>건수</th><th>매출</th></tr></thead><tbody>`;
+                data.top_items.forEach((item, i) => {
+                    html += `<tr><td>${i+1}</td><td>${item.name}</td><td>${item.count.toLocaleString()}</td><td>${formatCurrency(item.sales || item.fee || 0)}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+            } else if (data.analysis_type === 'monthly_trend' && data.chart_data) {
                 html = `<table><thead><tr><th>월</th>`;
                 data.chart_data.datasets.forEach(ds => {
                     html += `<th>${ds.label}</th>`;
@@ -5812,8 +5835,8 @@ HTML_TEMPLATE = '''
             } else if (data.summary) {
                 html = `<table><thead><tr><th>항목</th><th>값</th></tr></thead><tbody>`;
                 html += `<tr><td>총 건수</td><td>${data.summary.total_count.toLocaleString()}건</td></tr>`;
-                html += `<tr><td>총 수수료</td><td>${formatCurrency(data.summary.total_fee)}</td></tr>`;
-                html += `<tr><td>평균 수수료</td><td>${formatCurrency(data.summary.avg_fee)}</td></tr>`;
+                html += `<tr><td>총 매출</td><td>${formatCurrency(data.summary.total_sales || data.summary.total_fee || 0)}</td></tr>`;
+                html += `<tr><td>평균 매출</td><td>${formatCurrency(data.summary.avg_sales || data.summary.avg_fee || 0)}</td></tr>`;
                 html += `</tbody></table>`;
             }
 
@@ -5824,11 +5847,26 @@ HTML_TEMPLATE = '''
             const insight = document.getElementById('aiInsight');
             let text = '💡 <strong>인사이트:</strong> ';
 
-            if (data.analysis_type === 'monthly_trend') {
+            if (data.analysis_type === 'year_comparison' && data.comparison) {
+                const diff = data.comparison.difference || {};
+                const rate = diff.growth_rate || 0;
+                const rateColor = rate >= 0 ? '#2e7d32' : '#c62828';
+                const rateSign = rate >= 0 ? '+' : '';
+                const mainYear = data.comparison.main_year?.year || '2025';
+                const compareYear = data.comparison.compare_year?.year || '2024';
+
+                text += `${mainYear}년 vs ${compareYear}년 비교: 매출 <span style="color: ${rateColor}; font-weight: bold;">${rateSign}${rate}%</span> (${rateSign}${formatCurrency(diff.sales || 0)})`;
+                if (data.month) {
+                    text = `💡 <strong>${data.month}월 인사이트:</strong> ` + text.replace('💡 <strong>인사이트:</strong> ', '');
+                }
+            } else if (data.analysis_type === 'monthly_trend') {
                 text += `총 매출 ${formatCurrency(data.total_fee || 0)}`;
                 if (data.total_diff) {
                     text += `, 제외 시 연간 <span style="color: #c62828; font-weight: bold;">-${formatCurrency(data.total_diff)}</span> 감소 예상`;
                 }
+            } else if ((data.analysis_type === 'top_managers' || data.analysis_type === 'top_purposes') && data.top_items) {
+                const label = data.analysis_type === 'top_managers' ? '영업담당' : '검사목적';
+                text += `${label} TOP ${data.top_items.length} 분석: 1위 <strong>${data.top_items[0]?.name || '-'}</strong> (${formatCurrency(data.top_items[0]?.sales || 0)})`;
             } else if (data.analysis_type === 'comparison' && data.comparison) {
                 const pct = ((data.comparison.difference.fee / data.comparison.with_item.fee) * 100).toFixed(1);
                 text += `해당 항목 제외 시 매출 <span style="color: #c62828; font-weight: bold;">${pct}%</span> 감소 (${formatCurrency(data.comparison.difference.fee)})`;
@@ -7131,6 +7169,10 @@ def execute_analysis(params, food_2024, food_2025, data_2024, data_2025):
     # 비교 데이터 필터링
     filtered_compare = filter_data(compare_data, month, purpose, sample_type, manager) if compare_data else []
 
+    # compare_year가 있으면 무조건 year_comparison 타입으로 처리
+    if compare_year:
+        analysis_type = 'year_comparison'
+
     result = {
         'success': True,
         'description': description,
@@ -7139,7 +7181,7 @@ def execute_analysis(params, food_2024, food_2025, data_2024, data_2025):
         'year': year
     }
 
-    if analysis_type == 'year_comparison' or compare_year:
+    if analysis_type == 'year_comparison':
         # 연도간 비교 분석
         main_total = sum(get_sales(row) for row in filtered)
         main_count = len(filtered)
