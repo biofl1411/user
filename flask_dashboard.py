@@ -1631,11 +1631,13 @@ HTML_TEMPLATE = '''
 <body>
     <div id="toast" class="toast"></div>
     <div class="header">
-        <h1>📊 경영지표 대시보드</h1>
-        <!-- 토큰 사용량 표시 -->
-        <div id="tokenUsageDisplay" style="position: absolute; right: 20px; top: 15px; font-size: 11px; color: rgba(255,255,255,0.9); text-align: right; line-height: 1.6;">
-            <div>📅 이번달: <span id="thisMonthTokens">0</span> 토큰 | 💵 $<span id="thisMonthUSD">0</span> | 💰 ₩<span id="thisMonthKRW">0</span></div>
-            <div style="color: rgba(255,255,255,0.7);">📆 저번달: <span id="lastMonthTokens">0</span> 토큰 | 💵 $<span id="lastMonthUSD">0</span> | 💰 ₩<span id="lastMonthKRW">0</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 10px;">
+            <h1 style="margin: 0;">📊 경영지표 대시보드</h1>
+            <!-- 토큰 사용량 표시 -->
+            <div id="tokenUsageDisplay" style="font-size: 11px; color: rgba(255,255,255,0.9); text-align: right; line-height: 1.5; background: rgba(0,0,0,0.15); padding: 8px 12px; border-radius: 8px;">
+                <div>이번달: <span id="thisMonthTokens">0</span> 토큰 | $<span id="thisMonthUSD">0</span> | ₩<span id="thisMonthKRW">0</span></div>
+                <div style="color: rgba(255,255,255,0.7); font-size: 10px;">저번달: <span id="lastMonthTokens">0</span> 토큰 | $<span id="lastMonthUSD">0</span> | ₩<span id="lastMonthKRW">0</span></div>
+            </div>
         </div>
         <div class="controls">
             <div class="date-group">
@@ -3508,15 +3510,6 @@ HTML_TEMPLATE = '''
                 data: { labels: top15.map(d => d[0]), datasets },
                 options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } } } }
             });
-
-            // 업체별 탭 담당자 필터 드롭다운 업데이트
-            const clientManagerFilter = document.getElementById('clientManagerFilter');
-            const currentFilter = clientManagerFilter.value;
-            clientManagerFilter.innerHTML = '<option value="">전체 담당자</option>';
-            currentData.by_manager.forEach(m => {
-                clientManagerFilter.innerHTML += `<option value="${m[0]}">${m[0]}</option>`;
-            });
-            if (currentFilter) clientManagerFilter.value = currentFilter;
         }
 
         function updateBranchChart() {
