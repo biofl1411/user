@@ -2639,10 +2639,30 @@ HTML_TEMPLATE = '''
         .data-table th.sortable {
             cursor: pointer;
             user-select: none;
+            position: relative;
+            padding-right: 24px;
         }
 
         .data-table th.sortable:hover {
             background: var(--gray-100);
+        }
+
+        .data-table th.sortable::after {
+            content: '⇅';
+            position: absolute;
+            right: 8px;
+            color: var(--gray-300);
+            font-size: 12px;
+        }
+
+        .data-table th.sortable.asc::after {
+            content: '↑';
+            color: var(--primary);
+        }
+
+        .data-table th.sortable.desc::after {
+            content: '↓';
+            color: var(--primary);
         }
 
         .data-table td {
@@ -3093,6 +3113,7 @@ HTML_TEMPLATE = '''
                         <div class="card-badge">접수일 기준</div>
                     </div>
                     <div class="card-body">
+                        <div class="chart-legend" id="dailyClientLegend" style="display: none;"></div>
                         <div class="chart-container" style="height: 280px;"><canvas id="dailyClientChart"></canvas></div>
                     </div>
                 </div>
@@ -3508,6 +3529,7 @@ HTML_TEMPLATE = '''
         let currentData = null;
         let compareData = null;
         let currentTab = 'main';
+        let managerTableSort = { column: null, direction: 'desc' };
 
         // 유틸리티 함수
         function formatCurrency(value) {
@@ -4390,16 +4412,36 @@ HTML_TEMPLATE = '''
 
             const avgAll = chartData.reduce((s, d) => s + d.avgDailyClients, 0) / (chartData.length || 1);
 
+            // 전년도 비교 데이터
+            const datasets = [{
+                label: currentData.year + '년',
+                data: chartData.map(d => d.avgDailyClients),
+                backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                borderRadius: 6,
+            }];
+
+            if (compareData && compareData.by_manager) {
+                const compareMap = Object.fromEntries(compareData.by_manager || []);
+                datasets.push({
+                    label: compareData.year + '년',
+                    data: chartData.map(d => {
+                        const compData = compareMap[d.name];
+                        return compData ? Math.round((compData.count || 0) / 250 * 10) / 10 : 0;
+                    }),
+                    backgroundColor: 'rgba(139, 92, 246, 0.5)',
+                    borderRadius: 6,
+                });
+                document.getElementById('dailyClientLegend').innerHTML = `<div class="legend-item"><div class="legend-color" style="background: rgba(99, 102, 241, 0.8);"></div><span>${currentData.year}년</span></div><div class="legend-item"><div class="legend-color" style="background: rgba(139, 92, 246, 0.5);"></div><span>${compareData.year}년</span></div>`;
+                document.getElementById('dailyClientLegend').style.display = 'flex';
+            } else {
+                document.getElementById('dailyClientLegend').style.display = 'none';
+            }
+
             charts.dailyClient = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: chartData.map(d => d.name),
-                    datasets: [{
-                        label: '일평균 건수',
-                        data: chartData.map(d => d.avgDailyClients),
-                        backgroundColor: chartData.map(d => d.avgDailyClients >= avgAll ? 'rgba(99, 102, 241, 0.7)' : 'rgba(148, 163, 184, 0.6)'),
-                        borderRadius: 6,
-                    }]
+                    datasets
                 },
                 options: {
                     responsive: true,
@@ -4803,29 +4845,76 @@ HTML_TEMPLATE = '''
             charts.monthly = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } }, x: { grid: { display: false } } } } });
         }
 
+        // 테이블 정렬 함수
+        function sortManagerTable(column) {
+            if (managerTableSort.column === column) {
+                managerTableSort.direction = managerTableSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                managerTableSort.column = column;
+                managerTableSort.direction = 'desc';
+            }
+            updateManagerTable();
+        }
+
         function updateManagerTable() {
-            const managers = currentData.by_manager || [];
+            let managers = [...(currentData.by_manager || [])];
             const tbody = document.querySelector('#managerTable tbody');
             const total = currentData.total_sales || 1;
             const workingDays = 250;
+            const compareMap = compareData ? Object.fromEntries(compareData.by_manager || []) : {};
+
+            // 정렬 적용
+            if (managerTableSort.column) {
+                const col = managerTableSort.column;
+                const dir = managerTableSort.direction === 'asc' ? 1 : -1;
+                managers.sort((a, b) => {
+                    let aVal, bVal;
+                    const aComp = compareMap[a[0]] || {};
+                    const bComp = compareMap[b[0]] || {};
+                    switch(col) {
+                        case 'name': aVal = a[0]; bVal = b[0]; return dir * aVal.localeCompare(bVal); break;
+                        case 'sales': aVal = a[1].sales || 0; bVal = b[1].sales || 0; break;
+                        case 'count': aVal = a[1].count || 0; bVal = b[1].count || 0; break;
+                        case 'avgPrice': aVal = (a[1].count > 0 ? a[1].sales / a[1].count : 0); bVal = (b[1].count > 0 ? b[1].sales / b[1].count : 0); break;
+                        case 'dailyAvg': aVal = a[1].sales / workingDays; bVal = b[1].sales / workingDays; break;
+                        case 'urgent': aVal = a[1].urgent || 0; bVal = b[1].urgent || 0; break;
+                        case 'compSales': aVal = aComp.sales || 0; bVal = bComp.sales || 0; break;
+                        case 'compAvgPrice': aVal = aComp.count > 0 ? aComp.sales / aComp.count : 0; bVal = bComp.count > 0 ? bComp.sales / bComp.count : 0; break;
+                        case 'change':
+                            const aCompS = aComp.sales || 0;
+                            const bCompS = bComp.sales || 0;
+                            aVal = aCompS > 0 ? ((a[1].sales - aCompS) / aCompS * 100) : 0;
+                            bVal = bCompS > 0 ? ((b[1].sales - bCompS) / bCompS * 100) : 0;
+                            break;
+                        case 'percent': aVal = a[1].sales / total; bVal = b[1].sales / total; break;
+                        default: aVal = a[1].sales || 0; bVal = b[1].sales || 0;
+                    }
+                    return dir * (aVal - bVal);
+                });
+            }
 
             // 테이블 배지 업데이트
             const badgeEl = document.getElementById('managerTableBadge');
             if (badgeEl) badgeEl.textContent = managers.length + '명';
 
+            // 정렬 클래스 헬퍼
+            const sortClass = (col) => {
+                if (managerTableSort.column === col) return `sortable ${managerTableSort.direction}`;
+                return 'sortable';
+            };
+
             if (compareData) {
                 document.getElementById('managerTableHead').innerHTML = `<tr>
-                    <th>담당자</th>
-                    <th class="text-right">${currentData.year}년</th>
-                    <th class="text-right">${currentData.year}년 평균단가</th>
-                    <th class="text-right">${compareData.year}년</th>
-                    <th class="text-right">${compareData.year}년 평균단가</th>
-                    <th class="text-right">긴급</th>
-                    <th class="text-right">증감</th>
-                    <th>비중</th>
+                    <th class="${sortClass('name')}" onclick="sortManagerTable('name')">담당자</th>
+                    <th class="text-right ${sortClass('sales')}" onclick="sortManagerTable('sales')">${currentData.year}년</th>
+                    <th class="text-right ${sortClass('avgPrice')}" onclick="sortManagerTable('avgPrice')">${currentData.year}년 평균단가</th>
+                    <th class="text-right ${sortClass('compSales')}" onclick="sortManagerTable('compSales')">${compareData.year}년</th>
+                    <th class="text-right ${sortClass('compAvgPrice')}" onclick="sortManagerTable('compAvgPrice')">${compareData.year}년 평균단가</th>
+                    <th class="text-right ${sortClass('urgent')}" onclick="sortManagerTable('urgent')">긴급</th>
+                    <th class="text-right ${sortClass('change')}" onclick="sortManagerTable('change')">증감</th>
+                    <th class="${sortClass('percent')}" onclick="sortManagerTable('percent')">비중</th>
                     <th class="text-center">상세</th>
                 </tr>`;
-                const compareMap = Object.fromEntries(compareData.by_manager || []);
                 tbody.innerHTML = managers.map(d => {
                     const compData = compareMap[d[0]] || {};
                     const compSales = compData.sales || 0;
@@ -4850,13 +4939,13 @@ HTML_TEMPLATE = '''
                 }).join('');
             } else {
                 document.getElementById('managerTableHead').innerHTML = `<tr>
-                    <th>담당자</th>
-                    <th class="text-right">매출액</th>
-                    <th class="text-right">건수</th>
-                    <th class="text-right">평균단가</th>
-                    <th class="text-right">일평균</th>
-                    <th class="text-right">긴급</th>
-                    <th>비중</th>
+                    <th class="${sortClass('name')}" onclick="sortManagerTable('name')">담당자</th>
+                    <th class="text-right ${sortClass('sales')}" onclick="sortManagerTable('sales')">매출액</th>
+                    <th class="text-right ${sortClass('count')}" onclick="sortManagerTable('count')">건수</th>
+                    <th class="text-right ${sortClass('avgPrice')}" onclick="sortManagerTable('avgPrice')">평균단가</th>
+                    <th class="text-right ${sortClass('dailyAvg')}" onclick="sortManagerTable('dailyAvg')">일평균</th>
+                    <th class="text-right ${sortClass('urgent')}" onclick="sortManagerTable('urgent')">긴급</th>
+                    <th class="${sortClass('percent')}" onclick="sortManagerTable('percent')">비중</th>
                     <th class="text-center">상세</th>
                 </tr>`;
                 tbody.innerHTML = managers.map(d => {
