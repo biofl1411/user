@@ -3379,7 +3379,7 @@ HTML_TEMPLATE = '''
             if (card) card.classList.add('active');
             const content = document.getElementById(tabId);
             if (content) content.classList.add('active');
-            document.getElementById('kpiSection').classList.toggle('hidden', !['main', 'personal'].includes(tabId));
+            document.getElementById('kpiSection').classList.toggle('hidden', tabId !== 'main');
         }
 
         // 비교 체크박스
