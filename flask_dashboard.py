@@ -4084,32 +4084,55 @@ HTML_TEMPLATE = '''
 
             document.getElementById('modalManagerName').textContent = managerName + ' 상세';
 
-            // 주요 거래 업체 (임의 데이터)
-            const clients = currentData.by_client || [];
-            const topClients = clients.slice(0, 5);
-            document.getElementById('modalTopClients').innerHTML = topClients.map(c => `
-                <div class="modal-client-item">
-                    <span class="modal-client-name">${c[0]}</span>
-                    <span class="modal-client-value">${formatCurrency(c[1].sales)}</span>
-                </div>
-            `).join('');
+            // 담당자별 주요 거래 업체 (manager_top_clients 사용)
+            const managerClients = currentData.manager_top_clients?.[managerName] || [];
+            if (managerClients.length > 0) {
+                document.getElementById('modalTopClients').innerHTML = managerClients.slice(0, 5).map(c => `
+                    <div class="modal-client-item">
+                        <span class="modal-client-name">${c[0]}</span>
+                        <span class="modal-client-value">${formatCurrency(c[1].sales)}</span>
+                    </div>
+                `).join('');
+            } else {
+                document.getElementById('modalTopClients').innerHTML = '<div style="color: var(--gray-400); font-size: 13px;">데이터 없음</div>';
+            }
 
-            // 검사 목적별 비중 차트
+            // 담당자별 검사 목적별 비중 차트 (purpose_managers 사용)
             const modalCtx = document.getElementById('modalPurposeCanvas');
             if (charts.modalPurpose) charts.modalPurpose.destroy();
-            const purposes = (currentData.by_purpose || []).slice(0, 5);
-            charts.modalPurpose = new Chart(modalCtx.getContext('2d'), {
-                type: 'doughnut',
-                data: {
-                    labels: purposes.map(p => p[0]),
-                    datasets: [{ data: purposes.map(p => p[1].sales), backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4'] }]
-                },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 } } } } }
-            });
 
-            // 담당 지역
-            const regions = (currentData.by_region || []).slice(0, 5).map(r => r[0]);
-            document.getElementById('modalRegions').innerHTML = regions.map(r => `<span class="region-tag">${r}</span>`).join('');
+            // 목적별 담당자 데이터에서 해당 담당자 데이터 추출
+            const managerPurposes = [];
+            const purposeManagers = currentData.purpose_managers || {};
+            for (const [purpose, managers] of Object.entries(purposeManagers)) {
+                const mgrData = managers.find(m => m.name === managerName);
+                if (mgrData) {
+                    managerPurposes.push({ name: purpose, sales: mgrData.sales });
+                }
+            }
+            managerPurposes.sort((a, b) => b.sales - a.sales);
+            const topPurposes = managerPurposes.slice(0, 5);
+
+            if (topPurposes.length > 0) {
+                charts.modalPurpose = new Chart(modalCtx.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: topPurposes.map(p => p.name),
+                        datasets: [{ data: topPurposes.map(p => p.sales), backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4'] }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 } } } } }
+                });
+            }
+
+            // 담당자별 담당 지역 (manager_regions 사용)
+            const managerRegions = currentData.manager_regions?.[managerName] || [];
+            if (managerRegions.length > 0) {
+                document.getElementById('modalRegions').innerHTML = managerRegions.slice(0, 5).map(r =>
+                    `<span class="region-tag">${r.region} (${formatCurrency(r.sales)})</span>`
+                ).join('');
+            } else {
+                document.getElementById('modalRegions').innerHTML = '<span style="color: var(--gray-400); font-size: 13px;">데이터 없음</span>';
+            }
 
             document.getElementById('managerModal').style.display = 'flex';
         }
@@ -4330,8 +4353,9 @@ HTML_TEMPLATE = '''
                 document.getElementById('managerTableHead').innerHTML = `<tr>
                     <th>담당자</th>
                     <th class="text-right">${currentData.year}년</th>
+                    <th class="text-right">${currentData.year}년 평균단가</th>
                     <th class="text-right">${compareData.year}년</th>
-                    <th class="text-right">평균단가</th>
+                    <th class="text-right">${compareData.year}년 평균단가</th>
                     <th class="text-right">긴급</th>
                     <th class="text-right">증감</th>
                     <th>비중</th>
@@ -4339,17 +4363,21 @@ HTML_TEMPLATE = '''
                 </tr>`;
                 const compareMap = Object.fromEntries(compareData.by_manager || []);
                 tbody.innerHTML = managers.map(d => {
-                    const compSales = compareMap[d[0]]?.sales || 0;
+                    const compData = compareMap[d[0]] || {};
+                    const compSales = compData.sales || 0;
+                    const compCount = compData.count || 0;
                     const diff = d[1].sales - compSales;
                     const diffRate = compSales > 0 ? ((diff / compSales) * 100).toFixed(1) : 0;
                     const percent = (d[1].sales / total * 100).toFixed(1);
                     const avgPrice = (d[1].count || 0) > 0 ? d[1].sales / d[1].count : 0;
+                    const compAvgPrice = compCount > 0 ? compSales / compCount : 0;
                     const urgent = d[1].urgent || 0;
                     return `<tr>
                         <td><strong>${d[0]}</strong></td>
                         <td class="text-right">${formatCurrency(d[1].sales)}</td>
-                        <td class="text-right" style="color: var(--gray-400);">${formatCurrency(compSales)}</td>
                         <td class="text-right">${formatCurrency(avgPrice)}</td>
+                        <td class="text-right" style="color: var(--gray-400);">${formatCurrency(compSales)}</td>
+                        <td class="text-right" style="color: var(--gray-400);">${formatCurrency(compAvgPrice)}</td>
                         <td class="text-right"><span class="urgent-badge">🚨 ${urgent}건</span></td>
                         <td class="text-right"><span class="change-badge ${diff >= 0 ? 'positive' : 'negative'}">${diff >= 0 ? '+' : ''}${diffRate}%</span></td>
                         <td><div class="progress-cell"><div class="progress-bar"><div class="progress-fill" style="width: ${percent}%;"></div></div><span class="progress-value">${percent}%</span></div></td>
