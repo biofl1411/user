@@ -5684,6 +5684,9 @@ HTML_TEMPLATE = '''
                 document.getElementById('aiLoading').style.display = 'none';
                 document.getElementById('aiError').innerHTML = `<strong>오류:</strong> ${error.message}`;
                 document.getElementById('aiError').style.display = 'block';
+            } finally {
+                // 토큰 사용량 업데이트
+                loadTokenUsage();
             }
         }
 
