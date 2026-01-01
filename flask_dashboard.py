@@ -1136,6 +1136,7 @@ def process_data(data, purpose_filter=None):
     by_sample_type_month = {}  # 검체유형별-월별 데이터
     by_sample_type_manager = {}  # 검체유형별-담당자 데이터
     by_sample_type_purpose = {}  # 검체유형별-목적 데이터
+    by_urgent_month = {}  # 월별 긴급 데이터
     purposes = set()
     sample_types = set()  # 검체유형 목록
     total_sales = 0
@@ -1203,6 +1204,13 @@ def process_data(data, purpose_filter=None):
                 by_month[month] = {'sales': 0, 'count': 0}
             by_month[month]['sales'] += sales
             by_month[month]['count'] += 1
+
+            # 월별 긴급 데이터
+            if month not in by_urgent_month:
+                by_urgent_month[month] = {'sales': 0, 'count': 0}
+            if is_urgent:
+                by_urgent_month[month]['sales'] += sales
+                by_urgent_month[month]['count'] += 1
 
         # 거래처별
         if client not in by_client:
@@ -1460,6 +1468,7 @@ def process_data(data, purpose_filter=None):
         'by_branch': [(k, {'sales': v['sales'], 'count': v['count'], 'managers': len(v['managers'])})
                       for k, v in sorted_branches],
         'by_month': sorted(by_month.items()),
+        'by_urgent_month': sorted(by_urgent_month.items()),
         'by_client': [(c, {'sales': d['sales'], 'count': d['count'], 'avg': d['sales']/d['count'] if d['count'] > 0 else 0})
                       for c, d in sorted_clients[:50]],
         'by_purpose': sorted_purposes,
@@ -3025,6 +3034,26 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
+            <!-- 긴급 월별 추이 + 긴급 건당 단가 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📈 긴급 월별 추이</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 280px;"><canvas id="urgentMonthlyChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">💰 긴급 건당 단가</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 280px;"><canvas id="urgentUnitPriceChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
             <!-- 영업담당별 상세 테이블 -->
             <div class="card">
                 <div class="card-header">
@@ -3692,6 +3721,8 @@ HTML_TEMPLATE = '''
             updateManagerMonthlyChart();
             updatePerCaseChart();
             updateUrgentChart();
+            updateUrgentMonthlyChart();
+            updateUrgentUnitPriceChart();
             updateDailyClientChart();
         }
 
@@ -4119,6 +4150,108 @@ HTML_TEMPLATE = '''
                     maintainAspectRatio: false,
                     plugins: { legend: { display: compareData ? true : false, position: 'top' } },
                     scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // 긴급 월별 추이 차트
+        function updateUrgentMonthlyChart() {
+            const ctx = document.getElementById('urgentMonthlyChart');
+            if (!ctx) return;
+            if (charts.urgentMonthly) charts.urgentMonthly.destroy();
+
+            const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+            const urgentMonthMap = Object.fromEntries(currentData.by_urgent_month || []);
+            const urgentMonthly = labels.map((_, i) => urgentMonthMap[i+1]?.count || 0);
+
+            const datasets = [{
+                label: currentData.year + '년 긴급',
+                data: urgentMonthly,
+                borderColor: '#ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 5,
+                pointBackgroundColor: '#ef4444',
+            }];
+
+            // 전년도 비교 데이터
+            if (compareData && compareData.by_urgent_month) {
+                const compMap = Object.fromEntries(compareData.by_urgent_month || []);
+                datasets.push({
+                    label: compareData.year + '년 긴급',
+                    data: labels.map((_, i) => compMap[i+1]?.count || 0),
+                    borderColor: 'rgba(156, 163, 175, 0.8)',
+                    backgroundColor: 'rgba(156, 163, 175, 0.1)',
+                    fill: false,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    borderDash: [5, 5],
+                });
+            }
+
+            charts.urgentMonthly = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: compareData ? true : false, position: 'top' } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // 긴급 건당 단가 차트
+        function updateUrgentUnitPriceChart() {
+            const ctx = document.getElementById('urgentUnitPriceChart');
+            if (!ctx) return;
+            if (charts.urgentUnitPrice) charts.urgentUnitPrice.destroy();
+
+            const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+            const urgentMonthMap = Object.fromEntries(currentData.by_urgent_month || []);
+            const urgentUnitPrices = labels.map((_, i) => {
+                const d = urgentMonthMap[i+1];
+                return d && d.count > 0 ? d.sales / d.count : 0;
+            });
+
+            const datasets = [{
+                label: currentData.year + '년 긴급 건당 단가',
+                data: urgentUnitPrices,
+                borderColor: '#f59e0b',
+                backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 5,
+                pointBackgroundColor: '#f59e0b',
+            }];
+
+            // 전년도 비교 데이터
+            if (compareData && compareData.by_urgent_month) {
+                const compMap = Object.fromEntries(compareData.by_urgent_month || []);
+                datasets.push({
+                    label: compareData.year + '년 긴급 건당 단가',
+                    data: labels.map((_, i) => {
+                        const d = compMap[i+1];
+                        return d && d.count > 0 ? d.sales / d.count : 0;
+                    }),
+                    borderColor: 'rgba(156, 163, 175, 0.8)',
+                    backgroundColor: 'rgba(156, 163, 175, 0.1)',
+                    fill: false,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    borderDash: [5, 5],
+                });
+            }
+
+            charts.urgentUnitPrice = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: compareData ? true : false, position: 'top' } },
+                    scales: { y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } } }
                 }
             });
         }
