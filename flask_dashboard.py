@@ -1137,6 +1137,7 @@ def process_data(data, purpose_filter=None):
     by_sample_type_manager = {}  # 검체유형별-담당자 데이터
     by_sample_type_purpose = {}  # 검체유형별-목적 데이터
     by_urgent_month = {}  # 월별 긴급 데이터
+    by_branch_month_clients = {}  # 지사별 월별 거래처 (중복 분석용)
     purposes = set()
     sample_types = set()  # 검체유형 목록
     total_sales = 0
@@ -1211,6 +1212,14 @@ def process_data(data, purpose_filter=None):
             if is_urgent:
                 by_urgent_month[month]['sales'] += sales
                 by_urgent_month[month]['count'] += 1
+
+            # 지사별 월별 거래처 (중복 분석용)
+            if branch not in by_branch_month_clients:
+                by_branch_month_clients[branch] = {}
+            if month not in by_branch_month_clients[branch]:
+                by_branch_month_clients[branch][month] = set()
+            if client and client != '미지정':
+                by_branch_month_clients[branch][month].add(client)
 
         # 거래처별
         if client not in by_client:
@@ -1463,6 +1472,59 @@ def process_data(data, purpose_filter=None):
             for p, d in sorted_stp[:20]
         ]
 
+    # 지사별 월별 거래처 중복률 계산
+    branch_client_retention = {}
+    for branch, month_clients in by_branch_month_clients.items():
+        months = sorted(month_clients.keys())
+        retention_data = []
+        all_clients = set()
+        for month in months:
+            clients = month_clients[month]
+            # 이전 달과의 중복률 계산
+            if all_clients:
+                overlap = len(clients & all_clients)
+                retention_rate = (overlap / len(all_clients) * 100) if all_clients else 0
+            else:
+                overlap = 0
+                retention_rate = 0
+            retention_data.append({
+                'month': month,
+                'total': len(clients),
+                'overlap': overlap,
+                'retention': round(retention_rate, 1),
+                'new': len(clients - all_clients) if all_clients else len(clients)
+            })
+            all_clients.update(clients)
+        branch_client_retention[branch] = retention_data
+
+    # 전체 월별 거래처 중복률 (모든 지사 합산)
+    all_month_clients = {}
+    for branch, month_clients in by_branch_month_clients.items():
+        for month, clients in month_clients.items():
+            if month not in all_month_clients:
+                all_month_clients[month] = set()
+            all_month_clients[month].update(clients)
+
+    total_retention = []
+    cumulative_clients = set()
+    for month in sorted(all_month_clients.keys()):
+        clients = all_month_clients[month]
+        if cumulative_clients:
+            overlap = len(clients & cumulative_clients)
+            retention_rate = (overlap / len(cumulative_clients) * 100) if cumulative_clients else 0
+        else:
+            overlap = 0
+            retention_rate = 0
+        total_retention.append({
+            'month': month,
+            'total': len(clients),
+            'overlap': overlap,
+            'retention': round(retention_rate, 1),
+            'new': len(clients - cumulative_clients) if cumulative_clients else len(clients),
+            'cumulative': len(cumulative_clients | clients)
+        })
+        cumulative_clients.update(clients)
+
     return {
         'by_manager': [(m, {'sales': d['sales'], 'count': d['count'], 'urgent': d.get('urgent', 0)}) for m, d in sorted_managers],
         'by_branch': [(k, {'sales': v['sales'], 'count': v['count'], 'managers': len(v['managers'])})
@@ -1494,6 +1556,8 @@ def process_data(data, purpose_filter=None):
         'sample_type_managers': sample_type_managers,
         'sample_type_purposes': sample_type_purposes,
         'sample_types': sorted(list(sample_types)),
+        'branch_client_retention': branch_client_retention,
+        'total_client_retention': total_retention,
         'total_sales': total_sales,
         'total_count': total_count
     }
@@ -3188,6 +3252,61 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
             </div>
+
+            <!-- 거래처 중복 분석 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">🔄 월별 거래처 중복 현황</div>
+                        <div class="card-badge">기존 거래처 vs 신규</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 300px;"><canvas id="clientRetentionChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📊 거래처 리텐션율 추이</div>
+                        <div class="card-badge">이전달 대비 유지율</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 300px;"><canvas id="retentionRateChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 지사별 거래처 리텐션 테이블 -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <div class="card-title">📋 지사별 거래처 현황</div>
+                    <div class="card-badge" id="branchRetentionBadge">0개</div>
+                </div>
+                <div class="card-body">
+                    <div class="scroll-table">
+                        <table class="data-table" id="branchRetentionTable">
+                            <thead>
+                                <tr>
+                                    <th>지사/센터</th>
+                                    <th class="text-right">누적 거래처</th>
+                                    <th class="text-right">1월</th>
+                                    <th class="text-right">2월</th>
+                                    <th class="text-right">3월</th>
+                                    <th class="text-right">4월</th>
+                                    <th class="text-right">5월</th>
+                                    <th class="text-right">6월</th>
+                                    <th class="text-right">7월</th>
+                                    <th class="text-right">8월</th>
+                                    <th class="text-right">9월</th>
+                                    <th class="text-right">10월</th>
+                                    <th class="text-right">11월</th>
+                                    <th class="text-right">12월</th>
+                                </tr>
+                            </thead>
+                            <tbody id="branchRetentionBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 월별 탭 -->
@@ -4398,6 +4517,9 @@ HTML_TEMPLATE = '''
             // 차트들 업데이트
             updateBranchEfficiencyChart();
             updateBranchMonthlyChart();
+            updateClientRetentionChart();
+            updateRetentionRateChart();
+            updateBranchRetentionTable();
         }
 
         // 지사별 효율성 분석 산점도
@@ -4495,6 +4617,133 @@ HTML_TEMPLATE = '''
                     scales: { y: { ticks: { callback: v => formatCurrency(v) } } }
                 }
             });
+        }
+
+        // 월별 거래처 중복 현황 (Stacked Bar: 기존 vs 신규)
+        function updateClientRetentionChart() {
+            const ctx = document.getElementById('clientRetentionChart');
+            if (!ctx) return;
+            if (charts.clientRetention) charts.clientRetention.destroy();
+
+            const retention = currentData.total_client_retention || [];
+            const labels = retention.map(d => d.month + '월');
+            const overlap = retention.map(d => d.overlap);
+            const newClients = retention.map(d => d.new);
+
+            charts.clientRetention = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: '기존 거래처', data: overlap, backgroundColor: 'rgba(99, 102, 241, 0.8)', borderRadius: 4 },
+                        { label: '신규 거래처', data: newClients, backgroundColor: 'rgba(16, 185, 129, 0.8)', borderRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { stacked: true },
+                        y: { stacked: true, title: { display: true, text: '거래처 수' } }
+                    }
+                }
+            });
+        }
+
+        // 거래처 리텐션율 추이 (Line Chart)
+        function updateRetentionRateChart() {
+            const ctx = document.getElementById('retentionRateChart');
+            if (!ctx) return;
+            if (charts.retentionRate) charts.retentionRate.destroy();
+
+            const retention = currentData.total_client_retention || [];
+            const labels = retention.map(d => d.month + '월');
+            const rates = retention.map(d => d.retention);
+            const totals = retention.map(d => d.total);
+
+            charts.retentionRate = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: '리텐션율 (%)',
+                            data: rates,
+                            borderColor: '#6366f1',
+                            backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: '월별 거래처 수',
+                            data: totals,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            fill: false,
+                            tension: 0.4,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            title: { display: true, text: '리텐션율 (%)' },
+                            min: 0,
+                            max: 100
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            title: { display: true, text: '거래처 수' },
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 지사별 거래처 리텐션 테이블
+        function updateBranchRetentionTable() {
+            const tbody = document.getElementById('branchRetentionBody');
+            if (!tbody) return;
+
+            const branchRetention = currentData.branch_client_retention || {};
+            const branches = Object.keys(branchRetention).sort();
+
+            document.getElementById('branchRetentionBadge').textContent = branches.length + '개';
+
+            let html = '';
+            for (const branch of branches) {
+                const data = branchRetention[branch] || [];
+                const monthMap = Object.fromEntries(data.map(d => [d.month, d]));
+
+                // 누적 거래처 수 계산
+                let cumulative = 0;
+                for (const d of data) {
+                    cumulative += d.new;
+                }
+
+                html += `<tr><td><strong>${branch}</strong></td><td class="text-right">${cumulative}</td>`;
+                for (let m = 1; m <= 12; m++) {
+                    const d = monthMap[m];
+                    if (d) {
+                        const color = d.retention > 50 ? '#10b981' : d.retention > 30 ? '#f59e0b' : '#ef4444';
+                        html += `<td class="text-right"><span style="color:${color}">${d.total}</span><br><small style="color:#888">(+${d.new})</small></td>`;
+                    } else {
+                        html += '<td class="text-right">-</td>';
+                    }
+                }
+                html += '</tr>';
+            }
+            tbody.innerHTML = html;
         }
 
         function updateManagerChart() {
