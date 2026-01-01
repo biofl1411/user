@@ -3035,13 +3035,12 @@ HTML_TEMPLATE = '''
                 document.getElementById('goalCompare').innerHTML = `성장률: <span class="${salesUp ? 'up' : 'down'}" style="color: var(--${salesUp ? 'success' : 'danger'}); font-weight: 600;">${salesUp ? '+' : ''}${salesDiff}%</span>`;
                 document.getElementById('goalCompare').style.display = 'block';
 
-                // 목표달성률 오버레이 (전년대비 증감률)
-                const compGoalRate = ((compSales / goalTarget) * 100).toFixed(1);
+                // 목표달성률 오버레이 (증감률 크게, 금액 작게)
                 document.getElementById('goalOverlay').innerHTML = `
-                    <div class="overlay-year-badge">${compareData.year}년</div>
-                    <div class="overlay-label">전년도 달성률</div>
-                    <div class="overlay-value">${compGoalRate}%</div>
-                    <div class="overlay-change">성장률: <span class="${salesUp ? 'up' : 'down'}">${salesUp ? '+' : ''}${salesDiff}%</span></div>
+                    <div class="overlay-year-badge">${compareData.year}년 대비</div>
+                    <div class="overlay-label">전년대비 성장률</div>
+                    <div class="overlay-value" style="color: var(--${salesUp ? 'success' : 'danger'});">${salesUp ? '+' : ''}${salesDiff}%</div>
+                    <div class="overlay-change">전년 매출: <span>${formatCurrency(compSales)}</span></div>
                 `;
             } else {
                 ['compareTotalSales', 'compareTotalCount', 'compareAvgPrice', 'goalCompare'].forEach(id => {
