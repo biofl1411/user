@@ -6864,20 +6864,23 @@ def ai_analyze():
 
 사용 가능한 필터 값:
 - 연도: 2024, 2025
+- 월: 1~12 (특정 월 분석 시)
 - 검사목적: {', '.join(filter_values['purposes'][:10])}
 - 검체유형: {', '.join(filter_values['sample_types'][:10])}
-- 항목명: {', '.join(filter_values['items'][:15])}
 - 영업담당: {', '.join(filter_values['managers'][:10])}
 
 분석 유형:
+- year_comparison: 연도간 비교 분석 (예: 2025년 vs 2024년)
 - monthly_trend: 월별 추이 분석
-- comparison: 비교 분석
-- top_items: TOP N 항목 분석
+- top_managers: 영업담당별 TOP N 분석
+- top_purposes: 검사목적별 TOP N 분석
 - summary: 요약 통계
 - direct_answer: 직접 답변 (계산 없이 바로 답변 가능한 경우)
 
+중요: 연도 비교 질문(예: "2025년 1월과 2024년 1월 비교")은 반드시 year_comparison 타입을 사용하고 compare_year를 설정하세요.
+
 반드시 JSON 형식만 응답하세요:
-{{"analysis_type":"타입","year":"2024|2025","purpose":null,"sample_type":null,"item":null,"manager":null,"top_n":10,"description":"분석 설명","direct_answer":"직접 답변 가능시 여기에 작성"}}"""
+{{"analysis_type":"타입","year":"2025","compare_year":"2024","month":null,"purpose":null,"sample_type":null,"manager":null,"top_n":10,"description":"분석 설명","direct_answer":"직접 답변 가능시 여기에 작성"}}"""
 
         claude_result = call_claude_api(f"질문: {query}", system_prompt=system_prompt, max_tokens=800)
 
@@ -6946,15 +6949,17 @@ def ai_analyze():
 
 가능한 값:
 - 연도: 2024, 2025
+- 월: 1~12
 - 검사목적: {', '.join(filter_values['purposes'][:10])}
 - 검체유형: {', '.join(filter_values['sample_types'][:10])}
-- 항목명: {', '.join(filter_values['items'][:15])}
 - 영업담당: {', '.join(filter_values['managers'][:10])}
 
-분석유형: monthly_trend(월별추이), comparison(비교), top_items(TOP N), summary(요약), direct_answer(직접답변)
+분석유형: year_comparison(연도비교), monthly_trend(월별추이), top_managers(담당자TOP), top_purposes(목적별TOP), summary(요약), direct_answer(직접답변)
+
+연도 비교 질문은 year_comparison 사용, compare_year 설정 필수
 
 JSON 형식만 응답:
-{{"analysis_type":"타입","year":"2024|2025","purpose":null,"sample_type":null,"item":null,"manager":null,"top_n":10,"description":"설명","direct_answer":"직접 답변이 가능하면 여기에 작성"}}"""
+{{"analysis_type":"타입","year":"2025","compare_year":"2024","month":null,"purpose":null,"sample_type":null,"manager":null,"top_n":10,"description":"설명","direct_answer":"직접 답변이 가능하면 여기에 작성"}}"""
 
     print(f"[AI] 프롬프트 길이: {len(system_prompt)}자")
 
@@ -7074,39 +7079,57 @@ JSON 형식만 응답:
 
 
 def execute_analysis(params, food_2024, food_2025, data_2024, data_2025):
-    """파싱된 조건으로 실제 데이터 분석 실행"""
+    """파싱된 조건으로 실제 데이터 분석 실행 - 대시보드와 동일한 데이터(공급가액) 사용"""
     analysis_type = params.get('analysis_type', 'summary')
     year = params.get('year', '2025')
+    compare_year = params.get('compare_year')  # 비교 연도 (예: 2024)
+    month = params.get('month')  # 월 필터
     purpose = params.get('purpose')
     sample_type = params.get('sample_type')
-    item = params.get('item')
-    exclude_item = params.get('exclude_item')
     manager = params.get('manager')
     top_n = params.get('top_n', 10)
     description = params.get('description', '')
 
-    # 연도별 데이터 선택
-    food_data = food_2025 if year == '2025' else food_2024
+    def get_sales(row):
+        """공급가액 추출 (대시보드와 동일)"""
+        sales = row.get('공급가액', 0) or 0
+        if isinstance(sales, str):
+            sales = float(sales.replace(',', '').replace('원', '')) if sales else 0
+        return sales
 
-    # 필터링
-    filtered = []
-    for row in food_data:
-        if purpose and str(row.get('검사목적', '')).strip() != purpose:
-            continue
-        if sample_type and str(row.get('검체유형', '')).strip() != sample_type:
-            continue
-        if item and str(row.get('항목명', '')).strip() != item:
-            continue
-        if manager and str(row.get('영업담당', '')).strip() != manager:
-            continue
-        filtered.append(row)
+    def get_month(row):
+        """월 추출"""
+        date = row.get('접수일자')
+        if date and hasattr(date, 'month'):
+            return date.month
+        return 0
 
-    # 제외 항목 필터링 (비교 분석용)
-    filtered_excluded = []
-    if exclude_item:
-        for row in filtered:
-            if str(row.get('항목명', '')).strip() != exclude_item:
-                filtered_excluded.append(row)
+    def filter_data(data, month_filter=None, purpose_filter=None, sample_type_filter=None, manager_filter=None):
+        """데이터 필터링"""
+        filtered = []
+        for row in data:
+            if month_filter:
+                row_month = get_month(row)
+                if row_month != int(month_filter):
+                    continue
+            if purpose_filter and str(row.get('검사목적', '')).strip() != purpose_filter:
+                continue
+            if sample_type_filter and str(row.get('검체유형', '')).strip() != sample_type_filter:
+                continue
+            if manager_filter and str(row.get('영업담당', '')).strip() != manager_filter:
+                continue
+            filtered.append(row)
+        return filtered
+
+    # 대시보드와 동일한 데이터 소스 사용 (공급가액 기준)
+    main_data = data_2025 if year == '2025' else data_2024
+    compare_data = data_2024 if compare_year == '2024' else (data_2025 if compare_year == '2025' else None)
+
+    # 메인 데이터 필터링
+    filtered = filter_data(main_data, month, purpose, sample_type, manager)
+
+    # 비교 데이터 필터링
+    filtered_compare = filter_data(compare_data, month, purpose, sample_type, manager) if compare_data else []
 
     result = {
         'success': True,
@@ -7116,93 +7139,108 @@ def execute_analysis(params, food_2024, food_2025, data_2024, data_2025):
         'year': year
     }
 
-    if analysis_type == 'monthly_trend':
+    if analysis_type == 'year_comparison' or compare_year:
+        # 연도간 비교 분석
+        main_total = sum(get_sales(row) for row in filtered)
+        main_count = len(filtered)
+        compare_total = sum(get_sales(row) for row in filtered_compare)
+        compare_count = len(filtered_compare)
+
+        diff_sales = main_total - compare_total
+        diff_count = main_count - compare_count
+        growth_rate = ((main_total - compare_total) / compare_total * 100) if compare_total > 0 else 0
+
+        result['comparison'] = {
+            'main_year': {'year': year, 'count': main_count, 'sales': main_total},
+            'compare_year': {'year': compare_year, 'count': compare_count, 'sales': compare_total},
+            'difference': {'count': diff_count, 'sales': diff_sales, 'growth_rate': round(growth_rate, 1)}
+        }
+        result['total_fee'] = main_total
+
+        # 월별 비교 차트 데이터
+        if month:
+            result['month'] = int(month)
+        else:
+            # 전체 월별 추이 비교
+            monthly_main = {}
+            monthly_compare = {}
+            for row in filtered:
+                m = get_month(row)
+                if m > 0:
+                    monthly_main[m] = monthly_main.get(m, 0) + get_sales(row)
+            for row in filtered_compare:
+                m = get_month(row)
+                if m > 0:
+                    monthly_compare[m] = monthly_compare.get(m, 0) + get_sales(row)
+
+            result['chart_data'] = {
+                'labels': [f'{m}월' for m in range(1, 13)],
+                'datasets': [
+                    {'label': f'{year}년', 'data': [monthly_main.get(m, 0) for m in range(1, 13)]},
+                    {'label': f'{compare_year}년', 'data': [monthly_compare.get(m, 0) for m in range(1, 13)]}
+                ]
+            }
+
+    elif analysis_type == 'monthly_trend':
         # 월별 추이
         monthly = {}
-        monthly_excluded = {}
         for row in filtered:
-            date = row.get('접수일자')
-            if date and hasattr(date, 'month'):
-                m = date.month
-                fee = row.get('항목수수료', 0) or 0
-                if isinstance(fee, str):
-                    fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
-                monthly[m] = monthly.get(m, 0) + fee
-
-        if exclude_item:
-            for row in filtered_excluded:
-                date = row.get('접수일자')
-                if date and hasattr(date, 'month'):
-                    m = date.month
-                    fee = row.get('항목수수료', 0) or 0
-                    if isinstance(fee, str):
-                        fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
-                    monthly_excluded[m] = monthly_excluded.get(m, 0) + fee
+            m = get_month(row)
+            if m > 0:
+                monthly[m] = monthly.get(m, 0) + get_sales(row)
 
         result['chart_data'] = {
             'labels': [f'{m}월' for m in range(1, 13)],
             'datasets': [
-                {'label': '전체 매출', 'data': [monthly.get(m, 0) for m in range(1, 13)]}
+                {'label': f'{year}년 매출', 'data': [monthly.get(m, 0) for m in range(1, 13)]}
             ]
         }
-        if exclude_item:
-            result['chart_data']['datasets'].append({
-                'label': f'{exclude_item} 제외',
-                'data': [monthly_excluded.get(m, 0) for m in range(1, 13)]
-            })
-            # 차이 계산
-            diff_data = []
-            for m in range(1, 13):
-                diff = monthly.get(m, 0) - monthly_excluded.get(m, 0)
-                diff_data.append(diff)
-            result['chart_data']['datasets'].append({
-                'label': '차이 (감소액)',
-                'data': diff_data
-            })
-            result['total_diff'] = sum(diff_data)
-
         result['total_fee'] = sum(monthly.values())
 
-    elif analysis_type == 'comparison':
-        # 비교 분석
-        total_with = sum((row.get('항목수수료', 0) or 0) for row in filtered)
-        total_without = sum((row.get('항목수수료', 0) or 0) for row in filtered_excluded) if exclude_item else 0
-
-        result['comparison'] = {
-            'with_item': {'count': len(filtered), 'fee': total_with},
-            'without_item': {'count': len(filtered_excluded) if exclude_item else 0, 'fee': total_without},
-            'difference': {'count': len(filtered) - len(filtered_excluded) if exclude_item else 0,
-                          'fee': total_with - total_without}
-        }
-
-    elif analysis_type == 'top_items':
-        # TOP N 항목
-        item_stats = {}
+    elif analysis_type == 'top_managers':
+        # 영업담당별 TOP N
+        manager_stats = {}
         for row in filtered:
-            item_name = str(row.get('항목명', '')).strip()
-            if item_name:
-                if item_name not in item_stats:
-                    item_stats[item_name] = {'count': 0, 'fee': 0}
-                item_stats[item_name]['count'] += 1
-                fee = row.get('항목수수료', 0) or 0
-                if isinstance(fee, str):
-                    fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
-                item_stats[item_name]['fee'] += fee
+            mgr = str(row.get('영업담당', '미지정')).strip()
+            if mgr not in manager_stats:
+                manager_stats[mgr] = {'count': 0, 'sales': 0}
+            manager_stats[mgr]['count'] += 1
+            manager_stats[mgr]['sales'] += get_sales(row)
 
-        sorted_items = sorted(item_stats.items(), key=lambda x: x[1]['count'], reverse=True)[:top_n]
-        result['top_items'] = [{'name': k, 'count': v['count'], 'fee': v['fee']} for k, v in sorted_items]
+        sorted_managers = sorted(manager_stats.items(), key=lambda x: x[1]['sales'], reverse=True)[:top_n]
+        result['top_items'] = [{'name': k, 'count': v['count'], 'sales': v['sales']} for k, v in sorted_managers]
         result['chart_data'] = {
-            'labels': [item[0][:15] for item in sorted_items],
-            'datasets': [{'label': '건수', 'data': [item[1]['count'] for item in sorted_items]}]
+            'labels': [m[0] for m in sorted_managers],
+            'datasets': [{'label': '매출', 'data': [m[1]['sales'] for m in sorted_managers]}]
         }
+        result['total_fee'] = sum(get_sales(row) for row in filtered)
+
+    elif analysis_type == 'top_purposes':
+        # 검사목적별 TOP N
+        purpose_stats = {}
+        for row in filtered:
+            p = str(row.get('검사목적', '미지정')).strip()
+            if p not in purpose_stats:
+                purpose_stats[p] = {'count': 0, 'sales': 0}
+            purpose_stats[p]['count'] += 1
+            purpose_stats[p]['sales'] += get_sales(row)
+
+        sorted_purposes = sorted(purpose_stats.items(), key=lambda x: x[1]['sales'], reverse=True)[:top_n]
+        result['top_items'] = [{'name': k, 'count': v['count'], 'sales': v['sales']} for k, v in sorted_purposes]
+        result['chart_data'] = {
+            'labels': [p[0][:15] for p in sorted_purposes],
+            'datasets': [{'label': '매출', 'data': [p[1]['sales'] for p in sorted_purposes]}]
+        }
+        result['total_fee'] = sum(get_sales(row) for row in filtered)
 
     else:  # summary
-        total_fee = sum((row.get('항목수수료', 0) or 0) for row in filtered)
+        total_sales = sum(get_sales(row) for row in filtered)
         result['summary'] = {
             'total_count': len(filtered),
-            'total_fee': total_fee,
-            'avg_fee': total_fee / len(filtered) if filtered else 0
+            'total_sales': total_sales,
+            'avg_sales': total_sales / len(filtered) if filtered else 0
         }
+        result['total_fee'] = total_sales
 
     return result
 
