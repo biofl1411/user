@@ -1914,73 +1914,63 @@ HTML_TEMPLATE = '''
         }
 
         /* KPI 카드 호버 오버레이 */
-        .kpi-card {
-            cursor: default;
-            transition: all 0.2s;
-        }
-
-        .kpi-card:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-md);
-        }
-
         .kpi-overlay {
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(255, 255, 255, 0.97);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.2s;
-            pointer-events: none;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(2px);
             border-radius: 16px;
             padding: 24px;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.25s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            z-index: 10;
+            border: 2px solid var(--gray-200);
         }
 
-        .kpi-card:hover .kpi-overlay {
+        .kpi-card:hover .kpi-overlay:not(:empty) {
             opacity: 1;
+            visibility: visible;
         }
 
-        .kpi-overlay-year {
-            font-size: 13px;
-            color: var(--gray-400);
-            margin-bottom: 6px;
-        }
-
-        .kpi-overlay-value {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--purple);
-            margin-bottom: 6px;
-        }
-
-        .kpi-overlay-sub {
-            font-size: 12px;
-            color: var(--gray-500);
-        }
-
-        .kpi-overlay-diff {
-            margin-top: 10px;
-            padding: 5px 12px;
+        .kpi-overlay .overlay-year-badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: var(--gray-600);
+            color: white;
+            padding: 4px 10px;
             border-radius: 12px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
         }
 
-        .kpi-overlay-diff.positive {
-            background: var(--success-light);
-            color: var(--success);
+        .kpi-overlay .overlay-label {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-bottom: 6px;
         }
 
-        .kpi-overlay-diff.negative {
-            background: var(--danger-light);
-            color: var(--danger);
+        .kpi-overlay .overlay-value {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--gray-700);
+            margin-bottom: 8px;
         }
+
+        .kpi-overlay .overlay-change {
+            font-size: 13px;
+            color: var(--gray-500);
+        }
+
+        .kpi-overlay .overlay-change .up { color: var(--success); font-weight: 600; }
+        .kpi-overlay .overlay-change .down { color: var(--danger); font-weight: 600; }
 
         /* 검사 목적별 카드 섹션 */
         .purpose-kpi-section {
@@ -2129,7 +2119,7 @@ HTML_TEMPLATE = '''
             font-weight: 500;
         }
 
-        /* 호버 오버레이 (전년도 값 표시) */
+        /* 전년도 오버레이 스타일 */
         .purpose-kpi-overlay {
             position: absolute;
             top: 0;
@@ -2137,56 +2127,71 @@ HTML_TEMPLATE = '''
             right: 0;
             bottom: 0;
             background: rgba(255, 255, 255, 0.95);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.2s;
-            pointer-events: none;
+            backdrop-filter: blur(2px);
             border-radius: 16px;
             padding: 20px;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.25s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            z-index: 10;
+            border: 2px solid var(--gray-200);
         }
 
         .purpose-kpi-card:hover .purpose-kpi-overlay {
             opacity: 1;
+            visibility: visible;
         }
 
-        .purpose-kpi-overlay-year {
-            font-size: 12px;
-            color: var(--gray-400);
-            margin-bottom: 4px;
-        }
-
-        .purpose-kpi-overlay-value {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--purple);
-            margin-bottom: 4px;
-        }
-
-        .purpose-kpi-overlay-sub {
-            font-size: 12px;
-            color: var(--gray-500);
-        }
-
-        .purpose-kpi-overlay-diff {
-            margin-top: 8px;
+        .overlay-year-badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: var(--gray-600);
+            color: white;
             padding: 4px 10px;
             border-radius: 12px;
             font-size: 11px;
             font-weight: 600;
         }
 
-        .purpose-kpi-overlay-diff.positive {
-            background: var(--success-light);
-            color: var(--success);
+        .overlay-label {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-bottom: 4px;
         }
 
-        .purpose-kpi-overlay-diff.negative {
-            background: var(--danger-light);
-            color: var(--danger);
+        .overlay-name {
+            font-size: 13px;
+            color: var(--gray-600);
+            margin-bottom: 8px;
+            font-weight: 500;
         }
+
+        .overlay-value {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--gray-700);
+            margin-bottom: 4px;
+        }
+
+        .overlay-sub {
+            font-size: 12px;
+            color: var(--gray-400);
+        }
+
+        .overlay-change {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed var(--gray-200);
+            font-size: 12px;
+            color: var(--gray-500);
+        }
+
+        .overlay-change .up { color: var(--success); font-weight: 600; }
+        .overlay-change .down { color: var(--danger); font-weight: 600; }
 
         /* 콘텐츠 영역 */
         .content-grid {
@@ -2602,6 +2607,7 @@ HTML_TEMPLATE = '''
                 <div class="kpi-label">목표 달성률</div>
                 <div class="kpi-value" id="goalRate">-</div>
                 <div class="kpi-compare">목표: <span id="goalTarget">70억</span></div>
+                <div class="kpi-compare" id="goalCompare" style="display: none;"></div>
             </div>
         </section>
 
@@ -3012,14 +3018,41 @@ HTML_TEMPLATE = '''
                 document.getElementById('compareAvgPrice').style.display = 'block';
 
                 // KPI 카드 호버 오버레이 업데이트
-                updateKpiOverlay('sales', compareData.year, formatCurrency(compSales), salesDiff);
-                updateKpiOverlay('count', compareData.year, compCount.toLocaleString() + '건', countDiff);
-                updateKpiOverlay('price', compareData.year, formatCurrency(compAvg), priceDiff);
+                const salesUp = parseFloat(salesDiff) >= 0;
+                document.getElementById('salesOverlay').innerHTML = `
+                    <div class="overlay-year-badge">${compareData.year}년</div>
+                    <div class="overlay-label">전년도 총 매출</div>
+                    <div class="overlay-value">${formatCurrency(compSales)}</div>
+                    <div class="overlay-change">증감: <span class="${salesUp ? 'up' : 'down'}">${salesUp ? '+' : ''}${salesDiff}%</span></div>
+                `;
+
+                const countUp = parseFloat(countDiff) >= 0;
+                document.getElementById('countOverlay').innerHTML = `
+                    <div class="overlay-year-badge">${compareData.year}년</div>
+                    <div class="overlay-label">전년도 총 건수</div>
+                    <div class="overlay-value">${compCount.toLocaleString()}건</div>
+                    <div class="overlay-change">증감: <span class="${countUp ? 'up' : 'down'}">${countUp ? '+' : ''}${countDiff}%</span></div>
+                `;
+
+                const priceUp = parseFloat(priceDiff) >= 0;
+                document.getElementById('priceOverlay').innerHTML = `
+                    <div class="overlay-year-badge">${compareData.year}년</div>
+                    <div class="overlay-label">전년도 평균 단가</div>
+                    <div class="overlay-value">${formatCurrency(compAvg)}</div>
+                    <div class="overlay-change">증감: <span class="${priceUp ? 'up' : 'down'}">${priceUp ? '+' : ''}${priceDiff}%</span></div>
+                `;
+
+                // 목표달성률에 전년대비 성장률 표시
+                document.getElementById('goalCompare').innerHTML = `성장률: <span class="${salesUp ? 'up' : 'down'}" style="color: var(--${salesUp ? 'success' : 'danger'}); font-weight: 600;">${salesUp ? '+' : ''}${salesDiff}%</span>`;
+                document.getElementById('goalCompare').style.display = 'block';
             } else {
-                ['compareTotalSales', 'compareTotalCount', 'compareAvgPrice'].forEach(id => document.getElementById(id).style.display = 'none');
+                ['compareTotalSales', 'compareTotalCount', 'compareAvgPrice', 'goalCompare'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = 'none';
+                });
                 ['salesTrend', 'countTrend', 'priceTrend'].forEach(id => document.getElementById(id).style.visibility = 'hidden');
-                // 오버레이 숨기기
-                ['salesOverlay', 'countOverlay', 'priceOverlay'].forEach(id => document.getElementById(id).style.display = 'none');
+                // 오버레이 비우기
+                ['salesOverlay', 'countOverlay', 'priceOverlay'].forEach(id => document.getElementById(id).innerHTML = '');
             }
         }
 
@@ -3029,23 +3062,6 @@ HTML_TEMPLATE = '''
             const isUp = parseFloat(diff) >= 0;
             el.className = 'kpi-trend ' + (isUp ? 'up' : 'down');
             el.innerHTML = `<span>${isUp ? '↑' : '↓'} ${isUp ? '+' : ''}${diff}%</span>`;
-        }
-
-        function updateKpiOverlay(type, year, value, diff) {
-            const overlay = document.getElementById(type + 'Overlay');
-            const yearEl = document.getElementById(type + 'OverlayYear');
-            const valueEl = document.getElementById(type + 'OverlayValue');
-            const diffEl = document.getElementById(type + 'OverlayDiff');
-
-            if (overlay && yearEl && valueEl && diffEl) {
-                overlay.style.display = 'flex';
-                yearEl.textContent = year + '년';
-                valueEl.textContent = value;
-
-                const isUp = parseFloat(diff) >= 0;
-                diffEl.className = 'kpi-overlay-diff ' + (isUp ? 'positive' : 'negative');
-                diffEl.textContent = `전년대비 ${isUp ? '+' : ''}${diff}%`;
-            }
         }
 
         function updatePurposeGrid() {
@@ -3077,15 +3093,15 @@ HTML_TEMPLATE = '''
                         const isUp = parseFloat(diff) >= 0;
                         changeHtml = `<div class="purpose-kpi-trend ${isUp ? 'up' : 'down'}">${isUp ? '↑' : '↓'} ${isUp ? '+' : ''}${diff}%</div>`;
 
-                        // 호버 오버레이 생성
+                        // 호버 오버레이 생성 (새 구조)
                         overlayHtml = `
                             <div class="purpose-kpi-overlay">
-                                <div class="purpose-kpi-overlay-year">${compareData.year}년</div>
-                                <div class="purpose-kpi-overlay-value">${compSalesValue}</div>
-                                <div class="purpose-kpi-overlay-sub">건수: ${compCount.toLocaleString()}건</div>
-                                <div class="purpose-kpi-overlay-diff ${isUp ? 'positive' : 'negative'}">
-                                    전년대비 ${isUp ? '+' : ''}${diff}%
-                                </div>
+                                <div class="overlay-year-badge">${compareData.year}년</div>
+                                <div class="overlay-label">전년도 실적</div>
+                                <div class="overlay-name">${name}</div>
+                                <div class="overlay-value">${compSalesValue}</div>
+                                <div class="overlay-sub">건수: ${compCount.toLocaleString()}건</div>
+                                <div class="overlay-change">증감: <span class="${isUp ? 'up' : 'down'}">${isUp ? '+' : ''}${diff}%</span></div>
                             </div>
                         `;
                     }
