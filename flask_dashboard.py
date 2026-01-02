@@ -3,10 +3,12 @@
 - 오래된 CPU에서도 작동
 - Chart.js 사용
 - 연도 비교, 검사목적 필터, 업체별 분석, 부적합항목 분석
+- SQLite DB 캐싱 지원
 """
 from flask import Flask, render_template_string, jsonify, request
 import os
 import sys
+import sqlite3
 from pathlib import Path
 from datetime import datetime
 
@@ -15,6 +17,7 @@ app = Flask(__name__)
 # 경로 설정 - 절대 경로 사용
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
+DB_PATH = BASE_DIR / "business_metrics.db"
 
 # config 모듈 경로 추가
 sys.path.insert(0, str(BASE_DIR))
@@ -22,6 +25,208 @@ sys.path.insert(0, str(BASE_DIR))
 # 데이터 캐시 (메모리에 저장)
 DATA_CACHE = {}
 CACHE_TIME = {}
+
+# SQLite DB 초기화
+def init_db():
+    """SQLite 데이터베이스 초기화"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS inspections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER,
+            month INTEGER,
+            date TEXT,
+            manager TEXT,
+            client TEXT,
+            sales REAL,
+            purpose TEXT,
+            sample_type TEXT,
+            defect TEXT,
+            address TEXT,
+            source_file TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_year ON inspections(year)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_manager ON inspections(manager)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_purpose ON inspections(purpose)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_client ON inspections(client)')
+
+    # 파일 임포트 추적 테이블
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS imported_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT UNIQUE,
+            file_size INTEGER,
+            row_count INTEGER,
+            imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
+    print("[DB] SQLite 데이터베이스 초기화 완료")
+
+def import_excel_to_db(year, force=False):
+    """Excel 파일을 SQLite DB로 임포트"""
+    from openpyxl import load_workbook
+    import time
+
+    data_path = DATA_DIR / str(year)
+    if not data_path.exists():
+        print(f"[DB] {year}년 데이터 폴더 없음")
+        return 0
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    files = sorted(data_path.glob("*.xlsx"))
+    total_imported = 0
+
+    # 주소 컬럼 후보
+    address_columns = ['거래처 주소', '채품지주소', '채품장소', '주소', '시료주소', '업체주소', '거래처주소', '검체주소', '시료채취장소']
+
+    for f in files:
+        file_path_str = str(f)
+        file_size = f.stat().st_size
+
+        # 이미 임포트된 파일인지 확인
+        if not force:
+            cursor.execute('SELECT id FROM imported_files WHERE file_path = ? AND file_size = ?',
+                          (file_path_str, file_size))
+            if cursor.fetchone():
+                print(f"[DB] {f.name} 이미 임포트됨 (스킵)")
+                continue
+
+        print(f"[DB] {f.name} 임포트 중...")
+        start_time = time.time()
+
+        try:
+            wb = load_workbook(f, read_only=True, data_only=True)
+            ws = wb.active
+            headers = [cell.value for cell in ws[1]]
+
+            # 주소 컬럼 찾기
+            addr_col = None
+            for ac in address_columns:
+                if ac in headers:
+                    addr_col = ac
+                    break
+
+            rows_to_insert = []
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                row_dict = dict(zip(headers, row))
+
+                date_val = row_dict.get('접수일자')
+                date_str = None
+                month = None
+                if date_val:
+                    if hasattr(date_val, 'strftime'):
+                        date_str = date_val.strftime('%Y-%m-%d')
+                        month = date_val.month
+                    else:
+                        date_str = str(date_val)[:10]
+                        try:
+                            month = int(date_str.split('-')[1])
+                        except:
+                            month = None
+
+                sales = row_dict.get('공급가액', 0) or 0
+                if isinstance(sales, str):
+                    sales = float(sales.replace(',', '').replace('원', '')) if sales else 0
+
+                address = row_dict.get(addr_col, '') if addr_col else ''
+
+                rows_to_insert.append((
+                    year,
+                    month,
+                    date_str,
+                    str(row_dict.get('영업담당', '미지정') or '미지정'),
+                    str(row_dict.get('거래처', '미지정') or '미지정').strip() or '미지정',
+                    sales,
+                    str(row_dict.get('검사목적', '') or '').strip(),
+                    str(row_dict.get('검체유형', '') or '').strip(),
+                    str(row_dict.get('부적합항목', '') or '').strip(),
+                    str(address or ''),
+                    f.name
+                ))
+
+            wb.close()
+
+            # 기존 데이터 삭제 (해당 파일)
+            cursor.execute('DELETE FROM inspections WHERE source_file = ?', (f.name,))
+
+            # 배치 삽입
+            cursor.executemany('''
+                INSERT INTO inspections (year, month, date, manager, client, sales, purpose, sample_type, defect, address, source_file)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', rows_to_insert)
+
+            # 임포트 기록
+            cursor.execute('''
+                INSERT OR REPLACE INTO imported_files (file_path, file_size, row_count, imported_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ''', (file_path_str, file_size, len(rows_to_insert)))
+
+            conn.commit()
+            elapsed = time.time() - start_time
+            print(f"[DB] {f.name} 완료: {len(rows_to_insert)}건, {elapsed:.1f}초")
+            total_imported += len(rows_to_insert)
+
+        except Exception as e:
+            print(f"[DB ERROR] {f.name}: {e}")
+            continue
+
+    conn.close()
+    return total_imported
+
+def load_data_from_db(year):
+    """SQLite DB에서 데이터 로드"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT * FROM inspections WHERE year = ?
+    ''', (year,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    # dict 형태로 변환 (기존 코드 호환성)
+    data = []
+    for row in rows:
+        data.append({
+            '접수일자': row['date'],
+            '영업담당': row['manager'],
+            '거래처': row['client'],
+            '공급가액': row['sales'],
+            '검사목적': row['purpose'],
+            '검체유형': row['sample_type'],
+            '부적합항목': row['defect'],
+            '주소': row['address'],
+        })
+
+    return data
+
+def get_db_stats():
+    """DB 통계 조회"""
+    if not DB_PATH.exists():
+        return None
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT year, COUNT(*) as cnt FROM inspections GROUP BY year ORDER BY year')
+    year_stats = cursor.fetchall()
+
+    cursor.execute('SELECT COUNT(*) FROM inspections')
+    total = cursor.fetchone()[0]
+
+    cursor.execute('SELECT COUNT(*) FROM imported_files')
+    files = cursor.fetchone()[0]
+
+    conn.close()
+    return {'years': dict(year_stats), 'total': total, 'files': files}
 
 # settings.py에서 MANAGER_TO_BRANCH 가져오기
 try:
@@ -42,11 +247,10 @@ except ImportError:
     }
 
 def load_excel_data(year, use_cache=True):
-    """openpyxl로 직접 엑셀 로드 (캐시 사용)"""
+    """SQLite DB에서 데이터 로드 (DB 없으면 Excel에서 임포트)"""
     import time
-    from openpyxl import load_workbook
 
-    # 캐시 확인 (1시간 유효)
+    # 메모리 캐시 확인 (1시간 유효)
     cache_key = str(year)
     if use_cache and cache_key in DATA_CACHE:
         cache_age = time.time() - CACHE_TIME.get(cache_key, 0)
@@ -54,38 +258,30 @@ def load_excel_data(year, use_cache=True):
             print(f"[CACHE] {year}년 데이터 캐시 사용 ({len(DATA_CACHE[cache_key])}건)")
             return DATA_CACHE[cache_key]
 
-    data_path = DATA_DIR / str(year)
-    if not data_path.exists():
-        return []
-
-    print(f"[LOAD] {year}년 데이터 로딩 시작...")
+    # DB에서 로드 시도
     start_time = time.time()
+    data = load_data_from_db(year)
 
-    all_data = []
-    files = sorted(data_path.glob("*.xlsx"))
+    if data:
+        elapsed = time.time() - start_time
+        print(f"[DB] {year}년 데이터 로드: {len(data)}건, {elapsed:.2f}초")
+        DATA_CACHE[cache_key] = data
+        CACHE_TIME[cache_key] = time.time()
+        return data
 
-    for f in files:
-        try:
-            wb = load_workbook(f, read_only=True, data_only=True)
-            ws = wb.active
-            headers = [cell.value for cell in ws[1]]
+    # DB에 데이터 없으면 Excel에서 임포트
+    print(f"[DB] {year}년 DB 데이터 없음, Excel에서 임포트...")
+    imported = import_excel_to_db(year)
 
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                row_dict = dict(zip(headers, row))
-                all_data.append(row_dict)
-            wb.close()
-            print(f"[LOAD] {f.name} 완료")
-        except Exception as e:
-            print(f"[ERROR] Loading {f}: {e}")
+    if imported > 0:
+        data = load_data_from_db(year)
+        elapsed = time.time() - start_time
+        print(f"[DB] {year}년 임포트 완료: {len(data)}건, {elapsed:.1f}초")
+        DATA_CACHE[cache_key] = data
+        CACHE_TIME[cache_key] = time.time()
+        return data
 
-    elapsed = time.time() - start_time
-    print(f"[LOAD] {year}년 완료: {len(all_data)}건, {elapsed:.1f}초 소요")
-
-    # 캐시 저장
-    DATA_CACHE[cache_key] = all_data
-    CACHE_TIME[cache_key] = time.time()
-
-    return all_data
+    return []
 
 def extract_region(address):
     """주소에서 시/도, 시/군/구 추출"""
@@ -3111,24 +3307,68 @@ def get_columns():
 
 @app.route('/api/cache/refresh')
 def refresh_cache():
-    """캐시 새로고침"""
+    """캐시 새로고침 및 DB 동기화"""
     global DATA_CACHE, CACHE_TIME
     DATA_CACHE = {}
     CACHE_TIME = {}
-    print("[CACHE] 캐시 초기화됨")
+    print("[CACHE] 메모리 캐시 초기화됨")
+
+    # Excel → DB 동기화 (새 파일만)
+    for year in [2024, 2025]:
+        import_excel_to_db(year, force=False)
+
     # 데이터 미리 로드
     for year in ['2024', '2025']:
         load_excel_data(year, use_cache=False)
-    return jsonify({'status': 'ok', 'message': '캐시가 새로고침되었습니다.'})
+
+    stats = get_db_stats()
+    return jsonify({'status': 'ok', 'message': '캐시가 새로고침되었습니다.', 'db_stats': stats})
+
+@app.route('/api/db/stats')
+def api_db_stats():
+    """DB 통계 조회 API"""
+    stats = get_db_stats()
+    return jsonify(stats)
+
+@app.route('/api/db/reimport')
+def api_db_reimport():
+    """Excel → DB 강제 재임포트"""
+    global DATA_CACHE, CACHE_TIME
+    DATA_CACHE = {}
+    CACHE_TIME = {}
+
+    total = 0
+    for year in [2024, 2025]:
+        total += import_excel_to_db(year, force=True)
+
+    stats = get_db_stats()
+    return jsonify({'status': 'ok', 'imported': total, 'db_stats': stats})
 
 def preload_data():
-    """서버 시작 시 데이터 미리 로드"""
-    print("[PRELOAD] 데이터 미리 로드 시작...")
+    """서버 시작 시 DB 초기화 및 데이터 로드"""
+    print("[STARTUP] 서버 시작...")
+
+    # DB 초기화
+    init_db()
+
+    # DB에 데이터 있는지 확인
+    stats = get_db_stats()
+    if stats and stats['total'] > 0:
+        print(f"[DB] 기존 데이터 발견: {stats['total']}건")
+    else:
+        print("[DB] DB 비어있음, Excel에서 임포트...")
+        for year in [2024, 2025]:
+            import_excel_to_db(year)
+
+    # 메모리 캐시에 로드
+    print("[PRELOAD] 메모리 캐시 로드...")
     for year in ['2024', '2025']:
         load_excel_data(year)
-    print("[PRELOAD] 완료!")
+
+    stats = get_db_stats()
+    print(f"[STARTUP] 완료! DB: {stats['total']}건, {stats['files']}개 파일")
 
 if __name__ == '__main__':
-    # 서버 시작 시 데이터 미리 로드
+    # 서버 시작 시 DB 초기화 및 데이터 로드
     preload_data()
     app.run(host='0.0.0.0', port=6001, debug=False)
