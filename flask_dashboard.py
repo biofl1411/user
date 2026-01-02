@@ -7500,23 +7500,350 @@ HTML_TEMPLATE = '''
         // 월별 매출 차트
         function updateMonthlyChart() {
             const monthly = currentData.by_month || [];
-            const ctx = document.getElementById('monthlyChart').getContext('2d');
+            const ctx = document.getElementById('monthlyChart');
+            if (!ctx) return;
             if (charts.monthly) charts.monthly.destroy();
 
             const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
             const monthMap = Object.fromEntries(monthly);
-            const datasets = [{ label: currentData.year + '년', data: labels.map((_, i) => monthMap[i+1]?.sales || 0), borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)', fill: true, tension: 0.4, pointRadius: 4 }];
+            const compMonthMap = compareData ? Object.fromEntries(compareData.by_month || []) : {};
+
+            // 월별 데이터 배열 생성
+            const monthlyData = labels.map((label, i) => {
+                const m = i + 1;
+                const data = monthMap[m] || { sales: 0, count: 0, byPurpose: {}, byManager: {} };
+                const compData = compMonthMap[m] || { sales: 0, count: 0, byPurpose: {}, byManager: {} };
+                const avgPrice = data.count > 0 ? data.sales / data.count : 0;
+                const compAvgPrice = compData.count > 0 ? compData.sales / compData.count : 0;
+
+                return {
+                    month: m,
+                    label,
+                    sales: data.sales,
+                    count: data.count,
+                    avgPrice,
+                    byPurpose: data.byPurpose || {},
+                    byManager: data.byManager || {},
+                    compSales: compData.sales,
+                    compCount: compData.count,
+                    compAvgPrice,
+                    compByPurpose: compData.byPurpose || {},
+                    compByManager: compData.byManager || {}
+                };
+            });
+
+            // 월평균 계산 (데이터가 있는 월만)
+            const validMonths = monthlyData.filter(d => d.sales > 0);
+            const monthlyAvg = validMonths.length > 0 ? validMonths.reduce((s, d) => s + d.sales, 0) / validMonths.length : 0;
+            const monthlyAvgCount = validMonths.length > 0 ? validMonths.reduce((s, d) => s + d.count, 0) / validMonths.length : 0;
+
+            // 연간 목표 (임의 설정 - 전년 대비 10% 증가)
+            const lastYearTotal = monthlyData.reduce((s, d) => s + d.compSales, 0);
+            const yearlyTarget = lastYearTotal > 0 ? lastYearTotal * 1.1 : monthlyAvg * 12;
+
+            // 연속 상승/하락 계산
+            const calculateTrend = (monthIdx) => {
+                if (monthIdx < 1) return { type: null, count: 0 };
+                let count = 0;
+                let direction = null;
+                for (let i = monthIdx; i >= 1; i--) {
+                    const current = monthlyData[i].sales;
+                    const prev = monthlyData[i - 1].sales;
+                    if (prev === 0) break;
+                    const isUp = current >= prev;
+                    if (direction === null) {
+                        direction = isUp ? 'up' : 'down';
+                        count = 1;
+                    } else if ((direction === 'up' && isUp) || (direction === 'down' && !isUp)) {
+                        count++;
+                    } else {
+                        break;
+                    }
+                }
+                return { type: direction, count };
+            };
+
+            // 전월 대비 방향 전환 체크
+            const checkTurnAround = (monthIdx) => {
+                if (monthIdx < 2) return null;
+                const current = monthlyData[monthIdx].sales;
+                const prev = monthlyData[monthIdx - 1].sales;
+                const prevPrev = monthlyData[monthIdx - 2].sales;
+                if (prev === 0 || prevPrev === 0) return null;
+
+                const currentDir = current >= prev ? 'up' : 'down';
+                const prevDir = prev >= prevPrev ? 'up' : 'down';
+
+                if (currentDir !== prevDir) {
+                    return currentDir === 'up' ? '상승 전환' : '하락 전환';
+                }
+                return null;
+            };
+
+            const datasets = [{
+                label: currentData.year + '년',
+                data: monthlyData.map(d => d.sales),
+                borderColor: '#6366f1',
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                fill: true,
+                tension: 0.4,
+                pointRadius: 5,
+                pointHoverRadius: 8
+            }];
 
             if (compareData) {
-                const compMap = Object.fromEntries(compareData.by_month || []);
-                datasets.push({ label: compareData.year + '년', data: labels.map((_, i) => compMap[i+1]?.sales || 0), borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.1)', fill: true, tension: 0.4, pointRadius: 4 });
+                datasets.push({
+                    label: compareData.year + '년',
+                    data: monthlyData.map(d => d.compSales),
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4
+                });
                 document.getElementById('monthlyLegend').innerHTML = `<div class="legend-item"><div class="legend-color" style="background: #6366f1;"></div><span>${currentData.year}년</span></div><div class="legend-item"><div class="legend-color" style="background: #8b5cf6;"></div><span>${compareData.year}년</span></div>`;
                 document.getElementById('monthlyLegend').style.display = 'flex';
             } else {
                 document.getElementById('monthlyLegend').style.display = 'none';
             }
 
-            charts.monthly = new Chart(ctx, { type: 'line', data: { labels, datasets }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } }, x: { grid: { display: false } } } } });
+            // 외부 HTML 툴팁 생성 함수
+            const getOrCreateMonthlyTooltip = (chart) => {
+                let tooltipEl = document.getElementById('monthlyChartTooltip');
+                if (!tooltipEl) {
+                    tooltipEl = document.createElement('div');
+                    tooltipEl.id = 'monthlyChartTooltip';
+                    tooltipEl.style.cssText = `
+                        position: fixed;
+                        background: rgba(30, 41, 59, 0.98);
+                        border-radius: 12px;
+                        padding: 16px;
+                        pointer-events: none;
+                        z-index: 99999;
+                        font-size: 12px;
+                        color: #e2e8f0;
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                        max-width: 360px;
+                        transition: opacity 0.2s ease;
+                    `;
+                    document.body.appendChild(tooltipEl);
+                }
+                return tooltipEl;
+            };
+
+            // 외부 툴팁 핸들러
+            const externalTooltipHandler = (context) => {
+                const { chart, tooltip } = context;
+                const tooltipEl = getOrCreateMonthlyTooltip(chart);
+
+                if (tooltip.opacity === 0) {
+                    tooltipEl.style.opacity = 0;
+                    return;
+                }
+
+                if (tooltip.body && tooltip.dataPoints && tooltip.dataPoints.length > 0) {
+                    const monthIdx = tooltip.dataPoints[0].dataIndex;
+                    const d = monthlyData[monthIdx];
+
+                    // 증감 여부 판단 (월평균 대비)
+                    const isIncrease = d.sales >= monthlyAvg;
+                    const borderColor = isIncrease ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.8)';
+                    tooltipEl.style.border = `2px solid ${borderColor}`;
+
+                    let html = '';
+
+                    // 1. 헤더
+                    const headerBg = isIncrease ? 'rgba(99, 102, 241, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+                    html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">📅 ${d.label}</div>`;
+
+                    // 2. 기본 지표
+                    html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong>${(d.sales / 100000000).toFixed(2)}억</strong></div>`;
+                    html += `<div style="margin-bottom: 8px;">📋 건수: <strong>${d.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+
+                    // 3. 비교 분석
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 비교 분석 ──</div>`;
+
+                    // 월평균 대비
+                    const avgDiff = d.sales - monthlyAvg;
+                    const avgDiffPct = monthlyAvg > 0 ? (avgDiff / monthlyAvg * 100) : 0;
+                    const avgColor = avgDiff >= 0 ? '#10b981' : '#ef4444';
+                    const avgSign = avgDiff >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">📊 월평균 대비: <span style="color: ${avgColor}; font-weight: bold;">${avgSign}${avgDiffPct.toFixed(1)}% (${avgSign}${(avgDiff / 10000).toFixed(0)}만)</span></div>`;
+
+                    // 전년 동월 대비
+                    if (d.compSales > 0) {
+                        const yoyDiff = d.sales - d.compSales;
+                        const yoyDiffPct = (yoyDiff / d.compSales * 100);
+                        const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
+                        const yoySign = yoyDiff >= 0 ? '+' : '';
+                        html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyDiffPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
+                    }
+
+                    // 전월 대비
+                    if (monthIdx > 0 && monthlyData[monthIdx - 1].sales > 0) {
+                        const prevMonth = monthlyData[monthIdx - 1];
+                        const momDiff = d.sales - prevMonth.sales;
+                        const momDiffPct = (momDiff / prevMonth.sales * 100);
+                        const momColor = momDiff >= 0 ? '#10b981' : '#ef4444';
+                        const momSign = momDiff >= 0 ? '+' : '';
+
+                        // 추세 표시
+                        const trend = calculateTrend(monthIdx);
+                        const turnAround = checkTurnAround(monthIdx);
+                        let trendText = '';
+                        if (turnAround) {
+                            trendText = ` <span style="color: ${turnAround === '상승 전환' ? '#10b981' : '#ef4444'};">↗ ${turnAround}</span>`;
+                        } else if (trend.count >= 2) {
+                            const trendIcon = trend.type === 'up' ? '↗' : '↘';
+                            const trendColor = trend.type === 'up' ? '#10b981' : '#ef4444';
+                            trendText = ` <span style="color: ${trendColor};">${trendIcon} ${trend.count}개월 연속${trend.type === 'up' ? '↑' : '↓'}</span>`;
+                        }
+                        html += `<div style="margin-bottom: 8px;">📈 전월 대비: <span style="color: ${momColor}; font-weight: bold;">${momSign}${momDiffPct.toFixed(1)}%</span>${trendText}</div>`;
+                    }
+
+                    // 4. 변화 원인 분해 (전월 대비)
+                    if (monthIdx > 0 && monthlyData[monthIdx - 1].sales > 0) {
+                        const prevMonth = monthlyData[monthIdx - 1];
+                        const countEffect = (d.count - prevMonth.count) * prevMonth.avgPrice;
+                        const priceEffect = (d.avgPrice - prevMonth.avgPrice) * d.count;
+                        const totalChange = d.sales - prevMonth.sales;
+
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 변화 원인 분해 ──</div>`;
+
+                        const countColor = countEffect >= 0 ? '#10b981' : '#ef4444';
+                        const countSign = countEffect >= 0 ? '+' : '';
+                        const countPct = totalChange !== 0 ? Math.abs(countEffect / totalChange * 100) : 0;
+                        html += `<div style="margin-bottom: 4px;">📋 건수 효과: <span style="color: ${countColor};">${countSign}${(countEffect / 10000).toFixed(0)}만</span> <span style="color: #94a3b8;">(${countPct.toFixed(0)}%)</span></div>`;
+
+                        const priceColor = priceEffect >= 0 ? '#10b981' : '#ef4444';
+                        const priceSign = priceEffect >= 0 ? '+' : '';
+                        const pricePct = totalChange !== 0 ? Math.abs(priceEffect / totalChange * 100) : 0;
+                        html += `<div style="margin-bottom: 4px;">💵 단가 효과: <span style="color: ${priceColor};">${priceSign}${(priceEffect / 10000).toFixed(0)}만</span> <span style="color: #94a3b8;">(${pricePct.toFixed(0)}%)</span></div>`;
+
+                        // 한 줄 요약
+                        const mainCause = Math.abs(countEffect) > Math.abs(priceEffect) ? '건수' : '단가';
+                        const causeDirection = (mainCause === '건수' ? countEffect : priceEffect) >= 0 ? '증가' : '감소';
+                        html += `<div style="color: #60a5fa; font-size: 11px; margin-top: 4px;">→ ${mainCause} ${causeDirection}가 주요 원인</div>`;
+                    }
+
+                    // 5. 증감 요인 (검사목적별)
+                    const purposeChanges = Object.entries(d.byPurpose).map(([purpose, data]) => {
+                        const compPurpose = d.compByPurpose[purpose] || { sales: 0 };
+                        const diff = data.sales - compPurpose.sales;
+                        const diffPct = compPurpose.sales > 0 ? (diff / compPurpose.sales * 100) : (data.sales > 0 ? 100 : 0);
+                        return { purpose, sales: data.sales, diff, diffPct };
+                    }).sort((a, b) => b.diff - a.diff);
+
+                    const topIncreases = purposeChanges.filter(p => p.diff > 0).slice(0, 3);
+                    const topDecreases = purposeChanges.filter(p => p.diff < 0).slice(0, 3);
+
+                    if (isIncrease && topIncreases.length > 0) {
+                        html += `<div style="color: #10b981; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▲ 증가 요인</div>`;
+                        topIncreases.forEach(p => {
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: <span style="color: #10b981;">+${(p.diff / 10000).toFixed(0)}만 (+${p.diffPct.toFixed(0)}%)</span></div>`;
+                        });
+                    } else if (!isIncrease && topDecreases.length > 0) {
+                        html += `<div style="color: #ef4444; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▼ 감소 요인</div>`;
+                        topDecreases.forEach(p => {
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: <span style="color: #ef4444;">${(p.diff / 10000).toFixed(0)}만 (${p.diffPct.toFixed(0)}%)</span></div>`;
+                        });
+                    }
+
+                    // 6. 주요 기여자/영향자
+                    const managerChanges = Object.entries(d.byManager).map(([manager, data]) => {
+                        const compManager = d.compByManager[manager] || { sales: 0 };
+                        const diff = data.sales - compManager.sales;
+                        const contribution = d.sales > 0 ? (data.sales / d.sales * 100) : 0;
+                        return { manager, sales: data.sales, diff, contribution };
+                    }).sort((a, b) => b.diff - a.diff);
+
+                    const topContributors = managerChanges.filter(m => m.diff > 0).slice(0, 3);
+                    const topDecliners = managerChanges.filter(m => m.diff < 0).slice(0, 3);
+
+                    if (isIncrease && topContributors.length > 0) {
+                        html += `<div style="color: #60a5fa; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▲ 주요 기여자 TOP 3</div>`;
+                        topContributors.forEach(m => {
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${m.manager}: <span style="color: #10b981;">+${(m.diff / 10000).toFixed(0)}만</span> <span style="color: #94a3b8;">(기여도 ${m.contribution.toFixed(0)}%)</span></div>`;
+                        });
+                    } else if (!isIncrease && topDecliners.length > 0) {
+                        html += `<div style="color: #f59e0b; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▼ 주요 감소 담당자</div>`;
+                        topDecliners.forEach(m => {
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${m.manager}: <span style="color: #ef4444;">${(m.diff / 10000).toFixed(0)}만</span> <span style="color: #94a3b8;">(영향도 ${Math.abs(m.contribution).toFixed(0)}%)</span></div>`;
+                        });
+                    }
+
+                    // 7. YTD 누적 현황
+                    const ytdSales = monthlyData.slice(0, monthIdx + 1).reduce((s, m) => s + m.sales, 0);
+                    const ytdCompSales = monthlyData.slice(0, monthIdx + 1).reduce((s, m) => s + m.compSales, 0);
+                    const ytdTargetPct = yearlyTarget > 0 ? (ytdSales / (yearlyTarget * (monthIdx + 1) / 12) * 100) : 0;
+                    const ytdYoyPct = ytdCompSales > 0 ? ((ytdSales - ytdCompSales) / ytdCompSales * 100) : 0;
+
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── YTD 누적 현황 ──</div>`;
+                    html += `<div style="margin-bottom: 4px;">📊 1~${d.month}월 누적: <strong>${(ytdSales / 100000000).toFixed(2)}억</strong></div>`;
+
+                    // 연간 목표 대비
+                    const targetColor = ytdTargetPct >= 100 ? '#10b981' : '#f59e0b';
+                    const targetStatus = ytdTargetPct >= 100 ? '정상 궤도' : `목표 대비 ${(ytdTargetPct - 100).toFixed(1)}%p`;
+                    html += `<div style="margin-bottom: 4px;">🎯 연간 목표 대비: <span style="color: ${targetColor};">${ytdTargetPct.toFixed(1)}%</span> <span style="color: #94a3b8;">(${targetStatus})</span></div>`;
+
+                    // 전년 동기 대비
+                    if (ytdCompSales > 0) {
+                        const ytdYoyColor = ytdYoyPct >= 0 ? '#10b981' : '#ef4444';
+                        const ytdYoySign = ytdYoyPct >= 0 ? '+' : '';
+                        html += `<div style="margin-bottom: 4px;">📅 전년 동기 대비: <span style="color: ${ytdYoyColor}; font-weight: bold;">${ytdYoySign}${ytdYoyPct.toFixed(1)}%</span></div>`;
+                    }
+
+                    // 회복 필요액 (목표 미달 시)
+                    if (ytdTargetPct < 100 && monthIdx < 11) {
+                        const remainingMonths = 12 - monthIdx - 1;
+                        const remainingTarget = yearlyTarget - ytdSales;
+                        const monthlyNeeded = remainingTarget / remainingMonths;
+                        html += `<div style="color: #f59e0b; font-size: 11px; margin-top: 4px;">⚠️ 회복 필요: 남은 ${remainingMonths}개월간 월 ${(monthlyNeeded / 100000000).toFixed(2)}억 필요</div>`;
+                    }
+
+                    tooltipEl.innerHTML = html;
+                }
+
+                // 위치 계산
+                const canvasRect = chart.canvas.getBoundingClientRect();
+                let left = canvasRect.left + tooltip.caretX + 15;
+                let top = canvasRect.top + tooltip.caretY - 10;
+
+                const tooltipWidth = tooltipEl.offsetWidth || 360;
+                if (left + tooltipWidth > window.innerWidth - 20) {
+                    left = canvasRect.left + tooltip.caretX - tooltipWidth - 15;
+                }
+
+                const tooltipHeight = tooltipEl.offsetHeight || 500;
+                if (top + tooltipHeight > window.innerHeight - 20) {
+                    top = window.innerHeight - tooltipHeight - 20;
+                }
+                if (top < 10) top = 10;
+
+                tooltipEl.style.opacity = 1;
+                tooltipEl.style.left = left + 'px';
+                tooltipEl.style.top = top + 'px';
+            };
+
+            charts.monthly = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: false,
+                            external: externalTooltipHandler
+                        }
+                    },
+                    scales: {
+                        y: { ticks: { callback: v => formatCurrency(v) } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
         }
 
         // 월별 건수 차트
