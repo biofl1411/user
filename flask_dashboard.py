@@ -6232,7 +6232,40 @@ HTML_TEMPLATE = '''
                 managers = purposeManagerData.map(m => [m.name, { sales: m.sales, count: m.count }]);
             }
 
+            // 전체 담당자의 검사목적별 평균 계산
+            const allManagers = currentData.by_manager || [];
+            const purposeAvgMap = {};
+            let totalSales = 0;
+            let managerCount = 0;
+            allManagers.forEach(m => {
+                const byPurpose = m[1].by_purpose || {};
+                const sales = m[1].sales || 0;
+                if (sales > 0) {
+                    managerCount++;
+                    totalSales += sales;
+                }
+                Object.entries(byPurpose).forEach(([purpose, data]) => {
+                    if (!purposeAvgMap[purpose]) purposeAvgMap[purpose] = { totalSales: 0, totalCount: 0, managerCount: 0 };
+                    purposeAvgMap[purpose].totalSales += data.sales || 0;
+                    purposeAvgMap[purpose].totalCount += data.count || 0;
+                    if ((data.sales || 0) > 0) purposeAvgMap[purpose].managerCount++;
+                });
+            });
+            // 평균 계산
+            Object.keys(purposeAvgMap).forEach(purpose => {
+                const p = purposeAvgMap[purpose];
+                p.avgSales = p.totalSales / (managerCount || 1);
+                p.avgCount = p.totalCount / (managerCount || 1);
+            });
+            const overallAvgSales = totalSales / (managerCount || 1);
+
+            // 담당자별 상세 정보 준비
             const top15 = managers.slice(0, 15);
+            const managerInfoMap = {};
+            allManagers.forEach(m => {
+                managerInfoMap[m[0]] = m[1];
+            });
+
             const ctx = document.getElementById('managerChart').getContext('2d');
             if (charts.manager) charts.manager.destroy();
 
@@ -6247,7 +6280,103 @@ HTML_TEMPLATE = '''
                 document.getElementById('managerLegend').style.display = 'none';
             }
 
-            charts.manager = new Chart(ctx, { type: 'bar', data: { labels: top15.map(d => d[0]), datasets }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } }, x: { grid: { display: false } } } } });
+            charts.manager = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: top15.map(d => d[0]), datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    return context[0].label;
+                                },
+                                label: function(context) {
+                                    if (context.datasetIndex > 0) {
+                                        return context.dataset.label + ': ' + formatCurrency(context.raw);
+                                    }
+                                    const idx = context.dataIndex;
+                                    const name = top15[idx][0];
+                                    const info = managerInfoMap[name] || top15[idx][1];
+                                    const sales = info.sales || 0;
+                                    const count = info.count || 0;
+                                    const perCase = count > 0 ? sales / count : 0;
+
+                                    const lines = [];
+                                    lines.push('매출: ' + formatCurrency(sales));
+                                    lines.push('건수: ' + count + '건, 건당: ' + formatCurrency(perCase));
+
+                                    // 평균 대비
+                                    const diffPct = overallAvgSales > 0 ? ((sales - overallAvgSales) / overallAvgSales * 100).toFixed(0) : 0;
+                                    lines.push('평균(' + formatCurrency(overallAvgSales) + ') 대비: ' + (diffPct >= 0 ? '+' : '') + diffPct + '%');
+
+                                    return lines;
+                                },
+                                afterBody: function(context) {
+                                    if (context[0].datasetIndex > 0) return [];
+                                    if (purposeFilter !== '전체') return [];
+
+                                    const idx = context[0].dataIndex;
+                                    const name = top15[idx][0];
+                                    const info = managerInfoMap[name];
+                                    if (!info) return [];
+
+                                    const sales = info.sales || 0;
+                                    const byPurpose = info.by_purpose || {};
+                                    const isAboveAvg = sales >= overallAvgSales;
+
+                                    const lines = [''];
+
+                                    // 강점/약점 분석
+                                    const strengths = [];
+                                    const weaknesses = [];
+
+                                    Object.entries(byPurpose).forEach(([purpose, data]) => {
+                                        const avg = purposeAvgMap[purpose]?.avgSales || 0;
+                                        if (avg > 0) {
+                                            const diff = (data.sales || 0) - avg;
+                                            const pct = (diff / avg * 100).toFixed(0);
+                                            if (diff > 0) {
+                                                strengths.push({ purpose, sales: data.sales, avg, diff, pct: '+' + pct });
+                                            } else if (diff < 0) {
+                                                weaknesses.push({ purpose, sales: data.sales, avg, diff, pct });
+                                            }
+                                        }
+                                    });
+
+                                    if (isAboveAvg) {
+                                        // 평균 이상인 사람: 강점 표시
+                                        if (strengths.length > 0) {
+                                            strengths.sort((a, b) => b.diff - a.diff);
+                                            lines.push('── 강점 (평균 대비 높음) ──');
+                                            strengths.slice(0, 3).forEach(s => {
+                                                lines.push('▲ ' + s.purpose + ': ' + formatCurrency(s.sales) + ' (' + s.pct + '%)');
+                                            });
+                                        }
+                                    } else {
+                                        // 평균 이하인 사람: 약점 표시
+                                        if (weaknesses.length > 0) {
+                                            weaknesses.sort((a, b) => a.diff - b.diff);
+                                            lines.push('── 약점 (평균 대비 낮음) ──');
+                                            weaknesses.slice(0, 3).forEach(w => {
+                                                lines.push('▼ ' + w.purpose + ': ' + formatCurrency(w.sales) + ' (' + w.pct + '%)');
+                                            });
+                                        }
+                                    }
+
+                                    return lines;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
         }
 
         function initManagerChartPurposeFilter() {
