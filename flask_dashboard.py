@@ -7007,6 +7007,32 @@ HTML_TEMPLATE = '''
             });
         }
 
+        // 긴급 건당 단가 차트 - 외부 HTML 툴팁 생성 함수
+        const getOrCreateUrgentUnitPriceTooltip = (chart) => {
+            let tooltipEl = document.getElementById('urgentUnitPriceChartTooltip');
+            if (!tooltipEl) {
+                tooltipEl = document.createElement('div');
+                tooltipEl.id = 'urgentUnitPriceChartTooltip';
+                tooltipEl.style.cssText = `
+                    position: fixed;
+                    background: rgba(30, 41, 59, 0.97);
+                    border-radius: 12px;
+                    padding: 16px;
+                    pointer-events: none;
+                    z-index: 99999;
+                    font-size: 13px;
+                    color: #e2e8f0;
+                    min-width: 340px;
+                    max-width: 400px;
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+                    transition: opacity 0.15s ease;
+                    line-height: 1.5;
+                `;
+                document.body.appendChild(tooltipEl);
+            }
+            return tooltipEl;
+        };
+
         // 긴급 건당 단가 차트
         function updateUrgentUnitPriceChart() {
             const ctx = document.getElementById('urgentUnitPriceChart');
@@ -7015,37 +7041,129 @@ HTML_TEMPLATE = '''
 
             const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
             const urgentMonthMap = Object.fromEntries(currentData.by_urgent_month || []);
-            const urgentUnitPrices = labels.map((_, i) => {
-                const d = urgentMonthMap[i+1];
-                return d && d.count > 0 ? d.sales / d.count : 0;
+            const totalMonthMap = Object.fromEntries(currentData.by_month || []);
+
+            // 월별 상세 데이터 구성
+            const monthlyData = labels.map((label, i) => {
+                const month = i + 1;
+                const urgentData = urgentMonthMap[month] || { count: 0, sales: 0, byManager: {}, byPurpose: {} };
+                const totalData = totalMonthMap[month] || { count: 0, sales: 0 };
+
+                const urgentCount = urgentData.count || 0;
+                const urgentSales = urgentData.sales || 0;
+                const urgentUnitPrice = urgentCount > 0 ? urgentSales / urgentCount : 0;
+
+                // 일반 건 계산 (전체 - 긴급)
+                const normalCount = (totalData.count || 0) - urgentCount;
+                const normalSales = (totalData.sales || 0) - urgentSales;
+                const normalUnitPrice = normalCount > 0 ? normalSales / normalCount : 0;
+
+                // 검사목적별 긴급 단가 계산
+                const purposeUnitPrices = Object.entries(urgentData.byPurpose || {}).map(([purpose, data]) => ({
+                    purpose,
+                    count: data.count,
+                    sales: data.sales,
+                    unitPrice: data.count > 0 ? data.sales / data.count : 0,
+                    ratio: urgentCount > 0 ? (data.count / urgentCount * 100) : 0
+                })).sort((a, b) => b.unitPrice - a.unitPrice);
+
+                // 담당자별 긴급 단가 계산
+                const managerUnitPrices = Object.entries(urgentData.byManager || {}).map(([name, data]) => ({
+                    name,
+                    count: data.count,
+                    sales: data.sales,
+                    unitPrice: data.count > 0 ? data.sales / data.count : 0
+                })).sort((a, b) => b.unitPrice - a.unitPrice);
+
+                return {
+                    month,
+                    label,
+                    urgentCount,
+                    urgentSales,
+                    urgentUnitPrice,
+                    normalCount,
+                    normalSales,
+                    normalUnitPrice,
+                    purposeUnitPrices,
+                    managerUnitPrices
+                };
             });
+
+            // 월평균 계산 (0이 아닌 월만)
+            const nonZeroMonths = monthlyData.filter(m => m.urgentUnitPrice > 0);
+            const avgUrgentUnitPrice = nonZeroMonths.length > 0 ? nonZeroMonths.reduce((sum, m) => sum + m.urgentUnitPrice, 0) / nonZeroMonths.length : 0;
+            const avgNormalUnitPrice = nonZeroMonths.length > 0 ? nonZeroMonths.reduce((sum, m) => sum + m.normalUnitPrice, 0) / nonZeroMonths.length : 0;
+            const avgPremium = avgNormalUnitPrice > 0 ? ((avgUrgentUnitPrice - avgNormalUnitPrice) / avgNormalUnitPrice * 100) : 0;
+
+            // 전년도 비교 데이터
+            const compUrgentMonthMap = compareData ? Object.fromEntries(compareData.by_urgent_month || []) : {};
+            const compTotalMonthMap = compareData ? Object.fromEntries(compareData.by_month || []) : {};
+
+            const compMonthlyData = labels.map((_, i) => {
+                const month = i + 1;
+                const urgentData = compUrgentMonthMap[month] || { count: 0, sales: 0, byManager: {}, byPurpose: {} };
+                const totalData = compTotalMonthMap[month] || { count: 0, sales: 0 };
+
+                const urgentCount = urgentData.count || 0;
+                const urgentSales = urgentData.sales || 0;
+                const urgentUnitPrice = urgentCount > 0 ? urgentSales / urgentCount : 0;
+
+                const normalCount = (totalData.count || 0) - urgentCount;
+                const normalSales = (totalData.sales || 0) - urgentSales;
+                const normalUnitPrice = normalCount > 0 ? normalSales / normalCount : 0;
+
+                const purposeUnitPrices = Object.entries(urgentData.byPurpose || {}).map(([purpose, data]) => ({
+                    purpose,
+                    count: data.count,
+                    ratio: urgentCount > 0 ? (data.count / urgentCount * 100) : 0
+                }));
+
+                return {
+                    month,
+                    urgentCount,
+                    urgentSales,
+                    urgentUnitPrice,
+                    normalUnitPrice,
+                    purposeUnitPrices
+                };
+            });
+
+            // YoY 증감율 순위 계산
+            const yoyChanges = monthlyData.map((m, i) => {
+                const comp = compMonthlyData[i];
+                const change = m.urgentUnitPrice - comp.urgentUnitPrice;
+                const changePct = comp.urgentUnitPrice > 0 ? (change / comp.urgentUnitPrice * 100) : (m.urgentUnitPrice > 0 ? 100 : 0);
+                return { month: m.month, change, changePct };
+            });
+            const sortedByChange = [...yoyChanges].sort((a, b) => b.changePct - a.changePct);
+            const yoyRankMap = {};
+            sortedByChange.forEach((item, idx) => { yoyRankMap[item.month] = idx + 1; });
 
             const datasets = [{
                 label: currentData.year + '년 긴급 건당 단가',
-                data: urgentUnitPrices,
+                data: monthlyData.map(m => m.urgentUnitPrice),
                 borderColor: '#f59e0b',
                 backgroundColor: 'rgba(245, 158, 11, 0.2)',
                 fill: true,
                 tension: 0.4,
-                pointRadius: 5,
+                pointRadius: 6,
+                pointHoverRadius: 10,
                 pointBackgroundColor: '#f59e0b',
+                customData: monthlyData,
             }];
 
             // 전년도 비교 데이터
             if (compareData && compareData.by_urgent_month) {
-                const compMap = Object.fromEntries(compareData.by_urgent_month || []);
                 datasets.push({
                     label: compareData.year + '년 긴급 건당 단가',
-                    data: labels.map((_, i) => {
-                        const d = compMap[i+1];
-                        return d && d.count > 0 ? d.sales / d.count : 0;
-                    }),
+                    data: compMonthlyData.map(m => m.urgentUnitPrice),
                     borderColor: 'rgba(156, 163, 175, 0.8)',
                     backgroundColor: 'rgba(156, 163, 175, 0.1)',
                     fill: false,
                     tension: 0.4,
                     pointRadius: 4,
                     borderDash: [5, 5],
+                    customData: compMonthlyData,
                 });
             }
 
@@ -7055,7 +7173,360 @@ HTML_TEMPLATE = '''
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: compareData ? true : false, position: 'top' } },
+                    plugins: {
+                        legend: { display: compareData ? true : false, position: 'top' },
+                        tooltip: {
+                            enabled: false,
+                            external: function(context) {
+                                const tooltipEl = getOrCreateUrgentUnitPriceTooltip(context.chart);
+                                const tooltipModel = context.tooltip;
+
+                                if (tooltipModel.opacity === 0) {
+                                    tooltipEl.style.opacity = 0;
+                                    return;
+                                }
+
+                                if (tooltipModel.dataPoints && tooltipModel.dataPoints.length > 0) {
+                                    const dataPoint = tooltipModel.dataPoints[0];
+                                    const monthIdx = dataPoint.dataIndex;
+                                    const d = monthlyData[monthIdx];
+                                    const comp = compMonthlyData[monthIdx];
+
+                                    // 단가 수준 태그 판정
+                                    let priceTag, priceIcon, priceColor, borderColor;
+                                    if (d.urgentUnitPrice > avgUrgentUnitPrice * 1.05) {
+                                        priceTag = '고단가'; priceIcon = '💰';
+                                        priceColor = '#f59e0b'; borderColor = '#f59e0b';
+                                    } else if (d.urgentUnitPrice < avgUrgentUnitPrice * 0.95) {
+                                        priceTag = '저단가'; priceIcon = '📉';
+                                        priceColor = '#60a5fa'; borderColor = '#3b82f6';
+                                    } else {
+                                        priceTag = '평균'; priceIcon = '📊';
+                                        priceColor = '#94a3b8'; borderColor = 'rgba(99, 102, 241, 0.5)';
+                                    }
+                                    const isHighPrice = d.urgentUnitPrice >= avgUrgentUnitPrice;
+                                    tooltipEl.style.border = `2px solid ${borderColor}`;
+
+                                    let html = '';
+
+                                    // === 1. 헤더 영역 ===
+                                    html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                        <div style="font-size: 18px; font-weight: bold; color: #fff;">${d.label}</div>
+                                        <div style="display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+                                            background: ${priceTag === '고단가' ? 'rgba(245, 158, 11, 0.2)' : priceTag === '저단가' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(148, 163, 184, 0.2)'};
+                                            color: ${priceColor};">
+                                            ${priceIcon} ${priceTag}
+                                        </div>
+                                    </div>`;
+
+                                    // === 2. 기본 지표 ===
+                                    html += `<div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 12px;">`;
+                                    html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                        <span style="color: #f59e0b;">■ ${currentData.year}년 긴급 건당 단가:</span>
+                                        <span style="font-weight: 600;">${(d.urgentUnitPrice / 10000).toFixed(1)}만</span>
+                                    </div>`;
+                                    if (compareData) {
+                                        html += `<div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #9ca3af;">□ ${compareData.year}년 긴급 건당 단가:</span>
+                                            <span style="font-weight: 600; color: #9ca3af;">${(comp.urgentUnitPrice / 10000).toFixed(1)}만</span>
+                                        </div>`;
+                                    }
+                                    html += `</div>`;
+
+                                    // === 3. 전년 동월 비교 ===
+                                    if (compareData && comp.urgentUnitPrice > 0) {
+                                        const yoyChange = d.urgentUnitPrice - comp.urgentUnitPrice;
+                                        const yoyChangePct = (yoyChange / comp.urgentUnitPrice * 100);
+                                        const yoyRank = yoyRankMap[d.month];
+                                        const isUp = yoyChange >= 0;
+
+                                        html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── 전년 동월 비교 ──</div>`;
+                                        html += `<div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 12px;">`;
+                                        html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                            <span style="color: #94a3b8;">전년 대비:</span>
+                                            <span style="color: ${isUp ? '#10b981' : '#ef4444'}; font-weight: 600;">
+                                                ${isUp ? '+' : ''}${Math.round(yoyChange).toLocaleString()}원 (${isUp ? '+' : ''}${yoyChangePct.toFixed(1)}%)
+                                            </span>
+                                        </div>`;
+                                        html += `<div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #94a3b8;">단가 ${isUp ? '상승률' : '하락률'} 순위:</span>
+                                            <span style="font-weight: 600;">
+                                                ${isUp ? '📈 ' : '📉 '}${yoyRank}위 / 12개월
+                                            </span>
+                                        </div>`;
+                                        html += `</div>`;
+                                    }
+
+                                    // === 4. 긴급 프리미엄 분석 ===
+                                    html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── 긴급 프리미엄 분석 ──</div>`;
+                                    html += `<div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 12px;">`;
+
+                                    const premium = d.urgentUnitPrice - d.normalUnitPrice;
+                                    const premiumPct = d.normalUnitPrice > 0 ? (premium / d.normalUnitPrice * 100) : 0;
+                                    const premiumDiff = premiumPct - avgPremium;
+
+                                    html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                        <span style="color: #94a3b8;">일반 건당 단가:</span>
+                                        <span style="font-weight: 600;">${(d.normalUnitPrice / 10000).toFixed(1)}만</span>
+                                    </div>`;
+                                    html += `<div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                                        <span style="color: #94a3b8;">긴급 프리미엄:</span>
+                                        <span style="font-weight: 600; color: ${premium >= 0 ? '#10b981' : '#ef4444'};">
+                                            ${premium >= 0 ? '+' : ''}${(premium / 10000).toFixed(1)}만 (${premium >= 0 ? '+' : ''}${premiumPct.toFixed(1)}%)
+                                        </span>
+                                    </div>`;
+
+                                    if (premium > 0) {
+                                        html += `<div style="text-align: center; padding: 4px; background: rgba(16, 185, 129, 0.1); border-radius: 4px; font-size: 12px; color: #10b981;">
+                                            💎 긴급 건이 일반보다 ${premiumPct.toFixed(1)}% 높은 수익성
+                                        </div>`;
+                                    }
+
+                                    // 프리미엄 축소 경고
+                                    if (Math.abs(premiumDiff) >= 10) {
+                                        const isReduced = premiumDiff < 0;
+                                        html += `<div style="margin-top: 6px; padding: 4px; background: ${isReduced ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)'}; border-radius: 4px; font-size: 11px; color: ${isReduced ? '#f59e0b' : '#10b981'};">
+                                            ${isReduced ? '⚠️' : '📈'} 프리미엄 ${isReduced ? '축소' : '확대'} (평균 ${avgPremium.toFixed(1)}% → ${premiumPct.toFixed(1)}%)
+                                        </div>`;
+                                    }
+                                    html += `</div>`;
+
+                                    // === 5. 월별 추세 ===
+                                    html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── 월별 추세 ──</div>`;
+                                    html += `<div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 12px;">`;
+
+                                    // 전월 대비
+                                    if (monthIdx > 0) {
+                                        const prevMonth = monthlyData[monthIdx - 1];
+                                        const momChange = d.urgentUnitPrice - prevMonth.urgentUnitPrice;
+                                        const momChangePct = prevMonth.urgentUnitPrice > 0 ? (momChange / prevMonth.urgentUnitPrice * 100) : 0;
+                                        html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                            <span style="color: #94a3b8;">전월 대비:</span>
+                                            <span style="color: ${momChange >= 0 ? '#10b981' : '#ef4444'};">
+                                                ${momChange >= 0 ? '+' : ''}${Math.round(momChange).toLocaleString()}원 (${momChange >= 0 ? '+' : ''}${momChangePct.toFixed(1)}%)
+                                            </span>
+                                        </div>`;
+                                    }
+
+                                    // 추세 계산
+                                    let trendCount = 0;
+                                    let trendDir = null;
+                                    for (let i = monthIdx; i >= 1; i--) {
+                                        const curr = monthlyData[i].urgentUnitPrice;
+                                        const prev = monthlyData[i - 1].urgentUnitPrice;
+                                        if (prev === 0) break;
+                                        const changePct = ((curr - prev) / prev) * 100;
+
+                                        if (Math.abs(changePct) <= 3) {
+                                            if (trendDir === null) { trendDir = 'flat'; trendCount = 1; }
+                                            else if (trendDir === 'flat') { trendCount++; }
+                                            else { break; }
+                                        } else if (changePct > 3) {
+                                            if (trendDir === null) { trendDir = 'up'; trendCount = 1; }
+                                            else if (trendDir === 'up') { trendCount++; }
+                                            else { break; }
+                                        } else {
+                                            if (trendDir === null) { trendDir = 'down'; trendCount = 1; }
+                                            else if (trendDir === 'down') { trendCount++; }
+                                            else { break; }
+                                        }
+                                    }
+
+                                    let trendText, trendColor, trendArrow;
+                                    if (trendDir === 'up') { trendArrow = '↗'; trendText = `${trendCount}개월 연속 상승`; trendColor = '#10b981'; }
+                                    else if (trendDir === 'down') { trendArrow = '↘'; trendText = `${trendCount}개월 연속 하락`; trendColor = '#ef4444'; }
+                                    else { trendArrow = '→'; trendText = '횡보'; trendColor = '#94a3b8'; }
+
+                                    html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                        <span style="color: #94a3b8;">추세:</span>
+                                        <span style="color: ${trendColor}; font-weight: 600;">${trendArrow} ${trendText}</span>
+                                    </div>`;
+
+                                    // 월평균 대비
+                                    const avgDiff = d.urgentUnitPrice - avgUrgentUnitPrice;
+                                    const avgDiffPct = avgUrgentUnitPrice > 0 ? (avgDiff / avgUrgentUnitPrice * 100) : 0;
+                                    html += `<div style="display: flex; justify-content: space-between;">
+                                        <span style="color: #94a3b8;">월평균(${(avgUrgentUnitPrice / 10000).toFixed(1)}만) 대비:</span>
+                                        <span style="color: ${avgDiff >= 0 ? '#10b981' : '#ef4444'};">
+                                            ${avgDiff >= 0 ? '+' : ''}${Math.round(avgDiff).toLocaleString()}원 (${avgDiff >= 0 ? '+' : ''}${avgDiffPct.toFixed(1)}%)
+                                        </span>
+                                    </div>`;
+                                    html += `</div>`;
+
+                                    // === 6. 단가 구성 분석 ===
+                                    if (d.purposeUnitPrices.length > 0) {
+                                        html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── 단가 구성 분석 ──</div>`;
+                                        html += `<div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 12px;">`;
+
+                                        if (isHighPrice) {
+                                            // 고단가 월
+                                            const highPurposes = d.purposeUnitPrices.filter(p => p.unitPrice > avgUrgentUnitPrice).slice(0, 2);
+                                            const lowPurposes = d.purposeUnitPrices.filter(p => p.unitPrice < avgUrgentUnitPrice).slice(-1);
+
+                                            if (highPurposes.length > 0) {
+                                                html += `<div style="margin-bottom: 6px; color: #10b981; font-size: 11px;">▲ 단가 상승 요인:</div>`;
+                                                highPurposes.forEach(p => {
+                                                    html += `<div style="margin-left: 12px; margin-bottom: 2px; font-size: 12px;">
+                                                        • ${p.purpose}: <span style="color: #f59e0b;">${(p.unitPrice / 10000).toFixed(1)}만</span>
+                                                        <span style="color: #94a3b8;">(비중 ${p.ratio.toFixed(1)}%)</span>
+                                                    </div>`;
+                                                });
+                                            }
+                                            if (lowPurposes.length > 0) {
+                                                html += `<div style="margin-top: 6px; margin-bottom: 4px; color: #ef4444; font-size: 11px;">▼ 단가 하락 요인:</div>`;
+                                                lowPurposes.forEach(p => {
+                                                    html += `<div style="margin-left: 12px; font-size: 12px;">
+                                                        • ${p.purpose}: <span style="color: #60a5fa;">${(p.unitPrice / 10000).toFixed(1)}만</span>
+                                                        <span style="color: #94a3b8;">(비중 ${p.ratio.toFixed(1)}%)</span>
+                                                    </div>`;
+                                                });
+                                            }
+                                        } else {
+                                            // 저단가 월
+                                            const lowPurposes = d.purposeUnitPrices.filter(p => p.unitPrice < avgUrgentUnitPrice * 0.9).slice(-2).reverse();
+                                            const highPurposes = d.purposeUnitPrices.filter(p => p.unitPrice > avgUrgentUnitPrice).slice(0, 1);
+
+                                            // 전년 동월 비교로 비중 변화 확인
+                                            const compPurposeMap = {};
+                                            if (comp && comp.purposeUnitPrices) {
+                                                comp.purposeUnitPrices.forEach(p => { compPurposeMap[p.purpose] = p.ratio; });
+                                            }
+
+                                            if (lowPurposes.length > 0) {
+                                                html += `<div style="margin-bottom: 6px; color: #f59e0b; font-size: 11px;">⚠️ 저단가 검사 비중:</div>`;
+                                                lowPurposes.forEach(p => {
+                                                    const prevRatio = compPurposeMap[p.purpose] || 0;
+                                                    const ratioChange = p.ratio - prevRatio;
+                                                    html += `<div style="margin-left: 12px; margin-bottom: 2px; font-size: 12px;">
+                                                        • ${p.purpose}: <span style="color: #60a5fa;">${(p.unitPrice / 10000).toFixed(1)}만</span>
+                                                        <span style="color: #94a3b8;">(${p.ratio.toFixed(1)}%${ratioChange !== 0 ? `, ${ratioChange >= 0 ? '+' : ''}${ratioChange.toFixed(1)}%p` : ''})</span>
+                                                    </div>`;
+                                                });
+                                            }
+                                            if (highPurposes.length > 0) {
+                                                html += `<div style="margin-top: 6px; margin-bottom: 4px; color: #ef4444; font-size: 11px;">📉 고단가 검사 비중 감소:</div>`;
+                                                highPurposes.forEach(p => {
+                                                    const prevRatio = compPurposeMap[p.purpose] || 0;
+                                                    const ratioChange = p.ratio - prevRatio;
+                                                    html += `<div style="margin-left: 12px; font-size: 12px;">
+                                                        • ${p.purpose}: <span style="color: #f59e0b;">${(p.unitPrice / 10000).toFixed(1)}만</span>
+                                                        <span style="color: #94a3b8;">(${p.ratio.toFixed(1)}%${ratioChange < 0 ? `, ${ratioChange.toFixed(1)}%p` : ''})</span>
+                                                    </div>`;
+                                                });
+                                            }
+                                        }
+                                        html += `</div>`;
+                                    }
+
+                                    // === 7. 매출 영향 분석 ===
+                                    html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── ${isHighPrice ? '매출 영향 분석' : '매출 손실 분석'} ──</div>`;
+                                    html += `<div style="background: ${isHighPrice ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'}; padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid ${isHighPrice ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'};">`;
+
+                                    html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                        <span style="color: #94a3b8;">해당 월 긴급 건수:</span>
+                                        <span style="font-weight: 600;">${d.urgentCount.toLocaleString()}건</span>
+                                    </div>`;
+                                    html += `<div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                                        <span style="color: #94a3b8;">긴급 매출:</span>
+                                        <span style="font-weight: 600;">${(d.urgentSales / 100000000).toFixed(2)}억</span>
+                                    </div>`;
+
+                                    if (isHighPrice) {
+                                        const priceEffect = (d.urgentUnitPrice - avgUrgentUnitPrice) * d.urgentCount;
+                                        html += `<div style="padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                            📈 단가 +${((d.urgentUnitPrice - avgUrgentUnitPrice) / 10000).toFixed(1)}만 시 매출 효과:
+                                            <span style="color: #10b981; font-weight: 600;">+${(priceEffect / 10000).toFixed(0)}만</span>
+                                        </div>`;
+                                    } else {
+                                        const lostSales = (avgUrgentUnitPrice - d.urgentUnitPrice) * d.urgentCount;
+                                        const expectedSales = avgUrgentUnitPrice * d.urgentCount;
+                                        html += `<div style="padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                            ⚠️ 평균 단가였다면:
+                                            <span style="font-weight: 600;">${(expectedSales / 100000000).toFixed(2)}억</span>
+                                            <span style="color: #ef4444;">(-${(lostSales / 10000).toFixed(0)}만 손실)</span>
+                                        </div>`;
+                                    }
+                                    html += `</div>`;
+
+                                    // === 8. 단가 TOP 담당자 / 개선 기회 ===
+                                    if (isHighPrice && d.managerUnitPrices.length > 0) {
+                                        // 고단가 월 - 단가 TOP 담당자
+                                        html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── 단가 TOP 담당자 ──</div>`;
+                                        html += `<div style="background: rgba(245, 158, 11, 0.1); padding: 10px; border-radius: 8px; border: 1px solid rgba(245, 158, 11, 0.3);">`;
+
+                                        const topManagers = d.managerUnitPrices.slice(0, 3);
+                                        const medals = ['🥇', '🥈', '🥉'];
+                                        topManagers.forEach((m, i) => {
+                                            const diffPct = avgUrgentUnitPrice > 0 ? ((m.unitPrice - avgUrgentUnitPrice) / avgUrgentUnitPrice * 100) : 0;
+                                            html += `<div style="display: flex; justify-content: space-between; margin-bottom: ${i < 2 ? '4px' : '0'};">
+                                                <span>${medals[i]} ${m.name}:</span>
+                                                <span style="font-weight: 600;">${(m.unitPrice / 10000).toFixed(1)}만
+                                                    <span style="color: ${diffPct >= 0 ? '#10b981' : '#ef4444'}; font-size: 11px;">(평균 ${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)</span>
+                                                </span>
+                                            </div>`;
+                                        });
+                                        html += `</div>`;
+                                    } else if (!isHighPrice) {
+                                        // 저단가 월 - 개선 기회
+                                        html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── 개선 기회 ──</div>`;
+                                        html += `<div style="background: rgba(59, 130, 246, 0.1); padding: 10px; border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.3);">`;
+
+                                        // 고단가 검사 비중 +10%p 시 효과
+                                        const highPricePurpose = d.purposeUnitPrices.find(p => p.unitPrice > avgUrgentUnitPrice);
+                                        if (highPricePurpose) {
+                                            const addCount = Math.round(d.urgentCount * 0.1);
+                                            const addSales = addCount * (highPricePurpose.unitPrice - d.urgentUnitPrice);
+                                            html += `<div style="margin-bottom: 6px;">
+                                                💡 고단가 검사 비중 +10%p 시:
+                                                <span style="color: #10b981; font-weight: 600;">+${(addSales / 10000).toFixed(0)}만</span>
+                                            </div>`;
+                                        }
+
+                                        // 프리미엄 회복 시 효과
+                                        if (premiumPct < avgPremium) {
+                                            const targetPremium = avgPremium / 100;
+                                            const targetUrgentPrice = d.normalUnitPrice * (1 + targetPremium);
+                                            const recoveryEffect = (targetUrgentPrice - d.urgentUnitPrice) * d.urgentCount;
+                                            html += `<div style="margin-bottom: 6px;">
+                                                💡 긴급 프리미엄 ${avgPremium.toFixed(0)}% 회복 시:
+                                                <span style="color: #10b981; font-weight: 600;">+${(recoveryEffect / 10000).toFixed(0)}만</span>
+                                            </div>`;
+                                        }
+
+                                        // 벤치마크 월
+                                        const bestMonth = [...monthlyData].sort((a, b) => b.urgentUnitPrice - a.urgentUnitPrice)[0];
+                                        if (bestMonth.month !== d.month) {
+                                            html += `<div>🎯 벤치마크: ${bestMonth.label} 단가 구성 참고</div>`;
+                                        }
+                                        html += `</div>`;
+                                    }
+
+                                    tooltipEl.innerHTML = html;
+                                }
+
+                                // 위치 조정
+                                const position = context.chart.canvas.getBoundingClientRect();
+                                let left = position.left + window.scrollX + tooltipModel.caretX + 15;
+                                let top = position.top + window.scrollY + tooltipModel.caretY - 20;
+
+                                const tooltipWidth = 400;
+                                if (left + tooltipWidth > window.innerWidth - 20) {
+                                    left = position.left + window.scrollX + tooltipModel.caretX - tooltipWidth - 15;
+                                }
+                                const tooltipHeight = tooltipEl.offsetHeight || 700;
+                                if (top + tooltipHeight > window.innerHeight + window.scrollY - 20) {
+                                    top = window.innerHeight + window.scrollY - tooltipHeight - 20;
+                                }
+                                if (top < window.scrollY + 10) {
+                                    top = window.scrollY + 10;
+                                }
+
+                                tooltipEl.style.opacity = 1;
+                                tooltipEl.style.left = left + 'px';
+                                tooltipEl.style.top = top + 'px';
+                            }
+                        }
+                    },
                     scales: { y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } } }
                 }
             });
