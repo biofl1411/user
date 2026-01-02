@@ -5213,16 +5213,49 @@ HTML_TEMPLATE = '''
             const selectedPurpose = document.getElementById('urgentPurposeSelect')?.value || '전체';
             const managers = currentData.by_manager || [];
 
+            // 월 수 계산 (실제 데이터가 있는 월)
+            const byMonth = currentData.by_month || [];
+            const monthCount = byMonth.length || 12;
+
+            // 전체 평균 계산 (목적별 긴급 건수)
+            const purposeAvgMap = {};
+            let totalUrgent = 0;
+            let managerWithUrgent = 0;
+            managers.forEach(m => {
+                const urgentByPurpose = m[1].urgent_by_purpose || {};
+                const urgent = m[1].urgent || 0;
+                if (urgent > 0) {
+                    managerWithUrgent++;
+                    totalUrgent += urgent;
+                }
+                Object.entries(urgentByPurpose).forEach(([purpose, count]) => {
+                    if (!purposeAvgMap[purpose]) purposeAvgMap[purpose] = { total: 0, count: 0 };
+                    purposeAvgMap[purpose].total += count;
+                    purposeAvgMap[purpose].count++;
+                });
+            });
+            // 평균 계산
+            Object.keys(purposeAvgMap).forEach(purpose => {
+                purposeAvgMap[purpose].avg = purposeAvgMap[purpose].total / (managerWithUrgent || 1);
+            });
+            const overallAvg = totalUrgent / (managerWithUrgent || 1);
+
             // 검사목적별 필터 적용
             const urgentData = managers.map(m => {
                 let urgentCount = 0;
+                const urgentByPurpose = m[1].urgent_by_purpose || {};
                 if (selectedPurpose === '전체') {
                     urgentCount = m[1].urgent || 0;
                 } else {
-                    const purposeUrgent = m[1].urgent_by_purpose || {};
-                    urgentCount = purposeUrgent[selectedPurpose] || 0;
+                    urgentCount = urgentByPurpose[selectedPurpose] || 0;
                 }
-                return { name: m[0], urgent: urgentCount };
+                return {
+                    name: m[0],
+                    urgent: urgentCount,
+                    urgentByPurpose: urgentByPurpose,
+                    totalUrgent: m[1].urgent || 0,
+                    monthlyAvg: (m[1].urgent || 0) / monthCount
+                };
             }).sort((a, b) => b.urgent - a.urgent);
 
             const maxUrgent = Math.max(...urgentData.map(d => d.urgent)) || 1;
@@ -5269,7 +5302,80 @@ HTML_TEMPLATE = '''
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: compareData ? true : false, position: 'top' } },
+                    plugins: {
+                        legend: { display: compareData ? true : false, position: 'top' },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    return context[0].label;
+                                },
+                                label: function(context) {
+                                    if (context.datasetIndex > 0) {
+                                        return context.dataset.label + ': ' + context.raw + '건';
+                                    }
+                                    const idx = context.dataIndex;
+                                    const d = urgentData[idx];
+                                    const lines = [];
+                                    lines.push('긴급 건수: ' + d.urgent + '건');
+                                    lines.push('월평균: ' + d.monthlyAvg.toFixed(1) + '건/월');
+
+                                    // 전체 평균 대비
+                                    const diffFromAvg = d.totalUrgent - overallAvg;
+                                    const diffPct = overallAvg > 0 ? ((d.totalUrgent - overallAvg) / overallAvg * 100).toFixed(0) : 0;
+                                    lines.push('전체 평균(' + overallAvg.toFixed(0) + '건) 대비: ' + (diffFromAvg >= 0 ? '+' : '') + diffFromAvg.toFixed(0) + '건 (' + (diffFromAvg >= 0 ? '+' : '') + diffPct + '%)');
+
+                                    return lines;
+                                },
+                                afterBody: function(context) {
+                                    if (context[0].datasetIndex > 0) return [];
+                                    const idx = context[0].dataIndex;
+                                    const d = urgentData[idx];
+                                    const lines = ['', '── 검사목적별 비교 ──'];
+
+                                    // 평균 대비 높은 목적과 낮은 목적 분석
+                                    const higherPurposes = [];
+                                    const lowerPurposes = [];
+
+                                    Object.entries(d.urgentByPurpose).forEach(([purpose, count]) => {
+                                        const avg = purposeAvgMap[purpose]?.avg || 0;
+                                        if (avg > 0) {
+                                            const diff = count - avg;
+                                            const pct = (diff / avg * 100).toFixed(0);
+                                            if (diff > 0) {
+                                                higherPurposes.push({ purpose, count, avg, diff, pct: '+' + pct });
+                                            } else if (diff < 0) {
+                                                lowerPurposes.push({ purpose, count, avg, diff, pct });
+                                            }
+                                        }
+                                    });
+
+                                    // 평균보다 긴급이 많은 목적들 (상위 3개)
+                                    if (higherPurposes.length > 0) {
+                                        higherPurposes.sort((a, b) => b.diff - a.diff);
+                                        lines.push('▲ 평균 대비 높음:');
+                                        higherPurposes.slice(0, 3).forEach(p => {
+                                            lines.push('  ' + p.purpose + ': ' + p.count + '건 (평균 ' + p.avg.toFixed(0) + '건, ' + p.pct + '%)');
+                                        });
+                                    }
+
+                                    // 평균보다 긴급이 적은 목적들 (상위 3개)
+                                    if (lowerPurposes.length > 0) {
+                                        lowerPurposes.sort((a, b) => a.diff - b.diff);
+                                        lines.push('▼ 평균 대비 낮음:');
+                                        lowerPurposes.slice(0, 3).forEach(p => {
+                                            lines.push('  ' + p.purpose + ': ' + p.count + '건 (평균 ' + p.avg.toFixed(0) + '건, ' + p.pct + '%)');
+                                        });
+                                    }
+
+                                    if (higherPurposes.length === 0 && lowerPurposes.length === 0) {
+                                        lines.push('(목적별 데이터 없음)');
+                                    }
+
+                                    return lines;
+                                }
+                            }
+                        }
+                    },
                     scales: { y: { beginAtZero: true } }
                 }
             });
