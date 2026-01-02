@@ -3757,16 +3757,20 @@ HTML_TEMPLATE = '''
             </section>
 
             <!-- 매출/건수 추이 차트 -->
-            <div class="content-grid">
+            <div class="content-grid" style="margin-bottom: 24px;">
                 <div class="card">
-                    <div class="card-header"><div class="card-title">📈 월별 매출 추이</div></div>
+                    <div class="card-header">
+                        <div class="card-title">📈 월별 매출 추이</div>
+                    </div>
                     <div class="card-body">
                         <div class="chart-legend" id="monthlyLegend" style="display: none;"></div>
                         <div class="chart-container" style="height: 350px;"><canvas id="monthlyChart"></canvas></div>
                     </div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><div class="card-title">📊 월별 건수 추이</div></div>
+                    <div class="card-header">
+                        <div class="card-title">📊 월별 건수 추이</div>
+                    </div>
                     <div class="card-body">
                         <div class="chart-container" style="height: 350px;"><canvas id="monthlyCountChart"></canvas></div>
                     </div>
@@ -3774,21 +3778,27 @@ HTML_TEMPLATE = '''
             </div>
 
             <!-- 분기별/평균단가/전년비교 차트 -->
-            <div class="content-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <div class="content-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
                 <div class="card">
-                    <div class="card-header"><div class="card-title">📊 분기별 매출</div></div>
+                    <div class="card-header">
+                        <div class="card-title">📊 분기별 매출</div>
+                    </div>
                     <div class="card-body">
                         <div class="chart-container" style="height: 300px;"><canvas id="quarterlyChart"></canvas></div>
                     </div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><div class="card-title">💰 월별 평균단가</div></div>
+                    <div class="card-header">
+                        <div class="card-title">💰 월별 평균단가</div>
+                    </div>
                     <div class="card-body">
                         <div class="chart-container" style="height: 300px;"><canvas id="monthlyAvgPriceChart"></canvas></div>
                     </div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><div class="card-title">📈 전년 대비</div></div>
+                    <div class="card-header">
+                        <div class="card-title">📈 전년 대비</div>
+                    </div>
                     <div class="card-body">
                         <div class="chart-container" style="height: 300px;"><canvas id="yoyChart"></canvas></div>
                     </div>
@@ -3796,8 +3806,10 @@ HTML_TEMPLATE = '''
             </div>
 
             <!-- 목적별 월별 히트맵 -->
-            <div class="card">
-                <div class="card-header"><div class="card-title">🔥 검사목적별 월별 히트맵</div></div>
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <div class="card-title">🔥 검사목적별 월별 히트맵</div>
+                </div>
                 <div class="card-body">
                     <div class="scroll-table">
                         <table class="data-table heatmap-table" id="purposeHeatmapTable">
@@ -3810,7 +3822,10 @@ HTML_TEMPLATE = '''
 
             <!-- 월별 상세 테이블 -->
             <div class="card">
-                <div class="card-header"><div class="card-title">📋 월별 상세</div><div class="card-badge" id="monthlyTableBadge">12개월</div></div>
+                <div class="card-header">
+                    <div class="card-title">📋 월별 상세</div>
+                    <div class="card-badge" id="monthlyTableBadge">12개월</div>
+                </div>
                 <div class="card-body">
                     <div class="scroll-table">
                         <table class="data-table" id="monthlyDetailTable">
