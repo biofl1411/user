@@ -1300,9 +1300,18 @@ def process_data(data, purpose_filter=None):
 
         # 거래처별
         if client not in by_client:
-            by_client[client] = {'sales': 0, 'count': 0, 'purposes': {}}
+            by_client[client] = {'sales': 0, 'count': 0, 'purposes': {}, 'managers': {}, 'months': set()}
         by_client[client]['sales'] += sales
         by_client[client]['count'] += 1
+        # 거래처별 담당자 집계
+        if manager and manager != '미지정':
+            if manager not in by_client[client]['managers']:
+                by_client[client]['managers'][manager] = {'sales': 0, 'count': 0}
+            by_client[client]['managers'][manager]['sales'] += sales
+            by_client[client]['managers'][manager]['count'] += 1
+        # 거래처별 거래 월 추적
+        if month > 0:
+            by_client[client]['months'].add(month)
         if purpose:
             if purpose not in by_client[client]['purposes']:
                 by_client[client]['purposes'][purpose] = {'sales': 0, 'count': 0}
@@ -1608,8 +1617,15 @@ def process_data(data, purpose_filter=None):
                       for k, v in sorted_branches],
         'by_month': sorted(by_month.items()),
         'by_urgent_month': sorted(by_urgent_month.items()),
-        'by_client': [(c, {'sales': d['sales'], 'count': d['count'], 'avg': d['sales']/d['count'] if d['count'] > 0 else 0})
-                      for c, d in sorted_clients[:50]],
+        'by_client': [(c, {
+            'sales': d['sales'],
+            'count': d['count'],
+            'avg': d['sales']/d['count'] if d['count'] > 0 else 0,
+            'manager': max(d.get('managers', {}).items(), key=lambda x: x[1]['sales'])[0] if d.get('managers') else '미지정',
+            'purpose': max(d.get('purposes', {}).items(), key=lambda x: x[1]['sales'])[0] if d.get('purposes') else '',
+            'tradeMonths': len(d.get('months', set())),
+            'purposes': d.get('purposes', {})
+        }) for c, d in sorted_clients[:100]],
         'by_purpose': sorted_purposes,
         'by_defect': sorted_defects[:30],
         'by_defect_month': {d: sorted(months.items()) for d, months in by_defect_month.items()},
@@ -3865,17 +3881,194 @@ HTML_TEMPLATE = '''
 
         <!-- 업체별 탭 -->
         <div id="client" class="tab-content">
-            <div class="content-grid">
+            <!-- 업체 현황 KPI 카드 -->
+            <section class="kpi-section client-kpi-section" style="grid-template-columns: repeat(5, 1fr);">
+                <div class="kpi-card sales" style="border-top: 4px solid var(--primary);">
+                    <div class="kpi-header"><div class="kpi-icon">🏢</div></div>
+                    <div class="kpi-label">총 거래업체</div>
+                    <div class="kpi-value" id="clientTotalCount">-</div>
+                    <div class="kpi-compare" id="clientTotalCompare">전년: -</div>
+                </div>
+                <div class="kpi-card count" style="border-top: 4px solid var(--success);">
+                    <div class="kpi-header"><div class="kpi-icon">🆕</div></div>
+                    <div class="kpi-label">신규 업체</div>
+                    <div class="kpi-value" id="clientNewCount" style="color: var(--success);">-</div>
+                    <div class="kpi-compare">올해 첫 거래</div>
+                </div>
+                <div class="kpi-card price" style="border-top: 4px solid var(--primary);">
+                    <div class="kpi-header"><div class="kpi-icon">🔄</div></div>
+                    <div class="kpi-label">유지 업체</div>
+                    <div class="kpi-value" id="clientRetainedCount">-</div>
+                    <div class="kpi-compare">전년부터 지속</div>
+                </div>
+                <div class="kpi-card goal" style="border-top: 4px solid var(--danger);">
+                    <div class="kpi-header"><div class="kpi-icon">📤</div></div>
+                    <div class="kpi-label">이탈 업체</div>
+                    <div class="kpi-value" id="clientChurnedCount" style="color: var(--danger);">-</div>
+                    <div class="kpi-compare">올해 거래 없음</div>
+                </div>
+                <div class="kpi-card" style="border-top: 4px solid var(--warning);">
+                    <div class="kpi-header"><div class="kpi-icon">⭐</div></div>
+                    <div class="kpi-label">VIP 업체</div>
+                    <div class="kpi-value" id="clientVipCount" style="color: var(--warning);">-</div>
+                    <div class="kpi-compare">매출 1억 이상</div>
+                </div>
+            </section>
+
+            <!-- 담당자 영업력 KPI -->
+            <section class="manager-kpi-section" style="margin-bottom: 24px;">
+                <div class="section-title-bar" style="margin-bottom: 12px;">
+                    <div class="section-title">🎯 담당자 영업력 (업체 확보/성장)</div>
+                </div>
+                <div class="manager-kpi-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+                    <div class="manager-kpi-card" id="kpiClientKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #6366f1; cursor: pointer; position: relative;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">👑</div>
+                        <div style="font-size: 13px; color: #64748b;">업체 보유왕</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiClientKingName">-</div>
+                        <div style="font-size: 12px; color: #94a3b8;" id="kpiClientKingValue">-</div>
+                        <div class="manager-kpi-overlay" id="kpiClientKingOverlay" style="display: none;"></div>
+                    </div>
+                    <div class="manager-kpi-card" id="kpiNewKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #10b981; cursor: pointer; position: relative;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🌱</div>
+                        <div style="font-size: 13px; color: #64748b;">신규 확보왕</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiNewKingName">-</div>
+                        <div style="font-size: 12px; color: #94a3b8;" id="kpiNewKingValue">-</div>
+                        <div class="manager-kpi-overlay" id="kpiNewKingOverlay" style="display: none;"></div>
+                    </div>
+                    <div class="manager-kpi-card" id="kpiGrowthKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #8b5cf6; cursor: pointer; position: relative;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">💰</div>
+                        <div style="font-size: 13px; color: #64748b;">성장 기여왕</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiGrowthKingName">-</div>
+                        <div style="font-size: 12px; color: #94a3b8;" id="kpiGrowthKingValue">-</div>
+                        <div class="manager-kpi-overlay" id="kpiGrowthKingOverlay" style="display: none;"></div>
+                    </div>
+                    <div class="manager-kpi-card" id="kpiVipKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #f59e0b; cursor: pointer; position: relative;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">💎</div>
+                        <div style="font-size: 13px; color: #64748b;">VIP 확보왕</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiVipKingName">-</div>
+                        <div style="font-size: 12px; color: #94a3b8;" id="kpiVipKingValue">-</div>
+                        <div class="manager-kpi-overlay" id="kpiVipKingOverlay" style="display: none;"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 담당자 관리력 KPI -->
+            <section class="manager-kpi-section" style="margin-bottom: 24px;">
+                <div class="section-title-bar" style="margin-bottom: 12px;">
+                    <div class="section-title">🤝 담당자 관리력 (유지/활성화)</div>
+                </div>
+                <div class="manager-kpi-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+                    <div class="manager-kpi-card" id="kpiRetentionKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #06b6d4; cursor: pointer; position: relative;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🔄</div>
+                        <div style="font-size: 13px; color: #64748b;">유지율 TOP</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiRetentionKingName">-</div>
+                        <div style="font-size: 12px; color: #94a3b8;" id="kpiRetentionKingValue">-</div>
+                        <div class="manager-kpi-overlay" id="kpiRetentionKingOverlay" style="display: none;"></div>
+                    </div>
+                    <div class="manager-kpi-card" id="kpiSteadyKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #14b8a6; cursor: pointer; position: relative;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">📅</div>
+                        <div style="font-size: 13px; color: #64748b;">꾸준 거래왕</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiSteadyKingName">-</div>
+                        <div style="font-size: 12px; color: #94a3b8;" id="kpiSteadyKingValue">-</div>
+                        <div class="manager-kpi-overlay" id="kpiSteadyKingOverlay" style="display: none;"></div>
+                    </div>
+                    <div class="manager-kpi-card" id="kpiActiveKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #ec4899; cursor: pointer; position: relative;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">🔥</div>
+                        <div style="font-size: 13px; color: #64748b;">활성 관리왕</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiActiveKingName">-</div>
+                        <div style="font-size: 12px; color: #94a3b8;" id="kpiActiveKingValue">-</div>
+                        <div class="manager-kpi-overlay" id="kpiActiveKingOverlay" style="display: none;"></div>
+                    </div>
+                    <div class="manager-kpi-card" id="kpiChurnWarning" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #ef4444; cursor: pointer; position: relative;">
+                        <div style="font-size: 24px; margin-bottom: 8px;">⚠️</div>
+                        <div style="font-size: 13px; color: #64748b;">이탈 주의</div>
+                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiChurnWarningName">-</div>
+                        <div style="font-size: 12px; color: #94a3b8;" id="kpiChurnWarningValue">-</div>
+                        <div class="manager-kpi-overlay" id="kpiChurnWarningOverlay" style="display: none;"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 매출/건수 TOP 10 차트 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
                 <div class="card">
-                    <div class="card-header"><div class="card-title">🏆 매출 TOP 업체</div></div>
-                    <div class="card-body"><div class="chart-container"><canvas id="clientChart"></canvas></div></div>
+                    <div class="card-header">
+                        <div class="card-title">🏆 매출 TOP 10</div>
+                        <div class="card-badge" id="clientSalesChartBadge">-</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 350px;"><canvas id="clientSalesChart"></canvas></div>
+                    </div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><div class="card-title">📋 업체별 상세</div><div class="card-badge" id="clientTableBadge">0개</div></div>
+                    <div class="card-header">
+                        <div class="card-title">📊 건수 TOP 10</div>
+                        <div class="card-badge" id="clientCountChartBadge">-</div>
+                    </div>
                     <div class="card-body">
-                        <div class="scroll-table">
-                            <table class="data-table" id="clientTable">
-                                <thead><tr><th>업체명</th><th class="text-right">매출액</th><th class="text-right">건수</th><th>비중</th></tr></thead>
+                        <div class="chart-container" style="height: 350px;"><canvas id="clientCountChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 유지 거래처 / 신규&이탈 테이블 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">🔄 유지 거래처 (전년 대비 성장)</div>
+                        <div class="card-badge" id="retainedTableBadge">0개</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="scroll-table" style="max-height: 300px;">
+                            <table class="data-table" id="retainedClientTable">
+                                <thead><tr><th>업체명</th><th>담당자</th><th class="text-right">올해</th><th class="text-right">전년</th><th class="text-right">증감</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title" id="newChurnTableTitle">🆕 신규 업체</div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="filter-btn active" id="btnNewClients" onclick="setClientTableMode('new')">신규 <span id="newClientsBtnCount">0</span>개</button>
+                            <button class="filter-btn" id="btnChurnedClients" onclick="setClientTableMode('churned')">이탈 <span id="churnedClientsBtnCount">0</span>개</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="scroll-table" style="max-height: 300px;">
+                            <table class="data-table" id="newChurnClientTable">
+                                <thead id="newChurnTableHead"><tr><th>업체명</th><th>담당자</th><th class="text-right">매출액</th><th class="text-right">건수</th><th>주요 검사</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 검사목적별 / 담당자별 거래처 현황 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📋 검사목적별 거래처 현황</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="scroll-table" style="max-height: 300px;">
+                            <table class="data-table" id="clientByPurposeTable">
+                                <thead><tr><th>검사목적</th><th class="text-right">업체수</th><th class="text-right">총매출</th><th class="text-right">평균매출</th><th>주요업체</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">👤 담당자별 거래처 현황</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="scroll-table" style="max-height: 300px;">
+                            <table class="data-table" id="clientByManagerTable">
+                                <thead><tr><th>담당자</th><th class="text-right">업체수</th><th class="text-right">신규</th><th class="text-right">유지</th><th class="text-right">이탈</th><th class="text-right">총매출</th><th class="text-right">성장률</th></tr></thead>
                                 <tbody></tbody>
                             </table>
                         </div>
@@ -7016,21 +7209,507 @@ HTML_TEMPLATE = '''
             }
         }
 
+        // 업체별 탭 전역 변수
+        let clientTableMode = 'new';
+        let clientAnalysisData = null;
+
         function updateClientTab() {
             const clients = currentData.by_client || [];
+            const compareClients = compareData?.by_client || [];
+
+            // 비교 데이터로 신규/유지/이탈 분류
+            const currentClientMap = Object.fromEntries(clients.map(c => [c[0], c[1]]));
+            const compareClientMap = Object.fromEntries(compareClients.map(c => [c[0], c[1]]));
+
+            const newClients = [];      // 신규: 올해만 있음
+            const retainedClients = []; // 유지: 양쪽 모두 있음
+            const churnedClients = [];  // 이탈: 전년만 있음
+
+            // 현재 연도 업체 분류
+            clients.forEach(c => {
+                const name = c[0];
+                const data = c[1];
+                if (compareClientMap[name]) {
+                    retainedClients.push({
+                        name,
+                        ...data,
+                        lastYearSales: compareClientMap[name].sales,
+                        lastYearCount: compareClientMap[name].count,
+                        growth: data.sales - compareClientMap[name].sales,
+                        growthRate: compareClientMap[name].sales > 0 ? ((data.sales - compareClientMap[name].sales) / compareClientMap[name].sales * 100) : 0,
+                        status: 'retained'
+                    });
+                } else {
+                    newClients.push({ name, ...data, status: 'new' });
+                }
+            });
+
+            // 이탈 업체 (전년만 있고 올해 없음)
+            compareClients.forEach(c => {
+                if (!currentClientMap[c[0]]) {
+                    churnedClients.push({
+                        name: c[0],
+                        lastYearSales: c[1].sales,
+                        lastYearCount: c[1].count,
+                        manager: c[1].manager || '미지정',
+                        purpose: c[1].purpose || '',
+                        status: 'churned'
+                    });
+                }
+            });
+
+            // VIP 업체 (1억 이상)
+            const vipClients = clients.filter(c => c[1].sales >= 100000000);
+
+            // 분석 데이터 저장
+            clientAnalysisData = { newClients, retainedClients, churnedClients, vipClients, clients };
+
+            // KPI 업데이트
+            document.getElementById('clientTotalCount').textContent = clients.length + '개';
+            document.getElementById('clientTotalCompare').textContent = '전년: ' + compareClients.length + '개';
+            document.getElementById('clientNewCount').textContent = newClients.length + '개';
+            document.getElementById('clientRetainedCount').textContent = retainedClients.length + '개';
+            document.getElementById('clientChurnedCount').textContent = churnedClients.length + '개';
+            document.getElementById('clientVipCount').textContent = vipClients.length + '개';
+
+            // 담당자별 통계 계산
+            updateManagerKPIs(clients, newClients, retainedClients, churnedClients, vipClients, compareClientMap);
+
+            // 차트 업데이트
+            updateClientSalesChart(clients, newClients, retainedClients);
+            updateClientCountChart(clients, newClients, retainedClients);
+
+            // 테이블 업데이트
+            updateRetainedClientTable(retainedClients);
+            updateNewChurnClientTable();
+            updateClientByPurposeTable(clients);
+            updateClientByManagerTable(clients, newClients, retainedClients, churnedClients, compareClientMap);
+
+            // 버튼 카운트
+            document.getElementById('newClientsBtnCount').textContent = newClients.length;
+            document.getElementById('churnedClientsBtnCount').textContent = churnedClients.length;
+        }
+
+        function updateManagerKPIs(clients, newClients, retainedClients, churnedClients, vipClients, compareClientMap) {
+            // 담당자별 집계
+            const managerStats = {};
+
+            clients.forEach(c => {
+                const manager = c[1].manager || '미지정';
+                if (!managerStats[manager]) {
+                    managerStats[manager] = {
+                        totalClients: 0, newClients: 0, retainedClients: 0, vipClients: 0,
+                        totalSales: 0, lastYearSales: 0, totalTradeMonths: 0, activeClients: 0
+                    };
+                }
+                managerStats[manager].totalClients++;
+                managerStats[manager].totalSales += c[1].sales;
+                managerStats[manager].totalTradeMonths += c[1].tradeMonths || 0;
+                if (c[1].count >= 36) managerStats[manager].activeClients++;  // 월3회 이상
+                if (c[1].sales >= 100000000) managerStats[manager].vipClients++;
+            });
+
+            newClients.forEach(c => {
+                const manager = c.manager || '미지정';
+                if (managerStats[manager]) managerStats[manager].newClients++;
+            });
+
+            retainedClients.forEach(c => {
+                const manager = c.manager || '미지정';
+                if (managerStats[manager]) {
+                    managerStats[manager].retainedClients++;
+                    managerStats[manager].lastYearSales += c.lastYearSales || 0;
+                }
+            });
+
+            // 이탈 업체 담당자별 집계
+            const churnByManager = {};
+            churnedClients.forEach(c => {
+                const manager = c.manager || '미지정';
+                if (!churnByManager[manager]) churnByManager[manager] = 0;
+                churnByManager[manager]++;
+            });
+
+            // 배열로 변환 및 정렬
+            const managerArray = Object.entries(managerStats).map(([name, stats]) => ({
+                name,
+                ...stats,
+                avgTradeMonths: stats.totalClients > 0 ? stats.totalTradeMonths / stats.totalClients : 0,
+                activeRate: stats.totalClients > 0 ? (stats.activeClients / stats.totalClients * 100) : 0,
+                salesGrowth: stats.totalSales - stats.lastYearSales,
+                retentionRate: (stats.retainedClients + stats.newClients) > 0 ? (stats.retainedClients / (stats.retainedClients + (churnByManager[name] || 0)) * 100) : 0,
+                churnedClients: churnByManager[name] || 0
+            }));
+
+            // 평균 계산
+            const avgClients = managerArray.reduce((s, m) => s + m.totalClients, 0) / (managerArray.length || 1);
+            const avgNew = managerArray.reduce((s, m) => s + m.newClients, 0) / (managerArray.length || 1);
+            const avgGrowth = managerArray.reduce((s, m) => s + m.salesGrowth, 0) / (managerArray.length || 1);
+            const avgVip = managerArray.reduce((s, m) => s + m.vipClients, 0) / (managerArray.length || 1);
+            const avgRetention = managerArray.reduce((s, m) => s + m.retentionRate, 0) / (managerArray.length || 1);
+            const avgTradeMonths = managerArray.reduce((s, m) => s + m.avgTradeMonths, 0) / (managerArray.length || 1);
+            const avgActiveRate = managerArray.reduce((s, m) => s + m.activeRate, 0) / (managerArray.length || 1);
+            const avgChurn = managerArray.reduce((s, m) => s + m.churnedClients, 0) / (managerArray.length || 1);
+
+            // KPI 카드 업데이트 함수
+            const updateKpiCard = (id, data, valueFormatter, avgValue, isLowerBetter = false) => {
+                const sorted = [...data].sort((a, b) => isLowerBetter ? a.value - b.value : b.value - a.value);
+                const qualified = sorted.filter(d => isLowerBetter ? d.value <= avgValue : d.value >= avgValue);
+
+                const nameEl = document.getElementById(id + 'Name');
+                const valueEl = document.getElementById(id + 'Value');
+
+                if (qualified.length === 0) {
+                    nameEl.textContent = '-';
+                    valueEl.textContent = '-';
+                } else if (qualified.length === 1) {
+                    nameEl.textContent = qualified[0].name;
+                    valueEl.textContent = valueFormatter(qualified[0].value);
+                } else {
+                    nameEl.textContent = qualified[0].name + ' 외 ' + (qualified.length - 1) + '명';
+                    valueEl.textContent = '평균 ' + valueFormatter(avgValue) + '↑';
+                }
+
+                // 오버레이 생성
+                const overlay = document.getElementById(id + 'Overlay');
+                if (overlay) {
+                    overlay.innerHTML = `
+                        <div style="font-weight: 600; margin-bottom: 8px;">평균: ${valueFormatter(avgValue)}</div>
+                        <div style="border-top: 1px dashed #e2e8f0; margin: 8px 0;"></div>
+                        ${sorted.map((d, i) => {
+                            const isAboveAvg = isLowerBetter ? d.value <= avgValue : d.value >= avgValue;
+                            return `<div style="display: flex; justify-content: space-between; padding: 4px 0; ${i === sorted.findIndex(x => isLowerBetter ? x.value > avgValue : x.value < avgValue) ? 'border-top: 1px dashed #94a3b8; margin-top: 4px; padding-top: 8px;' : ''}">
+                                <span>${i + 1}. ${d.name}</span>
+                                <span>${valueFormatter(d.value)} ${isAboveAvg ? '⭐' : ''}</span>
+                            </div>`;
+                        }).join('')}
+                    `;
+                }
+            };
+
+            // 각 KPI 업데이트
+            updateKpiCard('kpiClientKing', managerArray.map(m => ({ name: m.name, value: m.totalClients })), v => v + '개', avgClients);
+            updateKpiCard('kpiNewKing', managerArray.map(m => ({ name: m.name, value: m.newClients })), v => v + '개 유치', avgNew);
+            updateKpiCard('kpiGrowthKing', managerArray.map(m => ({ name: m.name, value: m.salesGrowth })), v => (v >= 0 ? '+' : '') + formatCurrency(v), avgGrowth);
+            updateKpiCard('kpiVipKing', managerArray.map(m => ({ name: m.name, value: m.vipClients })), v => v + '개 VIP', avgVip);
+            updateKpiCard('kpiRetentionKing', managerArray.map(m => ({ name: m.name, value: m.retentionRate })), v => v.toFixed(0) + '% 유지', avgRetention);
+            updateKpiCard('kpiSteadyKing', managerArray.map(m => ({ name: m.name, value: m.avgTradeMonths })), v => '평균 ' + v.toFixed(1) + '월', avgTradeMonths);
+            updateKpiCard('kpiActiveKing', managerArray.map(m => ({ name: m.name, value: m.activeRate })), v => v.toFixed(0) + '% 활성', avgActiveRate);
+            updateKpiCard('kpiChurnWarning', managerArray.map(m => ({ name: m.name, value: m.churnedClients })), v => v + '개 이탈', avgChurn, true);
+
+            // 오버레이 이벤트 등록
+            document.querySelectorAll('.manager-kpi-card').forEach(card => {
+                const overlay = card.querySelector('.manager-kpi-overlay');
+                if (overlay) {
+                    card.addEventListener('mouseenter', () => {
+                        overlay.style.display = 'block';
+                        overlay.style.position = 'absolute';
+                        overlay.style.top = '100%';
+                        overlay.style.left = '0';
+                        overlay.style.width = '220px';
+                        overlay.style.background = 'white';
+                        overlay.style.border = '2px solid #6366f1';
+                        overlay.style.borderRadius = '8px';
+                        overlay.style.padding = '12px';
+                        overlay.style.boxShadow = '0 10px 40px rgba(0,0,0,0.2)';
+                        overlay.style.zIndex = '1000';
+                        overlay.style.fontSize = '12px';
+                    });
+                    card.addEventListener('mouseleave', () => { overlay.style.display = 'none'; });
+                }
+            });
+        }
+
+        function updateClientSalesChart(clients, newClients, retainedClients) {
             const top10 = clients.slice(0, 10);
-            const total = clients.reduce((s, c) => s + c[1].sales, 0) || 1;
+            const newClientNames = new Set(newClients.map(c => c.name));
+            const retainedMap = Object.fromEntries(retainedClients.map(c => [c.name, c]));
 
-            document.getElementById('clientTableBadge').textContent = clients.length + '개';
+            document.getElementById('clientSalesChartBadge').textContent = currentData.year + '년';
 
-            const ctx = document.getElementById('clientChart').getContext('2d');
-            if (charts.client) charts.client.destroy();
-            charts.client = new Chart(ctx, { type: 'bar', data: { labels: top10.map(c => c[0]), datasets: [{ data: top10.map(c => c[1].sales), backgroundColor: 'rgba(99, 102, 241, 0.8)', borderRadius: 6 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => formatCurrency(v) } } } } });
+            const ctx = document.getElementById('clientSalesChart');
+            if (!ctx) return;
+            if (charts.clientSales) charts.clientSales.destroy();
 
-            const tbody = document.querySelector('#clientTable tbody');
-            tbody.innerHTML = clients.map(c => {
-                const percent = (c[1].sales / total * 100).toFixed(1);
-                return `<tr><td><strong>${c[0]}</strong></td><td class="text-right">${formatCurrency(c[1].sales)}</td><td class="text-right">${c[1].count.toLocaleString()}</td><td><div class="progress-cell"><div class="progress-bar"><div class="progress-fill" style="width: ${percent}%;"></div></div><span class="progress-value">${percent}%</span></div></td></tr>`;
+            charts.clientSales = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: top10.map(c => c[0].length > 8 ? c[0].substring(0, 8) + '..' : c[0]),
+                    datasets: [{
+                        label: '매출',
+                        data: top10.map(c => c[1].sales),
+                        backgroundColor: top10.map(c => newClientNames.has(c[0]) ? 'rgba(16, 185, 129, 0.8)' : 'rgba(99, 102, 241, 0.8)'),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: ctx => {
+                                    const idx = ctx[0].dataIndex;
+                                    const name = top10[idx][0];
+                                    const status = newClientNames.has(name) ? '신규' : '유지';
+                                    const rank = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1) + '위';
+                                    return rank + ' ' + name + '  ' + status;
+                                },
+                                label: ctx => {
+                                    const idx = ctx.dataIndex;
+                                    const c = top10[idx];
+                                    const lines = [];
+                                    lines.push('💰 연간 매출: ' + formatCurrency(c[1].sales));
+                                    lines.push('📋 연간 건수: ' + c[1].count.toLocaleString() + '건');
+                                    lines.push('📊 건당 매출: ' + formatCurrency(c[1].avg));
+                                    return lines;
+                                },
+                                afterBody: ctx => {
+                                    const idx = ctx[0].dataIndex;
+                                    const name = top10[idx][0];
+                                    const retained = retainedMap[name];
+                                    const c = top10[idx][1];
+                                    const lines = [];
+                                    if (retained) {
+                                        lines.push('');
+                                        lines.push('전년 매출: ' + formatCurrency(retained.lastYearSales));
+                                        const growthPct = retained.growthRate.toFixed(1);
+                                        lines.push('증감률: ' + (growthPct >= 0 ? '+' : '') + growthPct + '%');
+                                    }
+                                    lines.push('');
+                                    lines.push('📌 상세 정보');
+                                    lines.push('담당자: ' + (c.manager || '미지정'));
+                                    lines.push('주요 검사: ' + (c.purpose || '-'));
+                                    return lines;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
+                        x: { ticks: { maxRotation: 45, minRotation: 45 } }
+                    }
+                }
+            });
+        }
+
+        function updateClientCountChart(clients, newClients, retainedClients) {
+            const sorted = [...clients].sort((a, b) => b[1].count - a[1].count);
+            const top10 = sorted.slice(0, 10);
+            const newClientNames = new Set(newClients.map(c => c.name));
+            const retainedMap = Object.fromEntries(retainedClients.map(c => [c.name, c]));
+
+            document.getElementById('clientCountChartBadge').textContent = currentData.year + '년';
+
+            const ctx = document.getElementById('clientCountChart');
+            if (!ctx) return;
+            if (charts.clientCount) charts.clientCount.destroy();
+
+            charts.clientCount = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: top10.map(c => c[0].length > 8 ? c[0].substring(0, 8) + '..' : c[0]),
+                    datasets: [{
+                        label: '건수',
+                        data: top10.map(c => c[1].count),
+                        backgroundColor: top10.map(c => newClientNames.has(c[0]) ? 'rgba(16, 185, 129, 0.8)' : 'rgba(99, 102, 241, 0.8)'),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: ctx => {
+                                    const idx = ctx[0].dataIndex;
+                                    const name = top10[idx][0];
+                                    const status = newClientNames.has(name) ? '신규' : '유지';
+                                    const rank = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1) + '위';
+                                    return rank + ' ' + name + '  ' + status;
+                                },
+                                label: ctx => {
+                                    const idx = ctx.dataIndex;
+                                    const c = top10[idx];
+                                    const lines = [];
+                                    lines.push('📋 연간 건수: ' + c[1].count.toLocaleString() + '건');
+                                    lines.push('💰 연간 매출: ' + formatCurrency(c[1].sales));
+                                    lines.push('📊 건당 매출: ' + formatCurrency(c[1].avg));
+                                    return lines;
+                                },
+                                afterBody: ctx => {
+                                    const idx = ctx[0].dataIndex;
+                                    const c = top10[idx][1];
+                                    const lines = [];
+                                    lines.push('');
+                                    lines.push('📌 상세 정보');
+                                    lines.push('담당자: ' + (c.manager || '미지정'));
+                                    lines.push('주요 검사: ' + (c.purpose || '-'));
+                                    return lines;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true },
+                        x: { ticks: { maxRotation: 45, minRotation: 45 } }
+                    }
+                }
+            });
+        }
+
+        function updateRetainedClientTable(retainedClients) {
+            const sorted = [...retainedClients].sort((a, b) => b.growthRate - a.growthRate);
+            document.getElementById('retainedTableBadge').textContent = sorted.length + '개';
+
+            const tbody = document.querySelector('#retainedClientTable tbody');
+            tbody.innerHTML = sorted.map(c => {
+                const growthClass = c.growthRate >= 0 ? 'color: var(--success)' : 'color: var(--danger)';
+                const growthSign = c.growthRate >= 0 ? '+' : '';
+                return `<tr>
+                    <td><strong>${c.name}</strong></td>
+                    <td>${c.manager || '-'}</td>
+                    <td class="text-right">${formatCurrency(c.sales)}</td>
+                    <td class="text-right">${formatCurrency(c.lastYearSales)}</td>
+                    <td class="text-right"><span style="${growthClass}; font-weight: 600;">${growthSign}${c.growthRate.toFixed(1)}%</span></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function setClientTableMode(mode) {
+            clientTableMode = mode;
+            document.getElementById('btnNewClients').classList.toggle('active', mode === 'new');
+            document.getElementById('btnChurnedClients').classList.toggle('active', mode === 'churned');
+            document.getElementById('newChurnTableTitle').textContent = mode === 'new' ? '🆕 신규 업체' : '📤 이탈 업체';
+
+            const thead = document.getElementById('newChurnTableHead');
+            if (mode === 'new') {
+                thead.innerHTML = '<tr><th>업체명</th><th>담당자</th><th class="text-right">매출액</th><th class="text-right">건수</th><th>주요 검사</th></tr>';
+            } else {
+                thead.innerHTML = '<tr><th>업체명</th><th>담당자</th><th class="text-right">전년 매출</th><th>주요 검사</th></tr>';
+            }
+            updateNewChurnClientTable();
+        }
+
+        function updateNewChurnClientTable() {
+            if (!clientAnalysisData) return;
+            const tbody = document.querySelector('#newChurnClientTable tbody');
+
+            if (clientTableMode === 'new') {
+                const sorted = [...clientAnalysisData.newClients].sort((a, b) => b.sales - a.sales);
+                tbody.innerHTML = sorted.map(c => `<tr>
+                    <td><strong>${c.name}</strong></td>
+                    <td>${c.manager || '-'}</td>
+                    <td class="text-right">${formatCurrency(c.sales)}</td>
+                    <td class="text-right">${c.count.toLocaleString()}</td>
+                    <td>${c.purpose || '-'}</td>
+                </tr>`).join('');
+            } else {
+                const sorted = [...clientAnalysisData.churnedClients].sort((a, b) => b.lastYearSales - a.lastYearSales);
+                tbody.innerHTML = sorted.map(c => `<tr>
+                    <td><strong>${c.name}</strong></td>
+                    <td>${c.manager || '-'}</td>
+                    <td class="text-right">${formatCurrency(c.lastYearSales)}</td>
+                    <td>${c.purpose || '-'}</td>
+                </tr>`).join('');
+            }
+        }
+
+        function updateClientByPurposeTable(clients) {
+            // 검사목적별 업체 집계
+            const purposeStats = {};
+            clients.forEach(c => {
+                const purposes = c[1].purposes || {};
+                Object.entries(purposes).forEach(([purpose, data]) => {
+                    if (!purposeStats[purpose]) {
+                        purposeStats[purpose] = { clients: new Set(), totalSales: 0, topClient: null, topClientSales: 0 };
+                    }
+                    purposeStats[purpose].clients.add(c[0]);
+                    purposeStats[purpose].totalSales += data.sales;
+                    if (data.sales > purposeStats[purpose].topClientSales) {
+                        purposeStats[purpose].topClient = c[0];
+                        purposeStats[purpose].topClientSales = data.sales;
+                    }
+                });
+            });
+
+            const sorted = Object.entries(purposeStats)
+                .map(([purpose, stats]) => ({
+                    purpose,
+                    clientCount: stats.clients.size,
+                    totalSales: stats.totalSales,
+                    avgSales: stats.totalSales / stats.clients.size,
+                    topClient: stats.topClient
+                }))
+                .sort((a, b) => b.totalSales - a.totalSales);
+
+            const tbody = document.querySelector('#clientByPurposeTable tbody');
+            tbody.innerHTML = sorted.slice(0, 15).map(p => `<tr>
+                <td><strong>${p.purpose}</strong></td>
+                <td class="text-right">${p.clientCount}개</td>
+                <td class="text-right">${formatCurrency(p.totalSales)}</td>
+                <td class="text-right">${formatCurrency(p.avgSales)}</td>
+                <td>${p.topClient || '-'}</td>
+            </tr>`).join('');
+        }
+
+        function updateClientByManagerTable(clients, newClients, retainedClients, churnedClients, compareClientMap) {
+            const managerStats = {};
+
+            clients.forEach(c => {
+                const manager = c[1].manager || '미지정';
+                if (!managerStats[manager]) {
+                    managerStats[manager] = { total: 0, newCount: 0, retained: 0, churned: 0, sales: 0, lastYearSales: 0 };
+                }
+                managerStats[manager].total++;
+                managerStats[manager].sales += c[1].sales;
+            });
+
+            newClients.forEach(c => {
+                const manager = c.manager || '미지정';
+                if (managerStats[manager]) managerStats[manager].newCount++;
+            });
+
+            retainedClients.forEach(c => {
+                const manager = c.manager || '미지정';
+                if (managerStats[manager]) {
+                    managerStats[manager].retained++;
+                    managerStats[manager].lastYearSales += c.lastYearSales || 0;
+                }
+            });
+
+            churnedClients.forEach(c => {
+                const manager = c.manager || '미지정';
+                if (!managerStats[manager]) {
+                    managerStats[manager] = { total: 0, newCount: 0, retained: 0, churned: 0, sales: 0, lastYearSales: 0 };
+                }
+                managerStats[manager].churned++;
+            });
+
+            const sorted = Object.entries(managerStats)
+                .map(([name, stats]) => ({
+                    name,
+                    ...stats,
+                    growthRate: stats.lastYearSales > 0 ? ((stats.sales - stats.lastYearSales) / stats.lastYearSales * 100) : 0
+                }))
+                .sort((a, b) => b.sales - a.sales);
+
+            const tbody = document.querySelector('#clientByManagerTable tbody');
+            tbody.innerHTML = sorted.map(m => {
+                const growthClass = m.growthRate >= 0 ? 'color: var(--success)' : 'color: var(--danger)';
+                const growthSign = m.growthRate >= 0 ? '+' : '';
+                return `<tr>
+                    <td><strong>${m.name}</strong></td>
+                    <td class="text-right">${m.total}개</td>
+                    <td class="text-right" style="color: var(--success);">${m.newCount}</td>
+                    <td class="text-right">${m.retained}</td>
+                    <td class="text-right" style="color: var(--danger);">${m.churned}</td>
+                    <td class="text-right">${formatCurrency(m.sales)}</td>
+                    <td class="text-right"><span style="${growthClass}; font-weight: 600;">${growthSign}${m.growthRate.toFixed(1)}%</span></td>
+                </tr>`;
             }).join('');
         }
 
