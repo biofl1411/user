@@ -5172,9 +5172,11 @@ HTML_TEMPLATE = '''
             initBranchTablePurposeFilter();
 
             // 차트들 업데이트
+            updateBranchChart();
+            updateBranchPerCaseChart();
             updateBranchEfficiencyChart();
             updateBranchMonthlyChart();
-            updateBranchPerCaseChart();
+            updateBranchTable();
             updateClientRetentionChart();
             updateRetentionRateChart();
             updateBranchRetentionTable();
