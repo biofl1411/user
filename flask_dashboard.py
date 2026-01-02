@@ -5785,6 +5785,157 @@ HTML_TEMPLATE = '''
                 });
             }
 
+            // 외부 HTML 툴팁 생성 함수
+            const getOrCreatePerCaseTooltip = (chart) => {
+                let tooltipEl = document.getElementById('perCaseChartTooltip');
+                if (!tooltipEl) {
+                    tooltipEl = document.createElement('div');
+                    tooltipEl.id = 'perCaseChartTooltip';
+                    tooltipEl.style.cssText = `
+                        position: fixed;
+                        background: rgba(30, 41, 59, 0.95);
+                        border: 1px solid rgba(99, 102, 241, 0.5);
+                        border-radius: 12px;
+                        padding: 16px;
+                        pointer-events: none;
+                        z-index: 99999;
+                        font-size: 12px;
+                        color: #e2e8f0;
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                        max-width: 320px;
+                        transition: opacity 0.2s ease;
+                    `;
+                    document.body.appendChild(tooltipEl);
+                }
+                return tooltipEl;
+            };
+
+            // 외부 툴팁 핸들러
+            const externalTooltipHandler = (context) => {
+                const { chart, tooltip } = context;
+                const tooltipEl = getOrCreatePerCaseTooltip(chart);
+
+                if (tooltip.opacity === 0) {
+                    tooltipEl.style.opacity = 0;
+                    return;
+                }
+
+                if (tooltip.body) {
+                    const dataIndex = tooltip.dataPoints[0].dataIndex;
+                    const datasetIndex = tooltip.dataPoints[0].datasetIndex;
+                    const d = chartData[dataIndex];
+
+                    let html = '';
+
+                    // 헤더
+                    html += `<div style="font-size: 14px; font-weight: bold; color: #fff; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.2);">👤 ${d.name}</div>`;
+
+                    if (datasetIndex !== 0 && compChartData[dataIndex]) {
+                        // 전년도 데이터
+                        const compD = compChartData[dataIndex];
+                        html += `<div>${compareData.year}년 건당: ${formatCurrency(Math.round(compD.avgPrice))}</div>`;
+                    } else {
+                        // 현재 연도 데이터 - 상세 오버레이
+
+                        // 1. 기본 지표
+                        html += `<div style="margin-bottom: 4px;">💰 건당 매출: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+                        html += `<div style="margin-bottom: 4px;">📋 총 거래 건수: <strong>${d.count.toLocaleString()}건</strong></div>`;
+                        html += `<div style="margin-bottom: 4px;">📊 총 매출액: <strong>${(d.sales / 100000000).toFixed(2)}억</strong></div>`;
+
+                        // 전체 평균 대비
+                        const diffFromAvg = ((d.avgPrice - avgAll) / avgAll * 100);
+                        const diffIcon = diffFromAvg >= 0 ? '📈' : '📉';
+                        const diffSign = diffFromAvg >= 0 ? '+' : '';
+                        const diffColor = diffFromAvg >= 0 ? '#10b981' : '#ef4444';
+                        html += `<div style="margin-bottom: 8px;">${diffIcon} 전체 평균(${formatCurrency(Math.round(avgAll))}) 대비: <span style="color: ${diffColor}; font-weight: bold;">${diffSign}${diffFromAvg.toFixed(1)}%</span></div>`;
+
+                        // 2. 단가 구성 분석
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 단가 구성 분석 ──</div>`;
+
+                        // 담당자별 고단가/저단가 비중 계산
+                        let mgrHighCount = 0, mgrLowCount = 0, mgrTotalCount = 0;
+                        Object.entries(d.purposeAvgPrices).forEach(([purpose, data]) => {
+                            mgrTotalCount += data.count;
+                            if (data.avgPrice >= HIGH_PRICE_THRESHOLD) mgrHighCount += data.count;
+                            if (data.avgPrice <= LOW_PRICE_THRESHOLD) mgrLowCount += data.count;
+                        });
+                        const mgrHighRatio = mgrTotalCount > 0 ? (mgrHighCount / mgrTotalCount * 100) : 0;
+                        const mgrLowRatio = mgrTotalCount > 0 ? (mgrLowCount / mgrTotalCount * 100) : 0;
+                        const highDiff = mgrHighRatio - avgHighRatio;
+                        const lowDiff = mgrLowRatio - avgLowRatio;
+
+                        const highDiffColor = highDiff >= 0 ? '#10b981' : '#f59e0b';
+                        const lowDiffColor = lowDiff <= 0 ? '#10b981' : '#f59e0b';
+                        html += `<div style="margin-bottom: 4px;">🔺 고단가(15만↑) 비중: ${mgrHighRatio.toFixed(1)}% <span style="color: ${highDiffColor};">(평균 대비 ${highDiff >= 0 ? '+' : ''}${highDiff.toFixed(1)}%p)</span></div>`;
+                        html += `<div style="margin-bottom: 8px;">🔻 저단가(5만↓) 비중: ${mgrLowRatio.toFixed(1)}% <span style="color: ${lowDiffColor};">(평균 대비 ${lowDiff >= 0 ? '+' : ''}${lowDiff.toFixed(1)}%p)</span></div>`;
+
+                        // 3. 강점 검사목적
+                        const strengths = Object.entries(d.purposeAvgPrices)
+                            .map(([purpose, data]) => {
+                                const globalAvg = purposeGlobalAvg[purpose] || 0;
+                                const diff = globalAvg > 0 ? ((data.avgPrice - globalAvg) / globalAvg * 100) : 0;
+                                return { purpose, avgPrice: data.avgPrice, globalAvg, diff, count: data.count };
+                            })
+                            .filter(item => item.diff > 0 && item.count >= 3)
+                            .sort((a, b) => b.diff - a.diff)
+                            .slice(0, 3);
+
+                        if (strengths.length > 0) {
+                            html += `<div style="color: #10b981; margin: 12px 0 6px; font-weight: 600;">▲ 강점 검사목적 (평균 대비 높음)</div>`;
+                            strengths.forEach(s => {
+                                html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${s.purpose}: ${formatCurrency(Math.round(s.avgPrice))} <span style="color: #10b981;">(+${s.diff.toFixed(0)}%)</span></div>`;
+                            });
+                        }
+
+                        // 4. 개선 기회
+                        const improvements = Object.entries(d.purposeAvgPrices)
+                            .map(([purpose, data]) => {
+                                const globalAvg = purposeGlobalAvg[purpose] || 0;
+                                const diff = globalAvg > 0 ? ((data.avgPrice - globalAvg) / globalAvg * 100) : 0;
+                                return { purpose, avgPrice: data.avgPrice, globalAvg, diff, count: data.count };
+                            })
+                            .filter(item => item.diff < -10 && item.count >= 3)
+                            .sort((a, b) => a.diff - b.diff)
+                            .slice(0, 3);
+
+                        if (improvements.length > 0) {
+                            html += `<div style="color: #f59e0b; margin: 12px 0 6px; font-weight: 600;">▼ 개선 기회</div>`;
+                            improvements.forEach(s => {
+                                html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${s.purpose}: ${formatCurrency(Math.round(s.avgPrice))} <span style="color: #f59e0b;">(${s.diff.toFixed(0)}%)</span></div>`;
+                            });
+                        }
+                    }
+
+                    tooltipEl.innerHTML = html;
+                }
+
+                // 위치 계산 (화면 밖으로 나가지 않도록)
+                const { offsetLeft: positionX, offsetTop: positionY } = chart.canvas;
+                const canvasRect = chart.canvas.getBoundingClientRect();
+
+                let left = canvasRect.left + tooltip.caretX + 15;
+                let top = canvasRect.top + tooltip.caretY - 10;
+
+                // 우측 경계 체크
+                const tooltipWidth = tooltipEl.offsetWidth || 320;
+                if (left + tooltipWidth > window.innerWidth - 20) {
+                    left = canvasRect.left + tooltip.caretX - tooltipWidth - 15;
+                }
+
+                // 하단 경계 체크
+                const tooltipHeight = tooltipEl.offsetHeight || 300;
+                if (top + tooltipHeight > window.innerHeight - 20) {
+                    top = window.innerHeight - tooltipHeight - 20;
+                }
+
+                // 상단 경계 체크
+                if (top < 10) top = 10;
+
+                tooltipEl.style.opacity = 1;
+                tooltipEl.style.left = left + 'px';
+                tooltipEl.style.top = top + 'px';
+            };
+
             charts.perCase = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
                 data: {
@@ -5797,116 +5948,8 @@ HTML_TEMPLATE = '''
                     plugins: {
                         legend: { display: compareData ? true : false, position: 'top' },
                         tooltip: {
-                            enabled: true,
-                            backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                            titleColor: '#fff',
-                            bodyColor: '#e2e8f0',
-                            borderColor: 'rgba(99, 102, 241, 0.5)',
-                            borderWidth: 1,
-                            padding: 16,
-                            cornerRadius: 12,
-                            displayColors: false,
-                            bodyFont: { size: 12 },
-                            titleFont: { size: 14, weight: 'bold' },
-                            callbacks: {
-                                title: (ctx) => {
-                                    const idx = ctx[0].dataIndex;
-                                    const d = chartData[idx];
-                                    return '👤 ' + d.name;
-                                },
-                                label: (ctx) => {
-                                    const idx = ctx.dataIndex;
-                                    const dsIdx = ctx.datasetIndex;
-                                    const d = chartData[idx];
-
-                                    if (dsIdx !== 0) {
-                                        // 전년도 데이터 - 간단히 표시
-                                        const compD = compChartData[idx];
-                                        return compareData.year + '년 건당: ' + formatCurrency(Math.round(compD.avgPrice));
-                                    }
-
-                                    // 현재 연도 데이터 - 상세 오버레이
-                                    const lines = [];
-
-                                    // 1. 기본 지표
-                                    lines.push('');
-                                    lines.push('💰 건당 매출: ' + formatCurrency(Math.round(d.avgPrice)));
-                                    lines.push('📋 총 거래 건수: ' + d.count.toLocaleString() + '건');
-                                    lines.push('📊 총 매출액: ' + (d.sales / 100000000).toFixed(2) + '억');
-
-                                    // 전체 평균 대비
-                                    const diffFromAvg = ((d.avgPrice - avgAll) / avgAll * 100);
-                                    const diffColor = diffFromAvg >= 0 ? '📈' : '📉';
-                                    const diffSign = diffFromAvg >= 0 ? '+' : '';
-                                    lines.push(diffColor + ' 전체 평균(' + formatCurrency(Math.round(avgAll)) + ') 대비: ' + diffSign + diffFromAvg.toFixed(1) + '%');
-
-                                    // 2. 단가 효율성 분석
-                                    lines.push('');
-                                    lines.push('── 단가 구성 분석 ──');
-
-                                    // 담당자별 고단가/저단가 비중 계산
-                                    let mgrHighCount = 0, mgrLowCount = 0, mgrTotalCount = 0;
-                                    Object.entries(d.purposeAvgPrices).forEach(([purpose, data]) => {
-                                        mgrTotalCount += data.count;
-                                        if (data.avgPrice >= HIGH_PRICE_THRESHOLD) {
-                                            mgrHighCount += data.count;
-                                        }
-                                        if (data.avgPrice <= LOW_PRICE_THRESHOLD) {
-                                            mgrLowCount += data.count;
-                                        }
-                                    });
-                                    const mgrHighRatio = mgrTotalCount > 0 ? (mgrHighCount / mgrTotalCount * 100) : 0;
-                                    const mgrLowRatio = mgrTotalCount > 0 ? (mgrLowCount / mgrTotalCount * 100) : 0;
-                                    const highDiff = mgrHighRatio - avgHighRatio;
-                                    const lowDiff = mgrLowRatio - avgLowRatio;
-
-                                    const highDiffStr = highDiff >= 0 ? '+' + highDiff.toFixed(1) : highDiff.toFixed(1);
-                                    const lowDiffStr = lowDiff >= 0 ? '+' + lowDiff.toFixed(1) : lowDiff.toFixed(1);
-
-                                    lines.push('🔺 고단가(15만↑) 비중: ' + mgrHighRatio.toFixed(1) + '% (평균 대비 ' + highDiffStr + '%p)');
-                                    lines.push('🔻 저단가(5만↓) 비중: ' + mgrLowRatio.toFixed(1) + '% (평균 대비 ' + lowDiffStr + '%p)');
-
-                                    // 3. 강점 검사목적 (평균 대비 높은 항목)
-                                    const strengths = Object.entries(d.purposeAvgPrices)
-                                        .map(([purpose, data]) => {
-                                            const globalAvg = purposeGlobalAvg[purpose] || 0;
-                                            const diff = globalAvg > 0 ? ((data.avgPrice - globalAvg) / globalAvg * 100) : 0;
-                                            return { purpose, avgPrice: data.avgPrice, globalAvg, diff, count: data.count };
-                                        })
-                                        .filter(item => item.diff > 0 && item.count >= 3)
-                                        .sort((a, b) => b.diff - a.diff)
-                                        .slice(0, 3);
-
-                                    if (strengths.length > 0) {
-                                        lines.push('');
-                                        lines.push('▲ 강점 검사목적 (평균 대비 높음)');
-                                        strengths.forEach(s => {
-                                            lines.push('  • ' + s.purpose + ': ' + formatCurrency(Math.round(s.avgPrice)) + ' (+' + s.diff.toFixed(0) + '%)');
-                                        });
-                                    }
-
-                                    // 4. 개선 기회 (평균 대비 낮은 항목)
-                                    const improvements = Object.entries(d.purposeAvgPrices)
-                                        .map(([purpose, data]) => {
-                                            const globalAvg = purposeGlobalAvg[purpose] || 0;
-                                            const diff = globalAvg > 0 ? ((data.avgPrice - globalAvg) / globalAvg * 100) : 0;
-                                            return { purpose, avgPrice: data.avgPrice, globalAvg, diff, count: data.count };
-                                        })
-                                        .filter(item => item.diff < -10 && item.count >= 3)
-                                        .sort((a, b) => a.diff - b.diff)
-                                        .slice(0, 3);
-
-                                    if (improvements.length > 0) {
-                                        lines.push('');
-                                        lines.push('▼ 개선 기회');
-                                        improvements.forEach(s => {
-                                            lines.push('  • ' + s.purpose + ': ' + formatCurrency(Math.round(s.avgPrice)) + ' (' + s.diff.toFixed(0) + '%)');
-                                        });
-                                    }
-
-                                    return lines;
-                                }
-                            }
+                            enabled: false,
+                            external: externalTooltipHandler
                         }
                     },
                     scales: { y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } } }
