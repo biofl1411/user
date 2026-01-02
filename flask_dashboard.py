@@ -148,6 +148,9 @@ def process_data(data, purpose_filter=None):
     total_sales = 0
     total_count = 0
 
+    # 자가품질위탁검사용 검사주기 분석용 데이터
+    client_dates_by_manager = {}  # {manager: {client: [dates]}} for 자가품질위탁검사용
+
     # 주소 컬럼 자동 감지
     address_columns = ['거래처 주소', '채품지주소', '채품장소', '주소', '시료주소', '업체주소', '거래처주소', '검체주소', '시료채취장소']
 
@@ -173,13 +176,19 @@ def process_data(data, purpose_filter=None):
 
         # 매니저별
         if manager not in by_manager:
-            by_manager[manager] = {'sales': 0, 'count': 0, 'clients': {}}
+            by_manager[manager] = {'sales': 0, 'count': 0, 'clients': {}, 'by_purpose': {}}
         by_manager[manager]['sales'] += sales
         by_manager[manager]['count'] += 1
         if client not in by_manager[manager]['clients']:
             by_manager[manager]['clients'][client] = {'sales': 0, 'count': 0}
         by_manager[manager]['clients'][client]['sales'] += sales
         by_manager[manager]['clients'][client]['count'] += 1
+        # 매니저별 목적 데이터
+        if purpose:
+            if purpose not in by_manager[manager]['by_purpose']:
+                by_manager[manager]['by_purpose'][purpose] = {'sales': 0, 'count': 0}
+            by_manager[manager]['by_purpose'][purpose]['sales'] += sales
+            by_manager[manager]['by_purpose'][purpose]['count'] += 1
 
         # 지사별
         branch = MANAGER_TO_BRANCH.get(manager, '기타')
@@ -216,6 +225,21 @@ def process_data(data, purpose_filter=None):
                 by_client[client]['purposes'][purpose] = {'sales': 0, 'count': 0}
             by_client[client]['purposes'][purpose]['sales'] += sales
             by_client[client]['purposes'][purpose]['count'] += 1
+
+        # 자가품질위탁검사용 검사주기 분석용 날짜 수집
+        if purpose == '자가품질위탁검사용' and date:
+            if manager not in client_dates_by_manager:
+                client_dates_by_manager[manager] = {}
+            if client not in client_dates_by_manager[manager]:
+                client_dates_by_manager[manager][client] = {'dates': [], 'total_sales': 0, 'total_count': 0}
+            # 날짜 정규화
+            if hasattr(date, 'strftime'):
+                date_str = date.strftime('%Y-%m-%d')
+            else:
+                date_str = str(date)[:10]
+            client_dates_by_manager[manager][client]['dates'].append(date_str)
+            client_dates_by_manager[manager][client]['total_sales'] += sales
+            client_dates_by_manager[manager][client]['total_count'] += 1
 
         # 검사목적별
         if purpose:
@@ -436,8 +460,90 @@ def process_data(data, purpose_filter=None):
             for p, d in sorted_stp[:20]
         ]
 
+    # 자가품질위탁검사용 검사주기 분석
+    def calculate_cycle_days(dates):
+        """날짜 리스트에서 평균 검사주기(일) 계산"""
+        if len(dates) < 2:
+            return None
+        try:
+            from datetime import datetime
+            sorted_dates = sorted([datetime.strptime(d, '%Y-%m-%d') for d in dates if d and len(d) >= 10])
+            if len(sorted_dates) < 2:
+                return None
+            intervals = [(sorted_dates[i+1] - sorted_dates[i]).days for i in range(len(sorted_dates)-1)]
+            valid_intervals = [i for i in intervals if 15 <= i <= 300]  # 15일~300일 사이만 유효
+            return sum(valid_intervals) / len(valid_intervals) if valid_intervals else None
+        except:
+            return None
+
+    def classify_cycle(avg_days):
+        """평균 주기를 카테고리로 분류 (3일 허용오차, 비중복)"""
+        if avg_days is None:
+            return None
+        # 1개월: 27~33일, 2개월: 57~63일, 3개월: 87~93일, 6개월: 177~183일, 9개월: 267~273일
+        if 27 <= avg_days <= 33:
+            return '1개월'
+        elif 57 <= avg_days <= 63:
+            return '2개월'
+        elif 87 <= avg_days <= 93:
+            return '3개월'
+        elif 177 <= avg_days <= 183:
+            return '6개월'
+        elif 267 <= avg_days <= 273:
+            return '9개월'
+        return None
+
+    manager_cycle_analysis = {}
+    for manager, clients in client_dates_by_manager.items():
+        cycle_summary = {'1개월': {'count': 0, 'total_sales': 0, 'total_count': 0},
+                         '2개월': {'count': 0, 'total_sales': 0, 'total_count': 0},
+                         '3개월': {'count': 0, 'total_sales': 0, 'total_count': 0},
+                         '6개월': {'count': 0, 'total_sales': 0, 'total_count': 0},
+                         '9개월': {'count': 0, 'total_sales': 0, 'total_count': 0},
+                         '기타': {'count': 0, 'total_sales': 0, 'total_count': 0},
+                         '이탈': {'count': 0, 'clients': []}}
+        top_clients = []
+
+        for client, data in clients.items():
+            avg_days = calculate_cycle_days(data['dates'])
+            cycle = classify_cycle(avg_days)
+            avg_price = data['total_sales'] / data['total_count'] if data['total_count'] > 0 else 0
+
+            # TOP 업체 리스트 추가
+            top_clients.append({
+                'name': client,
+                'sales': data['total_sales'],
+                'count': data['total_count'],
+                'avg_price': avg_price,
+                'cycle': cycle or '기타',
+                'avg_days': avg_days
+            })
+
+            if cycle:
+                cycle_summary[cycle]['count'] += 1
+                cycle_summary[cycle]['total_sales'] += data['total_sales']
+                cycle_summary[cycle]['total_count'] += data['total_count']
+            else:
+                cycle_summary['기타']['count'] += 1
+                cycle_summary['기타']['total_sales'] += data['total_sales']
+                cycle_summary['기타']['total_count'] += data['total_count']
+
+        # TOP 10 업체 (매출순)
+        top_clients = sorted(top_clients, key=lambda x: x['sales'], reverse=True)[:10]
+
+        # 주기별 평균단가 계산
+        for cycle in cycle_summary:
+            if cycle != '이탈':
+                cs = cycle_summary[cycle]
+                cs['avg_price'] = cs['total_sales'] / cs['total_count'] if cs['total_count'] > 0 else 0
+
+        manager_cycle_analysis[manager] = {
+            'cycle_summary': cycle_summary,
+            'top_clients': top_clients
+        }
+
     return {
-        'by_manager': [(m, {'sales': d['sales'], 'count': d['count']}) for m, d in sorted_managers],
+        'by_manager': [(m, {'sales': d['sales'], 'count': d['count'], 'by_purpose': d.get('by_purpose', {})}) for m, d in sorted_managers],
         'by_branch': [(k, {'sales': v['sales'], 'count': v['count'], 'managers': len(v['managers'])})
                       for k, v in sorted_branches],
         'by_month': sorted(by_month.items()),
@@ -464,6 +570,7 @@ def process_data(data, purpose_filter=None):
         'sample_type_managers': sample_type_managers,
         'sample_type_purposes': sample_type_purposes,
         'sample_types': sorted(list(sample_types)),
+        'manager_cycle_analysis': manager_cycle_analysis,
         'total_sales': total_sales,
         'total_count': total_count
     }
@@ -1004,6 +1111,26 @@ HTML_TEMPLATE = '''
         </div>
     </div>
 
+    <!-- 담당자 상세 모달 -->
+    <div id="managerDetailModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;">
+        <div style="background: white; max-width: 900px; margin: 50px auto; border-radius: 15px; box-shadow: 0 10px 50px rgba(0,0,0,0.3);">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 15px 15px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                <h3 id="modalManagerName" style="margin: 0; font-size: 18px;">담당자 상세</h3>
+                <button onclick="closeManagerModal()" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer;">&times;</button>
+            </div>
+            <div style="padding: 20px; display: flex; gap: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 280px;">
+                    <h4 style="margin-bottom: 15px; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 8px;">📊 TOP 10 업체</h4>
+                    <div id="modalTopClients" style="max-height: 350px; overflow-y: auto;"></div>
+                </div>
+                <div style="flex: 1; min-width: 280px;">
+                    <h4 style="margin-bottom: 15px; color: #333; border-bottom: 2px solid #27ae60; padding-bottom: 8px;" id="modalRightTitle">📈 상세 정보</h4>
+                    <div id="modalRightContent" style="max-height: 350px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let charts = {};
         let currentData = null;
@@ -1032,6 +1159,117 @@ HTML_TEMPLATE = '''
         }
 
         function hideToast() { document.getElementById('toast').style.display = 'none'; }
+
+        // 담당자 상세 모달 함수
+        function showManagerDetail(managerName) {
+            const purpose = document.getElementById('purposeSelect').value;
+            const modal = document.getElementById('managerDetailModal');
+            const titleEl = document.getElementById('modalManagerName');
+            const topClientsEl = document.getElementById('modalTopClients');
+            const rightTitleEl = document.getElementById('modalRightTitle');
+            const rightContentEl = document.getElementById('modalRightContent');
+
+            titleEl.textContent = `${managerName} - ${purpose || '전체'} 상세`;
+
+            // TOP 10 업체 데이터 가져오기
+            let topClients = [];
+            if (purpose === '자가품질위탁검사용' && currentData.manager_cycle_analysis && currentData.manager_cycle_analysis[managerName]) {
+                topClients = currentData.manager_cycle_analysis[managerName].top_clients || [];
+            } else if (currentData.manager_top_clients && currentData.manager_top_clients[managerName]) {
+                topClients = currentData.manager_top_clients[managerName].map(c => ({
+                    name: c[0],
+                    sales: c[1].sales,
+                    count: c[1].count,
+                    avg_price: c[1].count > 0 ? c[1].sales / c[1].count : 0
+                }));
+            }
+
+            // TOP 10 업체 테이블 렌더링
+            if (topClients.length > 0) {
+                let tableHtml = '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                tableHtml += '<thead><tr style="background: #f8f9fa;"><th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">#</th><th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">업체명</th><th style="padding: 8px; text-align: right; border-bottom: 1px solid #ddd;">매출</th><th style="padding: 8px; text-align: right; border-bottom: 1px solid #ddd;">건수</th></tr></thead>';
+                tableHtml += '<tbody>';
+                topClients.forEach((client, idx) => {
+                    tableHtml += `<tr><td style="padding: 6px 8px;">${idx + 1}</td><td style="padding: 6px 8px;">${client.name}</td><td style="padding: 6px 8px; text-align: right;">${formatCurrency(client.sales)}</td><td style="padding: 6px 8px; text-align: right;">${client.count}</td></tr>`;
+                });
+                tableHtml += '</tbody></table>';
+                topClientsEl.innerHTML = tableHtml;
+            } else {
+                topClientsEl.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">데이터 없음</p>';
+            }
+
+            // 오른쪽 영역 렌더링
+            if (purpose === '자가품질위탁검사용') {
+                // 검사주기 분석
+                rightTitleEl.textContent = '🔄 검사주기 분석';
+                if (currentData.manager_cycle_analysis && currentData.manager_cycle_analysis[managerName]) {
+                    const analysis = currentData.manager_cycle_analysis[managerName].cycle_summary;
+                    let cycleHtml = '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                    cycleHtml += '<thead><tr style="background: #e8f5e9;"><th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">주기</th><th style="padding: 8px; text-align: right; border-bottom: 1px solid #ddd;">업체수</th><th style="padding: 8px; text-align: right; border-bottom: 1px solid #ddd;">평균단가</th></tr></thead>';
+                    cycleHtml += '<tbody>';
+                    const cycles = ['1개월', '2개월', '3개월', '6개월', '9개월', '기타'];
+                    cycles.forEach(cycle => {
+                        const data = analysis[cycle] || {count: 0, avg_price: 0};
+                        cycleHtml += `<tr><td style="padding: 6px 8px; font-weight: ${cycle === '기타' ? 'normal' : 'bold'}; color: ${cycle === '기타' ? '#999' : '#333'};">${cycle}</td><td style="padding: 6px 8px; text-align: right;">${data.count}개</td><td style="padding: 6px 8px; text-align: right;">${formatCurrency(data.avg_price || 0)}</td></tr>`;
+                    });
+                    cycleHtml += '</tbody></table>';
+                    cycleHtml += '<div style="margin-top: 15px; padding: 10px; background: #fff3e0; border-radius: 5px; font-size: 12px;"><strong>📌 참고:</strong> 주기는 검사 간격 평균 기준 (±3일 허용)</div>';
+                    rightContentEl.innerHTML = cycleHtml;
+                } else {
+                    rightContentEl.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">검사주기 분석 데이터 없음</p>';
+                }
+            } else if (purpose && purpose !== '전체') {
+                // 특정 목적: 매출, 건수, 평균단가
+                rightTitleEl.textContent = '📈 ' + purpose + ' 요약';
+                let purposeData = null;
+                if (currentData.by_manager) {
+                    const managerData = currentData.by_manager.find(m => m[0] === managerName);
+                    if (managerData && managerData[1].by_purpose && managerData[1].by_purpose[purpose]) {
+                        purposeData = managerData[1].by_purpose[purpose];
+                    }
+                }
+                if (purposeData) {
+                    const avgPrice = purposeData.count > 0 ? purposeData.sales / purposeData.count : 0;
+                    let summaryHtml = '<div style="display: flex; flex-direction: column; gap: 15px;">';
+                    summaryHtml += `<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;"><div style="font-size: 12px; color: #666;">매출액</div><div style="font-size: 22px; font-weight: bold; color: #1976d2;">${formatCurrency(purposeData.sales)}</div></div>`;
+                    summaryHtml += `<div style="background: #f3e5f5; padding: 15px; border-radius: 8px; text-align: center;"><div style="font-size: 12px; color: #666;">건수</div><div style="font-size: 22px; font-weight: bold; color: #7b1fa2;">${purposeData.count}건</div></div>`;
+                    summaryHtml += `<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; text-align: center;"><div style="font-size: 12px; color: #666;">평균단가</div><div style="font-size: 22px; font-weight: bold; color: #388e3c;">${formatCurrency(avgPrice)}</div></div>`;
+                    summaryHtml += '</div>';
+                    rightContentEl.innerHTML = summaryHtml;
+                } else {
+                    rightContentEl.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">해당 목적 데이터 없음</p>';
+                }
+            } else {
+                // 전체: 전체 매출/건수
+                rightTitleEl.textContent = '📈 전체 요약';
+                const managerData = currentData.by_manager.find(m => m[0] === managerName);
+                if (managerData) {
+                    const data = managerData[1];
+                    const avgPrice = data.count > 0 ? data.sales / data.count : 0;
+                    let summaryHtml = '<div style="display: flex; flex-direction: column; gap: 15px;">';
+                    summaryHtml += `<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center;"><div style="font-size: 12px; color: #666;">총 매출액</div><div style="font-size: 22px; font-weight: bold; color: #1976d2;">${formatCurrency(data.sales)}</div></div>`;
+                    summaryHtml += `<div style="background: #f3e5f5; padding: 15px; border-radius: 8px; text-align: center;"><div style="font-size: 12px; color: #666;">총 건수</div><div style="font-size: 22px; font-weight: bold; color: #7b1fa2;">${data.count}건</div></div>`;
+                    summaryHtml += `<div style="background: #e8f5e9; padding: 15px; border-radius: 8px; text-align: center;"><div style="font-size: 12px; color: #666;">평균단가</div><div style="font-size: 22px; font-weight: bold; color: #388e3c;">${formatCurrency(avgPrice)}</div></div>`;
+                    summaryHtml += '</div>';
+                    rightContentEl.innerHTML = summaryHtml;
+                } else {
+                    rightContentEl.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">데이터 없음</p>';
+                }
+            }
+
+            modal.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeManagerModal() {
+            document.getElementById('managerDetailModal').style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+
+        // ESC 키로 모달 닫기
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeManagerModal();
+        });
 
         // 날짜 선택기 초기화 및 관련 함수들
         function initDateSelectors() {
@@ -1450,11 +1688,11 @@ HTML_TEMPLATE = '''
                 tbody.innerHTML = currentData.by_manager.map(d => {
                     const compSales = compareMap[d[0]]?.sales || 0;
                     const diff = d[1].sales - compSales;
-                    return `<tr><td>${d[0]}</td><td>${formatCurrency(d[1].sales)}</td><td>${formatCurrency(compSales)}</td><td class="${diff >= 0 ? 'positive' : 'negative'}">${diff >= 0 ? '+' : ''}${formatCurrency(diff)}</td><td>${(d[1].sales / currentData.total_sales * 100).toFixed(1)}%</td></tr>`;
+                    return `<tr onclick="showManagerDetail('${d[0]}')" style="cursor: pointer;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background=''"><td>${d[0]}</td><td>${formatCurrency(d[1].sales)}</td><td>${formatCurrency(compSales)}</td><td class="${diff >= 0 ? 'positive' : 'negative'}">${diff >= 0 ? '+' : ''}${formatCurrency(diff)}</td><td>${(d[1].sales / currentData.total_sales * 100).toFixed(1)}%</td></tr>`;
                 }).join('');
             } else {
                 thead.innerHTML = `<tr><th>담당자</th><th>매출액</th><th>건수</th><th>비중</th></tr>`;
-                tbody.innerHTML = currentData.by_manager.map(d => `<tr><td>${d[0]}</td><td>${formatCurrency(d[1].sales)}</td><td>${d[1].count}</td><td>${(d[1].sales / currentData.total_sales * 100).toFixed(1)}%</td></tr>`).join('');
+                tbody.innerHTML = currentData.by_manager.map(d => `<tr onclick="showManagerDetail('${d[0]}')" style="cursor: pointer;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background=''"><td>${d[0]}</td><td>${formatCurrency(d[1].sales)}</td><td>${d[1].count}</td><td>${(d[1].sales / currentData.total_sales * 100).toFixed(1)}%</td></tr>`).join('');
             }
         }
 
