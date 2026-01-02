@@ -6876,6 +6876,196 @@ HTML_TEMPLATE = '''
                 });
             }
 
+            // 외부 HTML 툴팁 생성 함수 (긴급 접수 건수)
+            const getOrCreateUrgentTooltip = (chart) => {
+                let tooltipEl = document.getElementById('urgentChartTooltip');
+                if (!tooltipEl) {
+                    tooltipEl = document.createElement('div');
+                    tooltipEl.id = 'urgentChartTooltip';
+                    tooltipEl.style.cssText = `
+                        position: fixed;
+                        background: rgba(30, 41, 59, 0.98);
+                        border-radius: 12px;
+                        padding: 16px;
+                        pointer-events: none;
+                        z-index: 99999;
+                        font-size: 13px;
+                        color: #e2e8f0;
+                        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+                        min-width: 320px;
+                        max-width: 380px;
+                        transition: opacity 0.15s ease;
+                        line-height: 1.5;
+                    `;
+                    document.body.appendChild(tooltipEl);
+                }
+                return tooltipEl;
+            };
+
+            // 전년도 비교 데이터 맵 생성
+            const compManagerMap = compareData ? Object.fromEntries((compareData.by_manager || []).map(m => [m[0], m[1]])) : {};
+
+            // 외부 툴팁 핸들러 (긴급 접수 건수)
+            const externalUrgentTooltipHandler = (context) => {
+                const { chart, tooltip } = context;
+                const tooltipEl = getOrCreateUrgentTooltip(chart);
+
+                if (tooltip.opacity === 0) {
+                    tooltipEl.style.opacity = 0;
+                    return;
+                }
+
+                if (tooltip.body && tooltip.dataPoints && tooltip.dataPoints.length > 0) {
+                    const dp = tooltip.dataPoints[0];
+                    const idx = dp.dataIndex;
+                    const dsIdx = dp.datasetIndex;
+                    const d = urgentData[idx];
+
+                    // 비교 데이터인 경우 간단한 툴팁만 표시
+                    if (dsIdx > 0) {
+                        const compData = compManagerMap[d.name];
+                        let compUrgent = 0;
+                        if (compData) {
+                            if (selectedPurpose === '전체') {
+                                compUrgent = compData.urgent || 0;
+                            } else {
+                                compUrgent = (compData.urgent_by_purpose || {})[selectedPurpose] || 0;
+                            }
+                        }
+                        tooltipEl.style.border = '2px solid rgba(156, 163, 175, 0.8)';
+                        tooltipEl.innerHTML = `
+                            <div style="font-size: 15px; font-weight: bold; color: #fff; margin-bottom: 8px;">👤 ${d.name} (${compareData.year}년)</div>
+                            <div>🚨 긴급 건수: <strong>${compUrgent.toLocaleString()}건</strong></div>
+                        `;
+                    } else {
+                        // 티어 판정
+                        const ratio = d.urgent / maxUrgent;
+                        let tierTag, tierIcon, tierColor, borderColor;
+                        if (ratio >= 0.8) {
+                            tierTag = '상위 (80%↑)'; tierIcon = '🔴'; tierColor = '#ef4444'; borderColor = '#ef4444';
+                        } else if (ratio >= 0.5) {
+                            tierTag = '중위 (50%↑)'; tierIcon = '🟠'; tierColor = '#f59e0b'; borderColor = '#f59e0b';
+                        } else {
+                            tierTag = '하위'; tierIcon = '🔵'; tierColor = '#6366f1'; borderColor = '#6366f1';
+                        }
+                        tooltipEl.style.border = `2px solid ${borderColor}`;
+
+                        let html = '';
+
+                        // 1. 헤더
+                        html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: rgba(239, 68, 68, 0.3); border-radius: 10px 10px 0 0;">
+                            👤 ${d.name} <span style="font-size: 12px; color: ${tierColor}; background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 10px; margin-left: 8px;">${tierIcon} ${tierTag}</span>
+                        </div>`;
+
+                        // 2. 기본 지표
+                        html += `<div style="margin-bottom: 4px;">🚨 긴급 건수: <strong>${d.urgent.toLocaleString()}건</strong></div>`;
+                        html += `<div style="margin-bottom: 8px;">📅 월평균: <strong>${d.monthlyAvg.toFixed(1)}건/월</strong></div>`;
+
+                        // 3. 비교 분석
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 비교 분석 ──</div>`;
+
+                        // 전체 평균 대비
+                        const diffFromAvg = d.totalUrgent - overallAvg;
+                        const diffPct = overallAvg > 0 ? (diffFromAvg / overallAvg * 100) : 0;
+                        const avgColor = diffFromAvg >= 0 ? '#ef4444' : '#10b981';
+                        const avgSign = diffFromAvg >= 0 ? '+' : '';
+                        html += `<div style="margin-bottom: 4px;">📊 전체 평균(${overallAvg.toFixed(0)}건) 대비: <span style="color: ${avgColor}; font-weight: bold;">${avgSign}${diffFromAvg.toFixed(0)}건 (${avgSign}${diffPct.toFixed(1)}%)</span></div>`;
+
+                        // 전년 동기 대비
+                        if (compareData) {
+                            const compData = compManagerMap[d.name];
+                            if (compData) {
+                                let compUrgent = 0;
+                                if (selectedPurpose === '전체') {
+                                    compUrgent = compData.urgent || 0;
+                                } else {
+                                    compUrgent = (compData.urgent_by_purpose || {})[selectedPurpose] || 0;
+                                }
+                                if (compUrgent > 0) {
+                                    const yoyDiff = d.urgent - compUrgent;
+                                    const yoyPct = (yoyDiff / compUrgent * 100);
+                                    const yoyColor = yoyDiff >= 0 ? '#ef4444' : '#10b981';
+                                    const yoySign = yoyDiff >= 0 ? '+' : '';
+                                    html += `<div style="margin-bottom: 8px;">📆 전년 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyDiff}건 (${yoySign}${yoyPct.toFixed(1)}%)</span></div>`;
+                                }
+                            }
+                        }
+
+                        // 4. 검사목적별 분석
+                        const purposeEntries = Object.entries(d.urgentByPurpose).filter(([_, v]) => v > 0);
+                        if (purposeEntries.length > 0) {
+                            html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 검사목적별 분석 ──</div>`;
+
+                            // 평균 대비 높은 목적
+                            const higherPurposes = [];
+                            const lowerPurposes = [];
+
+                            purposeEntries.forEach(([purpose, count]) => {
+                                const avg = purposeAvgMap[purpose]?.avg || 0;
+                                if (avg > 0) {
+                                    const diff = count - avg;
+                                    const pct = (diff / avg * 100);
+                                    if (diff > 0) {
+                                        higherPurposes.push({ purpose, count, avg, diff, pct });
+                                    } else if (diff < 0) {
+                                        lowerPurposes.push({ purpose, count, avg, diff, pct });
+                                    }
+                                }
+                            });
+
+                            if (higherPurposes.length > 0) {
+                                higherPurposes.sort((a, b) => b.diff - a.diff);
+                                html += `<div style="color: #ef4444; font-weight: 600; margin-bottom: 4px;">▲ 평균 대비 높음</div>`;
+                                higherPurposes.slice(0, 3).forEach(p => {
+                                    html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: ${p.count}건 <span style="color: #ef4444;">(평균 ${p.avg.toFixed(0)}건, +${p.pct.toFixed(0)}%)</span></div>`;
+                                });
+                            }
+
+                            if (lowerPurposes.length > 0) {
+                                lowerPurposes.sort((a, b) => a.diff - b.diff);
+                                html += `<div style="color: #10b981; font-weight: 600; margin-top: 8px; margin-bottom: 4px;">▼ 평균 대비 낮음</div>`;
+                                lowerPurposes.slice(0, 3).forEach(p => {
+                                    html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: ${p.count}건 <span style="color: #10b981;">(평균 ${p.avg.toFixed(0)}건, ${p.pct.toFixed(0)}%)</span></div>`;
+                                });
+                            }
+                        }
+
+                        // 5. 인사이트
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 인사이트 ──</div>`;
+
+                        if (ratio >= 0.8) {
+                            html += `<div style="color: #f59e0b; font-size: 12px;">⚠️ 긴급 건수 상위권 - 접수 프로세스 개선 또는 사전 일정 관리 필요</div>`;
+                        } else if (ratio >= 0.5) {
+                            html += `<div style="color: #60a5fa; font-size: 12px;">📋 긴급 건수 중위권 - 특정 목적 집중 관리로 개선 가능</div>`;
+                        } else {
+                            html += `<div style="color: #10b981; font-size: 12px;">✅ 긴급 건수 하위권 - 안정적인 접수 관리 중</div>`;
+                        }
+
+                        tooltipEl.innerHTML = html;
+                    }
+                }
+
+                // 위치 계산
+                const canvasRect = chart.canvas.getBoundingClientRect();
+                let left = canvasRect.left + tooltip.caretX + 15;
+                let top = canvasRect.top + tooltip.caretY - 10;
+
+                const tooltipWidth = tooltipEl.offsetWidth || 360;
+                if (left + tooltipWidth > window.innerWidth - 20) {
+                    left = canvasRect.left + tooltip.caretX - tooltipWidth - 15;
+                }
+
+                const tooltipHeight = tooltipEl.offsetHeight || 400;
+                if (top + tooltipHeight > window.innerHeight - 20) {
+                    top = window.innerHeight - tooltipHeight - 20;
+                }
+                if (top < 10) top = 10;
+
+                tooltipEl.style.opacity = 1;
+                tooltipEl.style.left = left + 'px';
+                tooltipEl.style.top = top + 'px';
+            };
+
             charts.urgent = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
                 data: {
@@ -6888,75 +7078,8 @@ HTML_TEMPLATE = '''
                     plugins: {
                         legend: { display: compareData ? true : false, position: 'top' },
                         tooltip: {
-                            callbacks: {
-                                title: function(context) {
-                                    return context[0].label;
-                                },
-                                label: function(context) {
-                                    if (context.datasetIndex > 0) {
-                                        return context.dataset.label + ': ' + context.raw + '건';
-                                    }
-                                    const idx = context.dataIndex;
-                                    const d = urgentData[idx];
-                                    const lines = [];
-                                    lines.push('긴급 건수: ' + d.urgent + '건');
-                                    lines.push('월평균: ' + d.monthlyAvg.toFixed(1) + '건/월');
-
-                                    // 전체 평균 대비
-                                    const diffFromAvg = d.totalUrgent - overallAvg;
-                                    const diffPct = overallAvg > 0 ? ((d.totalUrgent - overallAvg) / overallAvg * 100).toFixed(0) : 0;
-                                    lines.push('전체 평균(' + overallAvg.toFixed(0) + '건) 대비: ' + (diffFromAvg >= 0 ? '+' : '') + diffFromAvg.toFixed(0) + '건 (' + (diffFromAvg >= 0 ? '+' : '') + diffPct + '%)');
-
-                                    return lines;
-                                },
-                                afterBody: function(context) {
-                                    if (context[0].datasetIndex > 0) return [];
-                                    const idx = context[0].dataIndex;
-                                    const d = urgentData[idx];
-                                    const lines = ['', '── 검사목적별 비교 ──'];
-
-                                    // 평균 대비 높은 목적과 낮은 목적 분석
-                                    const higherPurposes = [];
-                                    const lowerPurposes = [];
-
-                                    Object.entries(d.urgentByPurpose).forEach(([purpose, count]) => {
-                                        const avg = purposeAvgMap[purpose]?.avg || 0;
-                                        if (avg > 0) {
-                                            const diff = count - avg;
-                                            const pct = (diff / avg * 100).toFixed(0);
-                                            if (diff > 0) {
-                                                higherPurposes.push({ purpose, count, avg, diff, pct: '+' + pct });
-                                            } else if (diff < 0) {
-                                                lowerPurposes.push({ purpose, count, avg, diff, pct });
-                                            }
-                                        }
-                                    });
-
-                                    // 평균보다 긴급이 많은 목적들 (상위 3개)
-                                    if (higherPurposes.length > 0) {
-                                        higherPurposes.sort((a, b) => b.diff - a.diff);
-                                        lines.push('▲ 평균 대비 높음:');
-                                        higherPurposes.slice(0, 3).forEach(p => {
-                                            lines.push('  ' + p.purpose + ': ' + p.count + '건 (평균 ' + p.avg.toFixed(0) + '건, ' + p.pct + '%)');
-                                        });
-                                    }
-
-                                    // 평균보다 긴급이 적은 목적들 (상위 3개)
-                                    if (lowerPurposes.length > 0) {
-                                        lowerPurposes.sort((a, b) => a.diff - b.diff);
-                                        lines.push('▼ 평균 대비 낮음:');
-                                        lowerPurposes.slice(0, 3).forEach(p => {
-                                            lines.push('  ' + p.purpose + ': ' + p.count + '건 (평균 ' + p.avg.toFixed(0) + '건, ' + p.pct + '%)');
-                                        });
-                                    }
-
-                                    if (higherPurposes.length === 0 && lowerPurposes.length === 0) {
-                                        lines.push('(목적별 데이터 없음)');
-                                    }
-
-                                    return lines;
-                                }
-                            }
+                            enabled: false,
+                            external: externalUrgentTooltipHandler
                         }
                     },
                     scales: { y: { beginAtZero: true } }
