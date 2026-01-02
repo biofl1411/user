@@ -2794,6 +2794,150 @@ HTML_TEMPLATE = '''
             font-weight: 500;
         }
 
+        /* SVG Korea Map Styles */
+        .region-path {
+            fill: #dbeafe;
+            stroke: #fff;
+            stroke-width: 2;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .region-path:hover {
+            fill: #93c5fd;
+            transform: scale(1.02);
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));
+        }
+        .region-path.selected {
+            fill: #3b82f6;
+            stroke: #1e40af;
+            stroke-width: 3;
+        }
+        .region-path.level-1 { fill: #dbeafe; }
+        .region-path.level-2 { fill: #93c5fd; }
+        .region-path.level-3 { fill: #3b82f6; }
+        .region-path.level-4 { fill: #1e3a8a; }
+        .map-label {
+            font-size: 11px;
+            font-weight: 600;
+            fill: #374151;
+            pointer-events: none;
+            text-anchor: middle;
+        }
+        .map-label.small {
+            font-size: 9px;
+        }
+
+        /* Region KPI Overlay */
+        .region-kpi-overlay {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 280px;
+            background: white;
+            border: 2px solid var(--primary);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            z-index: 1000;
+            font-size: 12px;
+        }
+
+        /* Region Detail Panel */
+        .region-detail-section {
+            margin-bottom: 20px;
+        }
+        .region-detail-section:last-child {
+            margin-bottom: 0;
+        }
+        .region-detail-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gray-700);
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .region-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .region-stat-item {
+            background: var(--gray-50);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .region-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-800);
+        }
+        .region-stat-label {
+            font-size: 11px;
+            color: var(--gray-500);
+            margin-top: 4px;
+        }
+        .region-manager-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .region-manager-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: var(--gray-50);
+            border-radius: 6px;
+        }
+        .region-ai-opinion {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border: 1px solid #7dd3fc;
+            border-radius: 10px;
+            padding: 14px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--gray-700);
+        }
+        .region-top-clients {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .region-client-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px dashed var(--gray-100);
+        }
+        .region-client-item:last-child {
+            border-bottom: none;
+        }
+        .heatmap-cell {
+            padding: 4px 8px;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: 600;
+        }
+        .heatmap-high { background: #dcfce7; color: #166534; }
+        .heatmap-medium { background: #fef9c3; color: #854d0e; }
+        .heatmap-low { background: #fee2e2; color: #991b1b; }
+        .region-distribution {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .region-chip {
+            padding: 2px 8px;
+            background: var(--primary-light);
+            color: var(--primary);
+            border-radius: 12px;
+            font-size: 11px;
+        }
+
         /* 상세 버튼 */
         .btn-detail {
             padding: 6px 12px;
@@ -4079,20 +4223,223 @@ HTML_TEMPLATE = '''
 
         <!-- 지역별 탭 -->
         <div id="region" class="tab-content">
-            <div class="content-grid">
+            <!-- 지역 KPI 카드 -->
+            <section class="kpi-section region-kpi-section" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+                <div class="kpi-card region-kpi" id="kpiMainRegion" style="border-top: 4px solid var(--primary); position: relative; cursor: pointer;">
+                    <div class="kpi-header"><div class="kpi-icon">🏆</div></div>
+                    <div class="kpi-label">주력 지역</div>
+                    <div class="kpi-value" id="mainRegionName" style="font-size: 20px;">-</div>
+                    <div class="kpi-compare" id="mainRegionValue">-</div>
+                    <div class="region-kpi-overlay" id="mainRegionOverlay" style="display: none;"></div>
+                </div>
+                <div class="kpi-card region-kpi" id="kpiGrowthRegion" style="border-top: 4px solid var(--success); position: relative; cursor: pointer;">
+                    <div class="kpi-header"><div class="kpi-icon">📈</div></div>
+                    <div class="kpi-label">성장 지역</div>
+                    <div class="kpi-value" id="growthRegionName" style="font-size: 20px; color: var(--success);">-</div>
+                    <div class="kpi-compare" id="growthRegionValue">-</div>
+                    <div class="region-kpi-overlay" id="growthRegionOverlay" style="display: none;"></div>
+                </div>
+                <div class="kpi-card region-kpi" id="kpiNewRegion" style="border-top: 4px solid var(--info); position: relative; cursor: pointer;">
+                    <div class="kpi-header"><div class="kpi-icon">🆕</div></div>
+                    <div class="kpi-label">신규 진출</div>
+                    <div class="kpi-value" id="newRegionName" style="font-size: 20px; color: var(--info);">-</div>
+                    <div class="kpi-compare" id="newRegionValue">-</div>
+                    <div class="region-kpi-overlay" id="newRegionOverlay" style="display: none;"></div>
+                </div>
+                <div class="kpi-card region-kpi" id="kpiWeakRegion" style="border-top: 4px solid var(--warning); position: relative; cursor: pointer;">
+                    <div class="kpi-header"><div class="kpi-icon">🎯</div></div>
+                    <div class="kpi-label">공략 필요</div>
+                    <div class="kpi-value" id="weakRegionName" style="font-size: 20px; color: var(--warning);">-</div>
+                    <div class="kpi-compare" id="weakRegionValue">-</div>
+                    <div class="region-kpi-overlay" id="weakRegionOverlay" style="display: none;"></div>
+                </div>
+            </section>
+
+            <!-- 지도 + 상세 패널 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
+                <div class="card" style="min-height: 500px;">
+                    <div class="card-header">
+                        <div class="card-title">🗺️ 전국 지역별 매출 현황</div>
+                        <div style="display: flex; gap: 8px;">
+                            <span style="font-size: 11px; color: #94a3b8;">클릭하면 상세 정보</span>
+                        </div>
+                    </div>
+                    <div class="card-body" style="display: flex; justify-content: center; align-items: center;">
+                        <div id="koreaMapContainer" style="width: 100%; max-width: 450px; position: relative;">
+                            <!-- SVG Korea Map -->
+                            <svg id="koreaMap" viewBox="0 0 400 550" style="width: 100%; height: auto;">
+                                <!-- 강원 -->
+                                <path id="map-강원" d="M250,80 L320,60 L350,100 L340,160 L290,180 L240,160 L230,120 Z"
+                                    class="region-path" data-region="강원"/>
+                                <!-- 경기 -->
+                                <path id="map-경기" d="M160,100 L230,120 L240,160 L220,200 L170,210 L130,180 L140,130 Z"
+                                    class="region-path" data-region="경기"/>
+                                <!-- 서울 -->
+                                <path id="map-서울" d="M170,140 L200,135 L205,165 L175,170 Z"
+                                    class="region-path" data-region="서울"/>
+                                <!-- 인천 -->
+                                <path id="map-인천" d="M120,140 L145,135 L150,170 L125,175 Z"
+                                    class="region-path" data-region="인천"/>
+                                <!-- 충북 -->
+                                <path id="map-충북" d="M220,200 L290,180 L300,230 L260,270 L200,260 L190,220 Z"
+                                    class="region-path" data-region="충북"/>
+                                <!-- 세종 -->
+                                <path id="map-세종" d="M165,235 L185,230 L190,255 L170,260 Z"
+                                    class="region-path" data-region="세종"/>
+                                <!-- 대전 -->
+                                <path id="map-대전" d="M185,265 L210,260 L215,290 L190,295 Z"
+                                    class="region-path" data-region="대전"/>
+                                <!-- 충남 -->
+                                <path id="map-충남" d="M100,200 L170,210 L190,220 L200,260 L170,290 L100,280 L80,240 Z"
+                                    class="region-path" data-region="충남"/>
+                                <!-- 전북 -->
+                                <path id="map-전북" d="M100,290 L180,295 L200,340 L160,380 L90,360 L70,320 Z"
+                                    class="region-path" data-region="전북"/>
+                                <!-- 경북 -->
+                                <path id="map-경북" d="M260,270 L300,230 L360,250 L370,330 L310,370 L250,350 L240,300 Z"
+                                    class="region-path" data-region="경북"/>
+                                <!-- 대구 -->
+                                <path id="map-대구" d="M275,340 L305,335 L310,365 L280,370 Z"
+                                    class="region-path" data-region="대구"/>
+                                <!-- 울산 -->
+                                <path id="map-울산" d="M340,380 L370,375 L375,410 L345,415 Z"
+                                    class="region-path" data-region="울산"/>
+                                <!-- 경남 -->
+                                <path id="map-경남" d="M200,380 L250,350 L310,370 L340,420 L280,460 L200,440 L180,400 Z"
+                                    class="region-path" data-region="경남"/>
+                                <!-- 부산 -->
+                                <path id="map-부산" d="M300,450 L340,440 L355,480 L310,490 Z"
+                                    class="region-path" data-region="부산"/>
+                                <!-- 광주 -->
+                                <path id="map-광주" d="M105,385 L135,380 L140,410 L110,415 Z"
+                                    class="region-path" data-region="광주"/>
+                                <!-- 전남 -->
+                                <path id="map-전남" d="M60,360 L160,380 L180,430 L150,480 L60,470 L40,420 Z"
+                                    class="region-path" data-region="전남"/>
+                                <!-- 제주 -->
+                                <path id="map-제주" d="M60,520 L150,515 L155,545 L55,550 Z"
+                                    class="region-path" data-region="제주"/>
+
+                                <!-- Region Labels -->
+                                <text x="290" y="120" class="map-label" data-region="강원">강원</text>
+                                <text x="185" y="165" class="map-label" data-region="경기">경기</text>
+                                <text x="183" y="155" class="map-label small" data-region="서울">서울</text>
+                                <text x="130" y="160" class="map-label small" data-region="인천">인천</text>
+                                <text x="245" y="230" class="map-label" data-region="충북">충북</text>
+                                <text x="173" y="250" class="map-label small" data-region="세종">세종</text>
+                                <text x="195" y="282" class="map-label small" data-region="대전">대전</text>
+                                <text x="130" y="250" class="map-label" data-region="충남">충남</text>
+                                <text x="130" y="340" class="map-label" data-region="전북">전북</text>
+                                <text x="305" y="300" class="map-label" data-region="경북">경북</text>
+                                <text x="288" y="357" class="map-label small" data-region="대구">대구</text>
+                                <text x="352" y="400" class="map-label small" data-region="울산">울산</text>
+                                <text x="255" y="410" class="map-label" data-region="경남">경남</text>
+                                <text x="318" y="472" class="map-label small" data-region="부산">부산</text>
+                                <text x="117" y="402" class="map-label small" data-region="광주">광주</text>
+                                <text x="100" y="430" class="map-label" data-region="전남">전남</text>
+                                <text x="100" y="535" class="map-label" data-region="제주">제주</text>
+                            </svg>
+                            <!-- 범례 -->
+                            <div id="mapLegend" style="position: absolute; bottom: 10px; right: 10px; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); font-size: 11px;">
+                                <div style="font-weight: 600; margin-bottom: 6px;">매출 규모</div>
+                                <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+                                    <div style="width: 16px; height: 16px; background: #1e3a8a; border-radius: 3px;"></div>
+                                    <span>10억 이상</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+                                    <div style="width: 16px; height: 16px; background: #3b82f6; border-radius: 3px;"></div>
+                                    <span>5억 ~ 10억</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+                                    <div style="width: 16px; height: 16px; background: #93c5fd; border-radius: 3px;"></div>
+                                    <span>1억 ~ 5억</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 4px;">
+                                    <div style="width: 16px; height: 16px; background: #dbeafe; border-radius: 3px;"></div>
+                                    <span>1억 미만</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card" id="regionDetailCard" style="min-height: 500px;">
+                    <div class="card-header">
+                        <div class="card-title" id="regionDetailTitle">📍 지역 상세 정보</div>
+                        <div class="card-badge" id="regionDetailBadge">지역 선택</div>
+                    </div>
+                    <div class="card-body" id="regionDetailBody" style="padding: 16px;">
+                        <div style="text-align: center; color: #94a3b8; padding: 60px 20px;">
+                            <div style="font-size: 48px; margin-bottom: 16px;">🗺️</div>
+                            <div style="font-size: 14px;">좌측 지도에서 지역을 클릭하면<br>상세 정보가 표시됩니다.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 매출 차트 + 성장률 차트 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
                 <div class="card">
-                    <div class="card-header"><div class="card-title">🥧 지역별 매출 비중</div></div>
-                    <div class="card-body"><div class="chart-container"><canvas id="regionChart"></canvas></div></div>
+                    <div class="card-header">
+                        <div class="card-title">📊 지역별 매출 순위</div>
+                        <div class="card-badge" id="regionSalesChartBadge">-</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 350px;"><canvas id="regionSalesChart"></canvas></div>
+                    </div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><div class="card-title">📋 지역별 상세</div></div>
+                    <div class="card-header">
+                        <div class="card-title">📈 지역별 성장률</div>
+                        <div class="card-badge" id="regionGrowthChartBadge">전년 대비</div>
+                    </div>
                     <div class="card-body">
-                        <div class="scroll-table">
-                            <table class="data-table" id="regionTable">
-                                <thead><tr><th>지역</th><th class="text-right">매출액</th><th class="text-right">건수</th><th>비중</th></tr></thead>
+                        <div class="chart-container" style="height: 350px;"><canvas id="regionGrowthChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 히트맵 테이블 + 지역 TOP 업체 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">🌡️ 지역별 현황 히트맵</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="scroll-table" style="max-height: 350px;">
+                            <table class="data-table" id="regionHeatmapTable">
+                                <thead><tr><th>지역</th><th class="text-right">매출액</th><th class="text-right">건수</th><th class="text-right">성장률</th><th>비중</th></tr></thead>
                                 <tbody></tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">🏢 지역별 TOP 업체</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="scroll-table" style="max-height: 350px;">
+                            <table class="data-table" id="regionTopClientTable">
+                                <thead><tr><th>지역</th><th>업체명</th><th class="text-right">매출액</th><th>담당자</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 담당자별 지역 분포 -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <div class="card-title">👤 담당자별 지역 분포</div>
+                    <div class="card-badge" id="managerRegionBadge">-</div>
+                </div>
+                <div class="card-body">
+                    <div class="scroll-table" style="max-height: 350px;">
+                        <table class="data-table" id="managerRegionTable">
+                            <thead><tr><th>담당자</th><th>주력 지역</th><th class="text-right">지역수</th><th class="text-right">총매출</th><th>지역 분포</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -7758,19 +8105,529 @@ HTML_TEMPLATE = '''
             }).join('');
         }
 
+        // 지역별 탭 전역 변수
+        let regionAnalysisData = null;
+        let selectedRegion = null;
+
         function updateRegionTab() {
             const regions = currentData.by_region || [];
+            const compareRegions = compareData?.by_region || [];
+            const regionTopManagers = currentData.region_top_managers || {};
+            const managerRegions = currentData.manager_regions || {};
+            const clients = currentData.by_client || [];
+
             const total = regions.reduce((s, r) => s + r[1].sales, 0) || 1;
 
-            const ctx = document.getElementById('regionChart').getContext('2d');
-            if (charts.region) charts.region.destroy();
-            charts.region = new Chart(ctx, { type: 'doughnut', data: { labels: regions.map(r => r[0]), datasets: [{ data: regions.map(r => r[1].sales), backgroundColor: ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f97316', '#f59e0b', '#84cc16', '#10b981'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } });
+            // 비교 데이터 맵 생성
+            const currentRegionMap = Object.fromEntries(regions.map(r => [r[0], r[1]]));
+            const compareRegionMap = Object.fromEntries(compareRegions.map(r => [r[0], r[1]]));
 
-            const tbody = document.querySelector('#regionTable tbody');
-            tbody.innerHTML = regions.map(r => {
-                const percent = (r[1].sales / total * 100).toFixed(1);
-                return `<tr><td><strong>${r[0]}</strong></td><td class="text-right">${formatCurrency(r[1].sales)}</td><td class="text-right">${r[1].count.toLocaleString()}</td><td><div class="progress-cell"><div class="progress-bar"><div class="progress-fill" style="width: ${percent}%;"></div></div><span class="progress-value">${percent}%</span></div></td></tr>`;
+            // 지역별 분석 데이터 생성
+            const regionData = regions.map(r => {
+                const name = r[0];
+                const data = r[1];
+                const lastYear = compareRegionMap[name] || { sales: 0, count: 0 };
+                const growth = data.sales - lastYear.sales;
+                const growthRate = lastYear.sales > 0 ? ((growth / lastYear.sales) * 100) : (data.sales > 0 ? 100 : 0);
+                return {
+                    name,
+                    sales: data.sales,
+                    count: data.count,
+                    sido: data.sido,
+                    lastYearSales: lastYear.sales,
+                    lastYearCount: lastYear.count,
+                    growth,
+                    growthRate,
+                    isNew: !compareRegionMap[name] && data.sales > 0,
+                    percent: (data.sales / total * 100)
+                };
+            });
+
+            // 신규 지역 (전년 없고 올해 있음)
+            const newRegions = regionData.filter(r => r.isNew);
+            // 성장 지역 (성장률 높은 순)
+            const growthRegions = [...regionData].filter(r => r.lastYearSales > 0).sort((a, b) => b.growthRate - a.growthRate);
+            // 감소 지역 (공략 필요)
+            const weakRegions = [...regionData].filter(r => r.growthRate < 0 && r.lastYearSales > 0).sort((a, b) => a.growthRate - b.growthRate);
+            // 주력 지역 (매출 높은 순)
+            const mainRegions = [...regionData].sort((a, b) => b.sales - a.sales);
+
+            regionAnalysisData = { regionData, newRegions, growthRegions, weakRegions, mainRegions, regionTopManagers, managerRegions };
+
+            // KPI 업데이트
+            updateRegionKPIs(mainRegions, growthRegions, newRegions, weakRegions);
+
+            // SVG 맵 업데이트
+            updateKoreaMap(regionData);
+
+            // 차트 업데이트
+            updateRegionSalesChart(regionData);
+            updateRegionGrowthChart(regionData);
+
+            // 테이블 업데이트
+            updateRegionHeatmapTable(regionData);
+            updateRegionTopClientTable(regions, clients);
+            updateManagerRegionTable(managerRegions);
+
+            // 맵 클릭 이벤트 등록
+            setupMapClickEvents(regionData, clients);
+        }
+
+        function updateRegionKPIs(mainRegions, growthRegions, newRegions, weakRegions) {
+            // 주력 지역
+            if (mainRegions.length > 0) {
+                const main = mainRegions[0];
+                document.getElementById('mainRegionName').textContent = main.name;
+                document.getElementById('mainRegionValue').textContent = formatCurrency(main.sales) + ' (' + main.percent.toFixed(1) + '%)';
+
+                const overlay = document.getElementById('mainRegionOverlay');
+                overlay.innerHTML = `
+                    <div style="font-weight: 600; margin-bottom: 8px;">📊 매출 TOP 5 지역</div>
+                    ${mainRegions.slice(0, 5).map((r, i) => `
+                        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                            <span>${i + 1}. ${r.name}</span>
+                            <span>${formatCurrency(r.sales)} (${r.percent.toFixed(1)}%)</span>
+                        </div>
+                    `).join('')}
+                `;
+            }
+
+            // 성장 지역
+            if (growthRegions.length > 0) {
+                const growth = growthRegions[0];
+                document.getElementById('growthRegionName').textContent = growth.name;
+                document.getElementById('growthRegionValue').textContent = '+' + growth.growthRate.toFixed(1) + '% 성장';
+
+                const overlay = document.getElementById('growthRegionOverlay');
+                overlay.innerHTML = `
+                    <div style="font-weight: 600; margin-bottom: 8px;">📈 성장률 TOP 5 지역</div>
+                    ${growthRegions.slice(0, 5).map((r, i) => `
+                        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                            <span>${i + 1}. ${r.name}</span>
+                            <span style="color: var(--success);">+${r.growthRate.toFixed(1)}%</span>
+                        </div>
+                    `).join('')}
+                `;
+            } else {
+                document.getElementById('growthRegionName').textContent = '-';
+                document.getElementById('growthRegionValue').textContent = '비교 데이터 없음';
+            }
+
+            // 신규 진출
+            if (newRegions.length > 0) {
+                document.getElementById('newRegionName').textContent = newRegions.length + '개 지역';
+                document.getElementById('newRegionValue').textContent = '올해 첫 거래';
+
+                const overlay = document.getElementById('newRegionOverlay');
+                overlay.innerHTML = `
+                    <div style="font-weight: 600; margin-bottom: 8px;">🆕 신규 진출 지역</div>
+                    ${newRegions.map((r, i) => `
+                        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                            <span>${i + 1}. ${r.name}</span>
+                            <span>${formatCurrency(r.sales)}</span>
+                        </div>
+                    `).join('')}
+                `;
+            } else {
+                document.getElementById('newRegionName').textContent = '-';
+                document.getElementById('newRegionValue').textContent = '신규 없음';
+            }
+
+            // 공략 필요
+            if (weakRegions.length > 0) {
+                const weak = weakRegions[0];
+                document.getElementById('weakRegionName').textContent = weak.name;
+                document.getElementById('weakRegionValue').textContent = weak.growthRate.toFixed(1) + '% 감소';
+
+                const overlay = document.getElementById('weakRegionOverlay');
+                overlay.innerHTML = `
+                    <div style="font-weight: 600; margin-bottom: 8px;">⚠️ 공략 필요 지역</div>
+                    ${weakRegions.slice(0, 5).map((r, i) => `
+                        <div style="display: flex; justify-content: space-between; padding: 4px 0;">
+                            <span>${i + 1}. ${r.name}</span>
+                            <span style="color: var(--danger);">${r.growthRate.toFixed(1)}%</span>
+                        </div>
+                    `).join('')}
+                `;
+            } else {
+                document.getElementById('weakRegionName').textContent = '-';
+                document.getElementById('weakRegionValue').textContent = '감소 지역 없음';
+            }
+
+            // KPI 오버레이 이벤트
+            document.querySelectorAll('.region-kpi').forEach(card => {
+                const overlay = card.querySelector('.region-kpi-overlay');
+                if (overlay) {
+                    card.addEventListener('mouseenter', () => {
+                        overlay.style.display = 'block';
+                    });
+                    card.addEventListener('mouseleave', () => { overlay.style.display = 'none'; });
+                }
+            });
+        }
+
+        function updateKoreaMap(regionData) {
+            const maxSales = Math.max(...regionData.map(r => r.sales), 1);
+
+            // 시/도 이름 매핑 (데이터 지역명 → SVG ID)
+            const sidoMap = {
+                '서울': '서울', '서울특별시': '서울',
+                '경기': '경기', '경기도': '경기',
+                '인천': '인천', '인천광역시': '인천',
+                '강원': '강원', '강원도': '강원', '강원특별자치도': '강원',
+                '충북': '충북', '충청북도': '충북',
+                '충남': '충남', '충청남도': '충남',
+                '대전': '대전', '대전광역시': '대전',
+                '세종': '세종', '세종특별자치시': '세종',
+                '전북': '전북', '전라북도': '전북', '전북특별자치도': '전북',
+                '전남': '전남', '전라남도': '전남',
+                '광주': '광주', '광주광역시': '광주',
+                '경북': '경북', '경상북도': '경북',
+                '경남': '경남', '경상남도': '경남',
+                '대구': '대구', '대구광역시': '대구',
+                '울산': '울산', '울산광역시': '울산',
+                '부산': '부산', '부산광역시': '부산',
+                '제주': '제주', '제주특별자치도': '제주', '제주도': '제주'
+            };
+
+            // 지역별 매출 합산 (시/도 기준)
+            const sidoSales = {};
+            regionData.forEach(r => {
+                const sido = sidoMap[r.sido] || sidoMap[r.name] || r.sido;
+                if (sido) {
+                    if (!sidoSales[sido]) sidoSales[sido] = 0;
+                    sidoSales[sido] += r.sales;
+                }
+            });
+
+            const maxSidoSales = Math.max(...Object.values(sidoSales), 1);
+
+            // SVG 경로 색상 업데이트
+            document.querySelectorAll('.region-path').forEach(path => {
+                const regionName = path.dataset.region;
+                const sales = sidoSales[regionName] || 0;
+
+                // 색상 레벨 결정
+                path.classList.remove('level-1', 'level-2', 'level-3', 'level-4', 'selected');
+                if (sales >= 1000000000) { // 10억 이상
+                    path.classList.add('level-4');
+                } else if (sales >= 500000000) { // 5억 이상
+                    path.classList.add('level-3');
+                } else if (sales >= 100000000) { // 1억 이상
+                    path.classList.add('level-2');
+                } else {
+                    path.classList.add('level-1');
+                }
+            });
+        }
+
+        function setupMapClickEvents(regionData, clients) {
+            const regionDataMap = Object.fromEntries(regionData.map(r => [r.name, r]));
+            const sidoDataMap = {};
+
+            // 시도별 데이터 집계
+            regionData.forEach(r => {
+                const sido = r.sido || r.name;
+                if (!sidoDataMap[sido]) {
+                    sidoDataMap[sido] = { sales: 0, count: 0, growth: 0, lastYearSales: 0, regions: [] };
+                }
+                sidoDataMap[sido].sales += r.sales;
+                sidoDataMap[sido].count += r.count;
+                sidoDataMap[sido].lastYearSales += r.lastYearSales;
+                sidoDataMap[sido].growth += r.growth;
+                sidoDataMap[sido].regions.push(r.name);
+            });
+
+            document.querySelectorAll('.region-path').forEach(path => {
+                path.addEventListener('click', function() {
+                    const regionName = this.dataset.region;
+
+                    // 선택 상태 토글
+                    document.querySelectorAll('.region-path').forEach(p => p.classList.remove('selected'));
+                    this.classList.add('selected');
+                    selectedRegion = regionName;
+
+                    showRegionDetail(regionName, sidoDataMap[regionName] || regionDataMap[regionName], clients);
+                });
+            });
+        }
+
+        function showRegionDetail(regionName, data, clients) {
+            const regionTopManagers = currentData.region_top_managers || {};
+            const managers = regionTopManagers[regionName] || [];
+
+            // 해당 지역 업체 필터링
+            const regionClients = clients.filter(c => {
+                const clientData = c[1];
+                // 업체 주소에서 지역 추출
+                return (clientData.address && clientData.address.includes(regionName)) ||
+                       (clientData.sido && clientData.sido.includes(regionName));
+            }).sort((a, b) => b[1].sales - a[1].sales).slice(0, 5);
+
+            // 성장률 계산
+            const growthRate = data.lastYearSales > 0
+                ? ((data.sales - data.lastYearSales) / data.lastYearSales * 100)
+                : (data.sales > 0 ? 100 : 0);
+
+            // AI 분석 의견 생성
+            let aiOpinion = '';
+            if (growthRate > 20) {
+                aiOpinion = `${regionName} 지역은 전년 대비 ${growthRate.toFixed(1)}% 성장으로 매우 양호한 실적을 보이고 있습니다. 현재 영업 전략을 유지하고 추가 고객 확보에 집중하세요.`;
+            } else if (growthRate > 0) {
+                aiOpinion = `${regionName} 지역은 전년 대비 ${growthRate.toFixed(1)}% 소폭 성장 중입니다. 기존 고객 유지와 함께 신규 업체 발굴이 필요합니다.`;
+            } else if (growthRate < -10) {
+                aiOpinion = `${regionName} 지역은 전년 대비 ${Math.abs(growthRate).toFixed(1)}% 감소로 주의가 필요합니다. 이탈 고객 분석 및 경쟁사 동향 파악이 시급합니다.`;
+            } else {
+                aiOpinion = `${regionName} 지역은 현상 유지 상태입니다. 신규 고객 유치 전략 강화를 권장합니다.`;
+            }
+
+            document.getElementById('regionDetailTitle').textContent = '📍 ' + regionName + ' 상세 정보';
+            document.getElementById('regionDetailBadge').textContent = currentData.year + '년';
+
+            const body = document.getElementById('regionDetailBody');
+            body.innerHTML = `
+                <div class="region-stat-grid">
+                    <div class="region-stat-item">
+                        <div class="region-stat-value">${formatCurrency(data.sales || 0)}</div>
+                        <div class="region-stat-label">총 매출액</div>
+                    </div>
+                    <div class="region-stat-item">
+                        <div class="region-stat-value">${(data.count || 0).toLocaleString()}건</div>
+                        <div class="region-stat-label">총 건수</div>
+                    </div>
+                    <div class="region-stat-item">
+                        <div class="region-stat-value" style="color: ${growthRate >= 0 ? 'var(--success)' : 'var(--danger)'};">${growthRate >= 0 ? '+' : ''}${growthRate.toFixed(1)}%</div>
+                        <div class="region-stat-label">전년 대비 성장률</div>
+                    </div>
+                    <div class="region-stat-item">
+                        <div class="region-stat-value">${formatCurrency(data.lastYearSales || 0)}</div>
+                        <div class="region-stat-label">전년 매출</div>
+                    </div>
+                </div>
+
+                <div class="region-detail-section">
+                    <div class="region-detail-title">👤 담당자별 현황</div>
+                    <div class="region-manager-list">
+                        ${managers.length > 0 ? managers.slice(0, 5).map(m => `
+                            <div class="region-manager-item">
+                                <span><strong>${m.name}</strong></span>
+                                <span>${formatCurrency(m.sales)} (${m.count}건)</span>
+                            </div>
+                        `).join('') : '<div style="color: #94a3b8; text-align: center; padding: 16px;">담당자 데이터 없음</div>'}
+                    </div>
+                </div>
+
+                <div class="region-detail-section">
+                    <div class="region-detail-title">🤖 AI 분석 의견</div>
+                    <div class="region-ai-opinion">${aiOpinion}</div>
+                </div>
+
+                <div class="region-detail-section">
+                    <div class="region-detail-title">🏢 주요 업체 TOP 5</div>
+                    <div class="region-top-clients">
+                        ${regionClients.length > 0 ? regionClients.map(c => `
+                            <div class="region-client-item">
+                                <span><strong>${c[0]}</strong></span>
+                                <span>${formatCurrency(c[1].sales)}</span>
+                            </div>
+                        `).join('') : '<div style="color: #94a3b8; text-align: center; padding: 16px;">해당 지역 업체 데이터 없음</div>'}
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateRegionSalesChart(regionData) {
+            const sorted = [...regionData].sort((a, b) => b.sales - a.sales).slice(0, 15);
+
+            document.getElementById('regionSalesChartBadge').textContent = currentData.year + '년';
+
+            const ctx = document.getElementById('regionSalesChart');
+            if (!ctx) return;
+            if (charts.regionSales) charts.regionSales.destroy();
+
+            charts.regionSales = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: sorted.map(r => r.name),
+                    datasets: [{
+                        label: '매출',
+                        data: sorted.map(r => r.sales),
+                        backgroundColor: sorted.map(r => r.growthRate >= 0 ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.6)'),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    const r = sorted[ctx.dataIndex];
+                                    return [
+                                        '매출: ' + formatCurrency(r.sales),
+                                        '건수: ' + r.count.toLocaleString() + '건',
+                                        '비중: ' + r.percent.toFixed(1) + '%',
+                                        '성장률: ' + (r.growthRate >= 0 ? '+' : '') + r.growthRate.toFixed(1) + '%'
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { callback: v => (v / 100000000).toFixed(0) + '억' } }
+                    }
+                }
+            });
+        }
+
+        function updateRegionGrowthChart(regionData) {
+            const sorted = [...regionData].filter(r => r.lastYearSales > 0)
+                .sort((a, b) => b.growthRate - a.growthRate);
+
+            const ctx = document.getElementById('regionGrowthChart');
+            if (!ctx) return;
+            if (charts.regionGrowth) charts.regionGrowth.destroy();
+
+            charts.regionGrowth = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: sorted.map(r => r.name),
+                    datasets: [{
+                        label: '성장률',
+                        data: sorted.map(r => r.growthRate),
+                        backgroundColor: sorted.map(r => r.growthRate >= 0 ? 'rgba(16, 185, 129, 0.8)' : 'rgba(239, 68, 68, 0.8)'),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    const r = sorted[ctx.dataIndex];
+                                    return [
+                                        '성장률: ' + (r.growthRate >= 0 ? '+' : '') + r.growthRate.toFixed(1) + '%',
+                                        '올해: ' + formatCurrency(r.sales),
+                                        '전년: ' + formatCurrency(r.lastYearSales),
+                                        '증감: ' + (r.growth >= 0 ? '+' : '') + formatCurrency(r.growth)
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { callback: v => v + '%' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateRegionHeatmapTable(regionData) {
+            const sorted = [...regionData].sort((a, b) => b.sales - a.sales);
+            const total = sorted.reduce((s, r) => s + r.sales, 0) || 1;
+            const avgGrowth = sorted.reduce((s, r) => s + r.growthRate, 0) / (sorted.length || 1);
+
+            const tbody = document.querySelector('#regionHeatmapTable tbody');
+            tbody.innerHTML = sorted.map(r => {
+                const percent = (r.sales / total * 100).toFixed(1);
+                const growthClass = r.growthRate > avgGrowth ? 'heatmap-high' :
+                                   r.growthRate < 0 ? 'heatmap-low' : 'heatmap-medium';
+                return `<tr onclick="showRegionDetailFromTable('${r.name}')" style="cursor: pointer;">
+                    <td><strong>${r.name}</strong></td>
+                    <td class="text-right">${formatCurrency(r.sales)}</td>
+                    <td class="text-right">${r.count.toLocaleString()}</td>
+                    <td class="text-right"><span class="${growthClass}">${r.growthRate >= 0 ? '+' : ''}${r.growthRate.toFixed(1)}%</span></td>
+                    <td><div class="progress-cell"><div class="progress-bar"><div class="progress-fill" style="width: ${percent}%;"></div></div><span class="progress-value">${percent}%</span></div></td>
+                </tr>`;
             }).join('');
+        }
+
+        function showRegionDetailFromTable(regionName) {
+            // 지도에서 해당 지역 선택
+            const path = document.querySelector(`.region-path[data-region="${regionName}"]`);
+            if (path) {
+                path.click();
+            }
+        }
+
+        function updateRegionTopClientTable(regions, clients) {
+            const regionClientMap = {};
+
+            // 지역별 TOP 업체 집계
+            clients.forEach(c => {
+                const clientName = c[0];
+                const clientData = c[1];
+
+                // 간단한 지역 매칭 (업체 데이터에 지역 정보가 있으면 사용)
+                regions.forEach(r => {
+                    const regionName = r[0];
+                    // 지역명이 업체 데이터에 포함되어 있는지 확인 (간단한 매칭)
+                    if (!regionClientMap[regionName]) {
+                        regionClientMap[regionName] = [];
+                    }
+                });
+            });
+
+            // region_top_managers를 이용해 지역별 주요 업체 표시
+            const regionTopManagers = currentData.region_top_managers || {};
+            const rows = [];
+
+            regions.slice(0, 10).forEach(r => {
+                const regionName = r[0];
+                const managers = regionTopManagers[regionName] || [];
+                if (managers.length > 0) {
+                    const topManager = managers[0];
+                    rows.push(`<tr>
+                        <td><strong>${regionName}</strong></td>
+                        <td>-</td>
+                        <td class="text-right">${formatCurrency(r[1].sales)}</td>
+                        <td>${topManager.name}</td>
+                    </tr>`);
+                } else {
+                    rows.push(`<tr>
+                        <td><strong>${regionName}</strong></td>
+                        <td>-</td>
+                        <td class="text-right">${formatCurrency(r[1].sales)}</td>
+                        <td>-</td>
+                    </tr>`);
+                }
+            });
+
+            const tbody = document.querySelector('#regionTopClientTable tbody');
+            tbody.innerHTML = rows.join('');
+        }
+
+        function updateManagerRegionTable(managerRegions) {
+            const managers = Object.entries(managerRegions).map(([name, regions]) => {
+                const totalSales = regions.reduce((s, r) => s + r.sales, 0);
+                const mainRegion = regions[0]?.region || '-';
+                return { name, regions, totalSales, mainRegion, regionCount: regions.length };
+            }).sort((a, b) => b.totalSales - a.totalSales);
+
+            document.getElementById('managerRegionBadge').textContent = managers.length + '명';
+
+            const tbody = document.querySelector('#managerRegionTable tbody');
+            tbody.innerHTML = managers.map(m => `<tr>
+                <td><strong>${m.name}</strong></td>
+                <td>${m.mainRegion}</td>
+                <td class="text-right">${m.regionCount}개</td>
+                <td class="text-right">${formatCurrency(m.totalSales)}</td>
+                <td>
+                    <div class="region-distribution">
+                        ${m.regions.slice(0, 5).map(r => `<span class="region-chip">${r.region}</span>`).join('')}
+                        ${m.regions.length > 5 ? `<span class="region-chip">+${m.regions.length - 5}</span>` : ''}
+                    </div>
+                </td>
+            </tr>`).join('');
         }
 
         function updateSampleTypeTab() {
