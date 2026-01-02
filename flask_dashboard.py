@@ -5952,6 +5952,14 @@ HTML_TEMPLATE = '''
                 });
             });
 
+            // 전체 월별 평균 계산
+            const monthlyAvg = labels.map((_, mi) => {
+                const monthData = monthMap[mi+1];
+                if (!monthData || !monthData.byBranch) return 0;
+                const branchSales = Object.values(monthData.byBranch).map(b => b.sales || 0);
+                return branchSales.length > 0 ? branchSales.reduce((a,b) => a+b, 0) / branchSales.length : 0;
+            });
+
             // 데이터셋 생성 (자체 월평균 포함)
             const datasets = branchMonthlyData.map((b, i) => ({
                 label: b.name,
