@@ -5112,6 +5112,32 @@ HTML_TEMPLATE = '''
             updatePerCaseChart();
         }
 
+        // 효율성 분석 산점도 - 외부 HTML 툴팁 생성 함수
+        const getOrCreateEfficiencyTooltip = (chart) => {
+            let tooltipEl = document.getElementById('efficiencyChartTooltip');
+            if (!tooltipEl) {
+                tooltipEl = document.createElement('div');
+                tooltipEl.id = 'efficiencyChartTooltip';
+                tooltipEl.style.cssText = `
+                    position: fixed;
+                    background: rgba(30, 41, 59, 0.97);
+                    border-radius: 12px;
+                    padding: 16px;
+                    pointer-events: none;
+                    z-index: 99999;
+                    font-size: 13px;
+                    color: #e2e8f0;
+                    min-width: 340px;
+                    max-width: 400px;
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+                    transition: opacity 0.15s ease;
+                    line-height: 1.5;
+                `;
+                document.body.appendChild(tooltipEl);
+            }
+            return tooltipEl;
+        };
+
         // 효율성 분석 산점도
         function updateEfficiencyChart() {
             const ctx = document.getElementById('efficiencyChart');
@@ -5124,23 +5150,59 @@ HTML_TEMPLATE = '''
             const avgCount = managers.reduce((sum, m) => sum + (m[1].count || 0), 0) / managers.length;
             const avgSales = managers.reduce((sum, m) => sum + (m[1].sales || 0), 0) / managers.length;
 
-            // 4분면별 색상 (더 명확한 구분)
-            const quadrantColors = {
-                q1: 'rgba(37, 99, 235, 0.85)',   // 고건수·고매출: 진한 파란색
-                q2: 'rgba(6, 182, 212, 0.85)',   // 저건수·고매출: 청록색(시안)
-                q3: 'rgba(249, 115, 22, 0.85)',  // 고건수·저매출: 주황색
-                q4: 'rgba(220, 38, 38, 0.85)',   // 저건수·저매출: 빨간색
+            // 4분면별 색상 및 테두리
+            const quadrantStyles = {
+                q1: { bg: 'rgba(234, 179, 8, 0.85)', border: '#fbbf24', label: '스타 플레이어', icon: '🏆' },      // 고건수·고매출: 금색
+                q2: { bg: 'rgba(59, 130, 246, 0.85)', border: '#3b82f6', label: '고효율 달성', icon: '💎' },       // 저건수·고매출: 파란색
+                q3: { bg: 'rgba(249, 115, 22, 0.85)', border: '#f97316', label: '효율 개선 필요', icon: '⚠️' },    // 고건수·저매출: 주황색
+                q4: { bg: 'rgba(220, 38, 38, 0.85)', border: '#dc2626', label: '집중 관리 필요', icon: '🔴' },     // 저건수·저매출: 빨간색
             };
 
-            const data = managers.map(m => {
-                const isHighCount = (m[1].count || 0) >= avgCount;
-                const isHighSales = (m[1].sales || 0) >= avgSales;
-                let color;
-                if (isHighCount && isHighSales) color = quadrantColors.q1;
-                else if (!isHighCount && isHighSales) color = quadrantColors.q2;
-                else if (isHighCount && !isHighSales) color = quadrantColors.q3;
-                else color = quadrantColors.q4;
-                return { x: m[1].count || 0, y: m[1].sales || 0, name: m[0], color };
+            // 건당 단가 계산 및 순위 산출
+            const managersWithPerCase = managers.map(m => {
+                const count = m[1].count || 0;
+                const sales = m[1].sales || 0;
+                const perCase = count > 0 ? sales / count : 0;
+                return { name: m[0], count, sales, perCase, data: m[1] };
+            });
+            const sortedByPerCase = [...managersWithPerCase].sort((a, b) => b.perCase - a.perCase);
+            const perCaseRankMap = {};
+            sortedByPerCase.forEach((m, i) => { perCaseRankMap[m.name] = i + 1; });
+            const avgPerCase = managersWithPerCase.reduce((sum, m) => sum + m.perCase, 0) / managersWithPerCase.length;
+
+            // 전년도 데이터 맵 생성
+            const compareManagerMap = {};
+            if (compareData && compareData.by_manager) {
+                compareData.by_manager.forEach(m => {
+                    const count = m[1].count || 0;
+                    const sales = m[1].sales || 0;
+                    compareManagerMap[m[0]] = { count, sales, perCase: count > 0 ? sales / count : 0 };
+                });
+            }
+
+            const data = managersWithPerCase.map(m => {
+                const isHighCount = m.count >= avgCount;
+                const isHighSales = m.sales >= avgSales;
+                let quadrant;
+                if (isHighCount && isHighSales) quadrant = 'q1';
+                else if (!isHighCount && isHighSales) quadrant = 'q2';
+                else if (isHighCount && !isHighSales) quadrant = 'q3';
+                else quadrant = 'q4';
+
+                return {
+                    x: m.count,
+                    y: m.sales,
+                    name: m.name,
+                    perCase: m.perCase,
+                    perCaseRank: perCaseRankMap[m.name],
+                    quadrant,
+                    color: quadrantStyles[quadrant].bg,
+                    borderColor: quadrantStyles[quadrant].border,
+                    quadrantLabel: quadrantStyles[quadrant].label,
+                    quadrantIcon: quadrantStyles[quadrant].icon,
+                    compareData: compareManagerMap[m.name] || null,
+                    originalData: m.data
+                };
             });
 
             // 데이터셋 구성 (현재 연도)
@@ -5148,10 +5210,11 @@ HTML_TEMPLATE = '''
                 label: currentData.year + '년',
                 data: data.map(d => ({ x: d.x, y: d.y })),
                 backgroundColor: data.map(d => d.color),
-                borderColor: data.map(d => d.color.replace('0.85', '1')),
-                borderWidth: 2,
+                borderColor: data.map(d => d.borderColor),
+                borderWidth: 3,
                 pointRadius: 12,
                 pointHoverRadius: 16,
+                customData: data,
             }];
 
             // 전년도 비교 데이터 추가
@@ -5160,17 +5223,19 @@ HTML_TEMPLATE = '''
                 const compData = compManagers.map(m => ({
                     x: m[1].count || 0,
                     y: m[1].sales || 0,
-                    name: m[0]
+                    name: m[0],
+                    perCase: (m[1].count || 0) > 0 ? (m[1].sales || 0) / (m[1].count || 0) : 0
                 }));
                 datasets.push({
                     label: compareData.year + '년',
                     data: compData.map(d => ({ x: d.x, y: d.y })),
-                    backgroundColor: 'rgba(168, 85, 247, 0.4)',  // 보라색 (전년도)
+                    backgroundColor: 'rgba(168, 85, 247, 0.4)',
                     borderColor: 'rgba(168, 85, 247, 0.8)',
                     borderWidth: 2,
                     pointRadius: 9,
                     pointHoverRadius: 12,
                     pointStyle: 'triangle',
+                    customData: compData,
                 });
             }
 
@@ -5183,16 +5248,307 @@ HTML_TEMPLATE = '''
                     plugins: {
                         legend: { display: compareData ? true : false, position: 'top' },
                         tooltip: {
-                            callbacks: {
-                                label: (context) => {
-                                    const idx = context.dataIndex;
-                                    const dsIdx = context.datasetIndex;
-                                    const mgrs = dsIdx === 0 ? managers : (compareData?.by_manager || []);
-                                    const m = mgrs[idx];
-                                    if (!m) return '';
-                                    const year = dsIdx === 0 ? currentData.year : compareData?.year;
-                                    return [m[0] + ' (' + year + '년)', '매출: ' + formatCurrency(m[1].sales || 0), '건수: ' + (m[1].count || 0).toLocaleString() + '건'];
+                            enabled: false,
+                            external: function(context) {
+                                const tooltipEl = getOrCreateEfficiencyTooltip(context.chart);
+                                const tooltipModel = context.tooltip;
+
+                                if (tooltipModel.opacity === 0) {
+                                    tooltipEl.style.opacity = 0;
+                                    return;
                                 }
+
+                                if (tooltipModel.dataPoints && tooltipModel.dataPoints.length > 0) {
+                                    const dataPoint = tooltipModel.dataPoints[0];
+                                    const dsIdx = dataPoint.datasetIndex;
+                                    const idx = dataPoint.dataIndex;
+                                    const dataset = context.chart.data.datasets[dsIdx];
+                                    const customData = dataset.customData;
+
+                                    if (!customData || !customData[idx]) {
+                                        tooltipEl.style.opacity = 0;
+                                        return;
+                                    }
+
+                                    const d = customData[idx];
+                                    const isCurrentYear = dsIdx === 0;
+                                    const year = isCurrentYear ? currentData.year : compareData?.year;
+
+                                    // 사분면별 테두리 색상
+                                    let borderColor = 'rgba(99, 102, 241, 0.5)';
+                                    if (isCurrentYear && d.quadrant) {
+                                        if (d.quadrant === 'q1') borderColor = '#fbbf24';      // 금색
+                                        else if (d.quadrant === 'q2') borderColor = '#3b82f6'; // 파란색
+                                        else if (d.quadrant === 'q3') borderColor = '#f97316'; // 주황색
+                                        else if (d.quadrant === 'q4') borderColor = '#dc2626'; // 빨간색
+                                    }
+                                    tooltipEl.style.border = `2px solid ${borderColor}`;
+
+                                    let html = '';
+
+                                    // === 1. 헤더 영역 ===
+                                    if (isCurrentYear) {
+                                        html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin-bottom: 8px;">
+                                            ${d.name} (${year}년)
+                                        </div>`;
+                                        html += `<div style="display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 13px; font-weight: 600; margin-bottom: 12px;
+                                            background: ${d.quadrant === 'q1' ? 'rgba(234, 179, 8, 0.3)' : d.quadrant === 'q2' ? 'rgba(59, 130, 246, 0.3)' : d.quadrant === 'q3' ? 'rgba(249, 115, 22, 0.3)' : 'rgba(220, 38, 38, 0.3)'};
+                                            color: ${d.quadrant === 'q1' ? '#fbbf24' : d.quadrant === 'q2' ? '#60a5fa' : d.quadrant === 'q3' ? '#fb923c' : '#f87171'};">
+                                            ${d.quadrantIcon} ${d.quadrantLabel}
+                                        </div>`;
+                                    } else {
+                                        html += `<div style="font-size: 16px; font-weight: bold; color: #a78bfa; margin-bottom: 12px;">
+                                            ${d.name} (${year}년)
+                                        </div>`;
+                                    }
+
+                                    // === 2. 기본 지표 ===
+                                    html += `<div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 12px;">`;
+                                    html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                        <span style="color: #94a3b8;">매출:</span>
+                                        <span style="font-weight: 600;">${(d.y / 100000000).toFixed(2)}억</span>
+                                    </div>`;
+                                    html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                        <span style="color: #94a3b8;">건수:</span>
+                                        <span style="font-weight: 600;">${d.x.toLocaleString()}건</span>
+                                    </div>`;
+                                    html += `<div style="display: flex; justify-content: space-between;">
+                                        <span style="color: #94a3b8;">⭐ 건당 단가:</span>
+                                        <span style="font-weight: 600; color: #fbbf24;">${(d.perCase / 10000).toFixed(1)}만</span>
+                                    </div>`;
+                                    html += `</div>`;
+
+                                    // 현재 연도 데이터에만 상세 분석 표시
+                                    if (isCurrentYear) {
+                                        // === 3. 효율성 분석 ===
+                                        html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── 효율성 분석 ──</div>`;
+                                        html += `<div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 12px;">`;
+
+                                        // 건당 단가 순위
+                                        html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                            <span style="color: #94a3b8;">건당 단가 순위:</span>
+                                            <span style="font-weight: 600;">${d.perCaseRank}위 / ${managers.length}명</span>
+                                        </div>`;
+
+                                        // 전체 평균 대비
+                                        const avgDiff = d.perCase - avgPerCase;
+                                        const avgDiffPct = avgPerCase > 0 ? (avgDiff / avgPerCase * 100) : 0;
+                                        html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                            <span style="color: #94a3b8;">평균(${(avgPerCase / 10000).toFixed(1)}만) 대비:</span>
+                                            <span style="font-weight: 600; color: ${avgDiff >= 0 ? '#10b981' : '#ef4444'};">
+                                                ${avgDiff >= 0 ? '+' : ''}${avgDiffPct.toFixed(1)}%
+                                            </span>
+                                        </div>`;
+
+                                        // 효율 등급
+                                        const efficiencyPercentile = (managers.length - d.perCaseRank + 1) / managers.length * 100;
+                                        let effGrade, effGradeLabel;
+                                        if (efficiencyPercentile >= 80) {
+                                            effGrade = '⭐⭐⭐';
+                                            effGradeLabel = '상위 20%';
+                                        } else if (efficiencyPercentile >= 20) {
+                                            effGrade = '⭐⭐';
+                                            effGradeLabel = '중위권';
+                                        } else {
+                                            effGrade = '⭐';
+                                            effGradeLabel = '하위권';
+                                        }
+                                        html += `<div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #94a3b8;">효율 등급:</span>
+                                            <span style="font-weight: 600;">${effGrade} <span style="color: #94a3b8; font-size: 11px;">(${effGradeLabel})</span></span>
+                                        </div>`;
+                                        html += `</div>`;
+
+                                        // === 4. 2024 → 2025 이동 분석 ===
+                                        if (d.compareData && compareData) {
+                                            const prevData = d.compareData;
+                                            html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── ${compareData.year} → ${currentData.year} 이동 분석 ──</div>`;
+                                            html += `<div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 12px;">`;
+
+                                            // 전년 위치
+                                            html += `<div style="margin-bottom: 6px; color: #94a3b8; font-size: 12px;">
+                                                ${compareData.year}년 위치: 건수 ${prevData.count.toLocaleString()}건 / 매출 ${(prevData.sales / 100000000).toFixed(2)}억
+                                            </div>`;
+
+                                            // 이동 방향 판정
+                                            const countUp = d.x >= prevData.count;
+                                            const salesUp = d.y >= prevData.sales;
+                                            let arrow, direction, dirColor;
+                                            if (countUp && salesUp) {
+                                                arrow = '↗'; direction = '우상향 (성장+효율 유지)'; dirColor = '#10b981';
+                                            } else if (!countUp && salesUp) {
+                                                arrow = '↖'; direction = '좌상향 (효율 급상승)'; dirColor = '#3b82f6';
+                                            } else if (countUp && !salesUp) {
+                                                arrow = '↘'; direction = '우하향 (효율 급하락)'; dirColor = '#f97316';
+                                            } else {
+                                                arrow = '↙'; direction = '좌하향 (전반적 하락)'; dirColor = '#ef4444';
+                                            }
+                                            html += `<div style="margin-bottom: 8px; font-size: 14px;">
+                                                <span style="font-size: 18px; color: ${dirColor};">${arrow}</span>
+                                                <span style="color: ${dirColor}; font-weight: 600;">${direction}</span>
+                                            </div>`;
+
+                                            // 변화량
+                                            const countChange = d.x - prevData.count;
+                                            const countChangePct = prevData.count > 0 ? (countChange / prevData.count * 100) : 0;
+                                            const salesChange = d.y - prevData.sales;
+                                            const salesChangePct = prevData.sales > 0 ? (salesChange / prevData.sales * 100) : 0;
+                                            const effChange = d.perCase - prevData.perCase;
+                                            const effChangePct = prevData.perCase > 0 ? (effChange / prevData.perCase * 100) : 0;
+
+                                            html += `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                                                <span style="color: #94a3b8;">건수 변화:</span>
+                                                <span style="color: ${countChange >= 0 ? '#10b981' : '#ef4444'};">
+                                                    ${countChange >= 0 ? '+' : ''}${countChange.toLocaleString()}건 (${countChange >= 0 ? '+' : ''}${countChangePct.toFixed(1)}%)
+                                                </span>
+                                            </div>`;
+                                            html += `<div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+                                                <span style="color: #94a3b8;">매출 변화:</span>
+                                                <span style="color: ${salesChange >= 0 ? '#10b981' : '#ef4444'};">
+                                                    ${salesChange >= 0 ? '+' : ''}${(salesChange / 100000000).toFixed(2)}억 (${salesChange >= 0 ? '+' : ''}${salesChangePct.toFixed(1)}%)
+                                                </span>
+                                            </div>`;
+                                            html += `<div style="display: flex; justify-content: space-between;">
+                                                <span style="color: #94a3b8;">효율 변화:</span>
+                                                <span style="color: ${effChange >= 0 ? '#10b981' : '#ef4444'};">
+                                                    ${(prevData.perCase / 10000).toFixed(1)}만 → ${(d.perCase / 10000).toFixed(1)}만 (${effChange >= 0 ? '+' : ''}${effChangePct.toFixed(1)}%)
+                                                </span>
+                                            </div>`;
+                                            html += `</div>`;
+                                        }
+
+                                        // === 5. 포지션 인사이트 ===
+                                        html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── 포지션 인사이트 ──</div>`;
+                                        html += `<div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 12px;">`;
+
+                                        if (d.quadrant === 'q1') {
+                                            // 고건수-고매출: 스타 플레이어
+                                            html += `<div style="margin-bottom: 4px;">✅ 건수와 매출 모두 평균 이상 달성</div>`;
+                                            html += `<div style="margin-bottom: 8px;">✅ 현재 성과를 유지하며 역할 모델로 활용</div>`;
+                                            html += `<div style="color: #fbbf24;">💡 노하우 공유 및 멘토링 역할 추천</div>`;
+                                            html += `<div style="color: #fbbf24;">💡 고단가 거래처 추가 확보로 효율 극대화</div>`;
+                                        } else if (d.quadrant === 'q2') {
+                                            // 저건수-고매출: 고효율 달성
+                                            html += `<div style="margin-bottom: 4px;">✅ 높은 건당 단가로 효율적인 영업 수행</div>`;
+                                            html += `<div style="margin-bottom: 8px;">⚠️ 건수 증가 시 매출 대폭 상승 가능</div>`;
+                                            html += `<div style="color: #60a5fa;">💡 신규 거래처 발굴에 집중 권장</div>`;
+                                            html += `<div style="color: #60a5fa;">💡 기존 고객 재구매 유도 전략 검토</div>`;
+                                            // 벤치마크 대상 (건수 높은 담당자)
+                                            const highCountManager = data.find(m => m.quadrant === 'q1' && m.name !== d.name);
+                                            if (highCountManager) {
+                                                html += `<div style="margin-top: 6px; color: #94a3b8; font-size: 11px;">📈 벤치마크: ${highCountManager.name} (건수 ${highCountManager.x.toLocaleString()}건)</div>`;
+                                            }
+                                        } else if (d.quadrant === 'q3') {
+                                            // 고건수-저매출: 효율 개선 필요
+                                            html += `<div style="margin-bottom: 4px;">⚠️ 활동량은 많으나 건당 단가가 낮음</div>`;
+                                            html += `<div style="margin-bottom: 8px;">⚠️ 저단가 거래에 시간 소모 가능성</div>`;
+                                            html += `<div style="color: #fb923c;">💡 고단가 검사 항목 교육 및 제안 강화</div>`;
+                                            html += `<div style="color: #fb923c;">💡 거래처별 수익성 분석 후 선택과 집중</div>`;
+                                            // 벤치마크 대상 (효율 높은 담당자)
+                                            const highEffManager = data.find(m => m.quadrant === 'q2' && m.name !== d.name);
+                                            if (highEffManager) {
+                                                html += `<div style="margin-top: 6px; color: #94a3b8; font-size: 11px;">📈 벤치마크: ${highEffManager.name} (단가 ${(highEffManager.perCase / 10000).toFixed(1)}만)</div>`;
+                                            }
+                                        } else {
+                                            // 저건수-저매출: 집중 관리 필요
+                                            html += `<div style="margin-bottom: 4px;">⚠️ 건수와 매출 모두 평균 미달</div>`;
+                                            html += `<div style="margin-bottom: 8px;">⚠️ 즉각적인 개선 조치 필요</div>`;
+                                            html += `<div style="color: #f87171;">💡 영업 활동량 증대 우선 필요</div>`;
+                                            html += `<div style="color: #f87171;">💡 담당 구역/거래처 재검토 권장</div>`;
+                                            // 벤치마크 대상
+                                            const benchmarkManager = data.find(m => m.quadrant === 'q1' && m.name !== d.name);
+                                            if (benchmarkManager) {
+                                                html += `<div style="margin-top: 6px; color: #94a3b8; font-size: 11px;">📈 벤치마크: ${benchmarkManager.name}</div>`;
+                                            }
+                                        }
+                                        html += `</div>`;
+
+                                        // === 6. 평균선 대비 거리 ===
+                                        html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── 평균선 대비 거리 ──</div>`;
+                                        html += `<div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 12px;">`;
+
+                                        const countDist = d.x - avgCount;
+                                        const salesDist = d.y - avgSales;
+
+                                        html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                            <span style="color: #94a3b8;">↔️ 건수 평균(${Math.round(avgCount).toLocaleString()}건)까지:</span>
+                                            <span style="color: ${countDist >= 0 ? '#10b981' : '#ef4444'};">
+                                                ${countDist >= 0 ? '+' + Math.round(countDist).toLocaleString() + '건 초과' : Math.round(Math.abs(countDist)).toLocaleString() + '건 부족'}
+                                            </span>
+                                        </div>`;
+                                        html += `<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                            <span style="color: #94a3b8;">↕️ 매출 평균(${(avgSales / 100000000).toFixed(2)}억)까지:</span>
+                                            <span style="color: ${salesDist >= 0 ? '#10b981' : '#ef4444'};">
+                                                ${salesDist >= 0 ? '+' + (salesDist / 100000000).toFixed(2) + '억 초과' : (Math.abs(salesDist) / 100000000).toFixed(2) + '억 부족'}
+                                            </span>
+                                        </div>`;
+
+                                        // 위치 요약
+                                        let positionSummary;
+                                        if (d.quadrant === 'q1') positionSummary = '평균 우상단 (우수 영역)';
+                                        else if (d.quadrant === 'q2') positionSummary = '평균 좌상단 (고효율 영역)';
+                                        else if (d.quadrant === 'q3') positionSummary = '평균 우하단 (개선 영역)';
+                                        else positionSummary = '평균 좌하단 (관리 영역)';
+                                        html += `<div style="text-align: center; padding: 6px; background: rgba(255,255,255,0.05); border-radius: 6px;">
+                                            📍 위치 요약: <strong>${positionSummary}</strong>
+                                        </div>`;
+                                        html += `</div>`;
+
+                                        // === 7. 개선 시뮬레이션 (저효율 사분면만) ===
+                                        if (d.quadrant === 'q3' || d.quadrant === 'q4') {
+                                            html += `<div style="color: #64748b; font-size: 11px; margin: 12px 0 8px 0; text-align: center;">── 개선 시뮬레이션 ──</div>`;
+                                            html += `<div style="background: rgba(16, 185, 129, 0.1); padding: 10px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3);">`;
+
+                                            // 목표 단가 = 전체 평균 단가
+                                            const targetPerCase = avgPerCase;
+                                            const projectedSales = d.x * targetPerCase;
+                                            const salesIncrease = projectedSales - d.y;
+
+                                            html += `<div style="margin-bottom: 6px;">
+                                                🎯 목표 단가(${(targetPerCase / 10000).toFixed(1)}만) 달성 시:
+                                                <span style="color: #10b981; font-weight: 600;">예상 매출 ${(projectedSales / 100000000).toFixed(2)}억</span>
+                                            </div>`;
+                                            html += `<div style="margin-bottom: 6px;">
+                                                🎯 효율 상위권 진입 시:
+                                                <span style="color: #10b981; font-weight: 600;">+${(salesIncrease / 100000000).toFixed(2)}억 증가</span>
+                                            </div>`;
+
+                                            // 목표 사분면
+                                            let targetQuadrant;
+                                            if (d.quadrant === 'q3') targetQuadrant = 'Q1 (스타 플레이어) 이동';
+                                            else targetQuadrant = 'Q2 (고효율 달성) 이동';
+                                            html += `<div>📍 목표 위치: <strong style="color: #10b981;">${targetQuadrant}</strong></div>`;
+
+                                            html += `</div>`;
+                                        }
+                                    }
+
+                                    tooltipEl.innerHTML = html;
+                                }
+
+                                // 위치 조정
+                                const position = context.chart.canvas.getBoundingClientRect();
+                                let left = position.left + window.scrollX + tooltipModel.caretX + 15;
+                                let top = position.top + window.scrollY + tooltipModel.caretY - 20;
+
+                                // 오른쪽 경계 체크
+                                const tooltipWidth = 400;
+                                if (left + tooltipWidth > window.innerWidth - 20) {
+                                    left = position.left + window.scrollX + tooltipModel.caretX - tooltipWidth - 15;
+                                }
+                                // 하단 경계 체크
+                                const tooltipHeight = tooltipEl.offsetHeight || 500;
+                                if (top + tooltipHeight > window.innerHeight + window.scrollY - 20) {
+                                    top = window.innerHeight + window.scrollY - tooltipHeight - 20;
+                                }
+                                // 상단 경계 체크
+                                if (top < window.scrollY + 10) {
+                                    top = window.scrollY + 10;
+                                }
+
+                                tooltipEl.style.opacity = 1;
+                                tooltipEl.style.left = left + 'px';
+                                tooltipEl.style.top = top + 'px';
                             }
                         }
                     },
