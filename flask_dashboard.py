@@ -649,20 +649,19 @@ def save_cache_to_file():
 
 # 설정
 MANAGER_TO_BRANCH = {
-    # 지사
-    "장동욱": "충청지사", "박은태": "충청지사", "지병훈": "충청지사",
-    "도준구": "경북지사",
-    "심태보": "경기지사", "정유경": "경기지사",
-    "이강현": "전라지사",
-    "이성복": "서울지사",
-    # 센터
-    "조봉현": "서울센터", "오세중": "서울센터", "오석현": "서울센터", "장동주": "서울센터",
-    "엄상흠": "경북센터",
     # 본사/마케팅
     "본사접수": "본사",
     "마케팅": "마케팅",
-    # 기타
-    "ISA": "기타",
+    # 서울센터
+    "조봉현": "서울센터", "오석현": "서울센터", "오세중": "서울센터", "장동주": "서울센터",
+    # 경북센터
+    "엄상흠": "경북센터",
+    # 충청지사
+    "장동욱": "충청지사", "박은태": "충청지사", "지병훈": "충청지사",
+    # 전라지사
+    "이강현": "전라지사",
+    # 기타지사
+    "정유경": "기타지사", "심태보": "기타지사", "이성복": "기타지사", "도준구": "기타지사", "ISA": "기타지사",
 }
 
 # 부서별 매핑 (메인 대시보드 부서별 카드용)
@@ -3506,23 +3505,23 @@ HTML_TEMPLATE = '''
                     <div class="kpi-header">
                         <div class="kpi-icon">🏢</div>
                     </div>
-                    <div class="kpi-label">총 지사/센터</div>
+                    <div class="kpi-label">총 팀 수</div>
                     <div class="kpi-value" id="teamTotalBranches">-</div>
-                    <div class="kpi-compare">활동 중인 지사</div>
+                    <div class="kpi-compare">활동 중인 팀</div>
                 </div>
                 <div class="kpi-card count">
                     <div class="kpi-header">
                         <div class="kpi-icon">💵</div>
                     </div>
-                    <div class="kpi-label">평균 매출</div>
+                    <div class="kpi-label">팀 평균 매출</div>
                     <div class="kpi-value" id="teamAvgSales">-</div>
-                    <div class="kpi-compare">지사당 평균</div>
+                    <div class="kpi-compare">팀당 평균</div>
                 </div>
                 <div class="kpi-card price">
                     <div class="kpi-header">
                         <div class="kpi-icon">🏆</div>
                     </div>
-                    <div class="kpi-label">최고 성과 지사</div>
+                    <div class="kpi-label">최고 성과 팀</div>
                     <div class="kpi-value" id="teamTopBranch" style="font-size: 20px;">-</div>
                     <div class="kpi-compare" id="teamTopBranchSales">-</div>
                 </div>
@@ -3531,9 +3530,41 @@ HTML_TEMPLATE = '''
                         <div class="kpi-icon">🚀</div>
                         <div class="kpi-trend up" id="teamTopGrowthTrend" style="visibility: hidden;">↑ 0%</div>
                     </div>
-                    <div class="kpi-label">최고 성장 지사</div>
+                    <div class="kpi-label">최고 성장 팀</div>
                     <div class="kpi-value" id="teamTopGrowth" style="font-size: 20px;">-</div>
                     <div class="kpi-compare" id="teamTopGrowthRate">전년 대비</div>
+                </div>
+            </div>
+
+            <!-- 팀별 매출 TOP + 건당 매출 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📊 팀별 매출 현황</div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <select id="branchChartPurposeFilter" class="filter-select" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0;" onchange="updateBranchChart()">
+                                <option value="전체">전체 검사목적</option>
+                            </select>
+                            <div class="card-badge" id="branchChartBadge">2025년</div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-legend" id="branchLegend" style="display: none;"></div>
+                        <div class="chart-container"><canvas id="branchChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">💰 팀별 건당 매출 (평균단가)</div>
+                        <div class="chart-controls">
+                            <select id="branchPerCasePurposeSelect" class="filter-select" style="min-width: 140px;" onchange="updateBranchPerCaseChart()">
+                                <option value="전체">전체 목적</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container"><canvas id="branchPerCaseChart"></canvas></div>
+                    </div>
                 </div>
             </div>
 
@@ -3541,7 +3572,7 @@ HTML_TEMPLATE = '''
             <div class="content-grid" style="margin-bottom: 24px;">
                 <div class="card">
                     <div class="card-header">
-                        <div class="card-title">📈 지사별 효율성 분석</div>
+                        <div class="card-title">📈 팀별 효율성 분석</div>
                         <div class="card-badge">건수 vs 매출</div>
                     </div>
                     <div class="card-body">
@@ -3556,7 +3587,7 @@ HTML_TEMPLATE = '''
                 </div>
                 <div class="card">
                     <div class="card-header">
-                        <div class="card-title">📆 지사별 월별 추이</div>
+                        <div class="card-title">📆 팀별 월별 추이</div>
                     </div>
                     <div class="card-body">
                         <div class="chart-legend" id="branchMonthlyLegend" style="display: none;"></div>
@@ -3565,27 +3596,23 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
-            <!-- 지사별 매출 + 상세 -->
-            <div class="content-grid" style="margin-bottom: 24px;">
-                <div class="card">
-                    <div class="card-header"><div class="card-title">🥧 지사/센터별 매출</div></div>
-                    <div class="card-body">
-                        <div class="chart-legend" id="branchLegend" style="display: none;"></div>
-                        <div class="chart-container"><canvas id="branchChart"></canvas></div>
+            <!-- 팀별 상세 테이블 -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <div class="card-title">📋 팀별 상세</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <select id="branchTablePurposeFilter" class="filter-select" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0;" onchange="updateBranchTable()">
+                            <option value="전체">전체 검사목적</option>
+                        </select>
+                        <div class="card-badge" id="branchTableBadge">0개 팀</div>
                     </div>
                 </div>
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">📋 지사/센터별 상세</div>
-                        <div class="card-badge" id="branchTableBadge">0개</div>
-                    </div>
-                    <div class="card-body">
-                        <div class="scroll-table">
-                            <table class="data-table" id="branchTable">
-                                <thead id="branchTableHead"><tr><th>지사/센터</th><th class="text-right">매출액</th><th class="text-right">건수</th><th class="text-right">담당자수</th></tr></thead>
-                                <tbody></tbody>
-                            </table>
-                        </div>
+                <div class="card-body">
+                    <div class="scroll-table">
+                        <table class="data-table" id="branchTable">
+                            <thead id="branchTableHead"><tr><th>팀명</th><th class="text-right">매출액</th><th class="text-right">건수</th><th class="text-right">평균단가</th><th class="text-right">담당자수</th><th>비중</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -3612,10 +3639,10 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
-            <!-- 지사별 거래처 리텐션 테이블 -->
+            <!-- 팀별 거래처 리텐션 테이블 -->
             <div class="card" style="margin-bottom: 24px;">
                 <div class="card-header">
-                    <div class="card-title">📋 지사별 거래처 현황</div>
+                    <div class="card-title">📋 팀별 거래처 현황</div>
                     <div class="card-badge" id="branchRetentionBadge">0개</div>
                 </div>
                 <div class="card-body">
@@ -3623,7 +3650,7 @@ HTML_TEMPLATE = '''
                         <table class="data-table" id="branchRetentionTable">
                             <thead>
                                 <tr>
-                                    <th>지사/센터</th>
+                                    <th>팀명</th>
                                     <th class="text-right">누적 거래처</th>
                                     <th class="text-right">1월</th>
                                     <th class="text-right">2월</th>
@@ -5113,12 +5140,12 @@ HTML_TEMPLATE = '''
             document.getElementById('teamTotalBranches').textContent = totalBranches + '개';
             document.getElementById('teamAvgSales').textContent = formatCurrency(avgSales);
 
-            // 최고 성과 지사
+            // 최고 성과 팀
             const topBranch = branches.reduce((max, b) => (b[1].sales > (max[1]?.sales || 0)) ? b : max, branches[0]);
             document.getElementById('teamTopBranch').textContent = topBranch[0];
             document.getElementById('teamTopBranchSales').textContent = '매출: ' + formatCurrency(topBranch[1].sales);
 
-            // 최고 성장 지사 (전년 비교 시)
+            // 최고 성장 팀 (전년 비교 시)
             if (compareData && compareData.by_branch) {
                 const compareMap = Object.fromEntries(compareData.by_branch);
                 const withGrowth = branches.map(b => {
@@ -5139,12 +5166,98 @@ HTML_TEMPLATE = '''
                 document.getElementById('teamTopGrowthTrend').style.visibility = 'hidden';
             }
 
+            // 드롭다운 초기화
+            initBranchChartPurposeFilter();
+            initBranchPerCasePurposeSelect();
+            initBranchTablePurposeFilter();
+
             // 차트들 업데이트
             updateBranchEfficiencyChart();
             updateBranchMonthlyChart();
+            updateBranchPerCaseChart();
             updateClientRetentionChart();
             updateRetentionRateChart();
             updateBranchRetentionTable();
+        }
+
+        // 팀별 목적 필터 초기화
+        function initBranchChartPurposeFilter() {
+            const purposes = new Set(['전체']);
+            (currentData.by_purpose || []).forEach(p => {
+                if (p[0] !== '접수취소') purposes.add(p[0]);
+            });
+            const select = document.getElementById('branchChartPurposeFilter');
+            if (select) {
+                select.innerHTML = '<option value="전체">전체 검사목적</option>' +
+                    Array.from(purposes).filter(p => p !== '전체').map(p =>
+                        `<option value="${p}">${p}</option>`
+                    ).join('');
+            }
+        }
+
+        function initBranchPerCasePurposeSelect() {
+            const purposes = new Set(['전체']);
+            (currentData.by_purpose || []).forEach(p => {
+                if (p[0] !== '접수취소') purposes.add(p[0]);
+            });
+            const select = document.getElementById('branchPerCasePurposeSelect');
+            if (select) {
+                select.innerHTML = '<option value="전체">전체 목적</option>' +
+                    Array.from(purposes).filter(p => p !== '전체').map(p =>
+                        `<option value="${p}">${p}</option>`
+                    ).join('');
+            }
+        }
+
+        function initBranchTablePurposeFilter() {
+            const purposes = new Set(['전체']);
+            (currentData.by_purpose || []).forEach(p => {
+                if (p[0] !== '접수취소') purposes.add(p[0]);
+            });
+            const select = document.getElementById('branchTablePurposeFilter');
+            if (select) {
+                select.innerHTML = '<option value="전체">전체 검사목적</option>' +
+                    Array.from(purposes).filter(p => p !== '전체').map(p =>
+                        `<option value="${p}">${p}</option>`
+                    ).join('');
+            }
+        }
+
+        // 팀별 건당 매출 차트
+        function updateBranchPerCaseChart() {
+            const ctx = document.getElementById('branchPerCaseChart');
+            if (!ctx) return;
+            if (charts.branchPerCase) charts.branchPerCase.destroy();
+
+            const branches = currentData.by_branch || [];
+            if (branches.length === 0) return;
+
+            const branchData = branches.map(b => ({
+                name: b[0],
+                avgPrice: b[1].count > 0 ? b[1].sales / b[1].count : 0
+            })).sort((a, b) => b.avgPrice - a.avgPrice);
+
+            charts.branchPerCase = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: branchData.map(b => b.name),
+                    datasets: [{
+                        label: '건당 매출',
+                        data: branchData.map(b => b.avgPrice),
+                        backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
         }
 
         // 지사별 효율성 분석 산점도
@@ -5416,18 +5529,26 @@ HTML_TEMPLATE = '''
         }
 
         function updateBranchChart() {
-            const branches = currentData.by_branch || [];
+            const purposeFilter = document.getElementById('branchChartPurposeFilter')?.value || '전체';
+            let branches = currentData.by_branch || [];
+
+            // 검사목적 필터는 전체 데이터에서만 사용 (by_branch에는 목적별 데이터 없음)
+            // 추후 확장 가능
+
             const ctx = document.getElementById('branchChart').getContext('2d');
             if (charts.branch) charts.branch.destroy();
 
-            if (compareData) {
+            // 매출 기준 정렬
+            branches = [...branches].sort((a, b) => b[1].sales - a[1].sales);
+
+            if (compareData && purposeFilter === '전체') {
                 const compareMap = Object.fromEntries(compareData.by_branch || []);
                 document.getElementById('branchLegend').innerHTML = `<div class="legend-item"><div class="legend-color" style="background: rgba(99, 102, 241, 0.8);"></div><span>${currentData.year}년</span></div><div class="legend-item"><div class="legend-color" style="background: rgba(139, 92, 246, 0.5);"></div><span>${compareData.year}년</span></div>`;
                 document.getElementById('branchLegend').style.display = 'flex';
                 charts.branch = new Chart(ctx, { type: 'bar', data: { labels: branches.map(d => d[0]), datasets: [{ label: currentData.year + '년', data: branches.map(d => d[1].sales), backgroundColor: 'rgba(99, 102, 241, 0.8)', borderRadius: 6 }, { label: compareData.year + '년', data: branches.map(d => compareMap[d[0]]?.sales || 0), backgroundColor: 'rgba(139, 92, 246, 0.5)', borderRadius: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } } } } });
             } else {
                 document.getElementById('branchLegend').style.display = 'none';
-                charts.branch = new Chart(ctx, { type: 'doughnut', data: { labels: branches.map(d => d[0]), datasets: [{ data: branches.map(d => d[1].sales), backgroundColor: ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } });
+                charts.branch = new Chart(ctx, { type: 'bar', data: { labels: branches.map(d => d[0]), datasets: [{ data: branches.map(d => d[1].sales), backgroundColor: 'rgba(99, 102, 241, 0.8)', borderRadius: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } }, x: { grid: { display: false } } } } });
             }
         }
 
@@ -5872,21 +5993,47 @@ HTML_TEMPLATE = '''
         }
 
         function updateBranchTable() {
-            const branches = currentData.by_branch || [];
+            let branches = [...(currentData.by_branch || [])];
             const tbody = document.querySelector('#branchTable tbody');
+            const total = branches.reduce((sum, b) => sum + (b[1].sales || 0), 0) || 1;
+
+            // 매출 기준 정렬
+            branches.sort((a, b) => b[1].sales - a[1].sales);
+
+            document.getElementById('branchTableBadge').textContent = branches.length + '개 팀';
 
             if (compareData) {
-                document.getElementById('branchTableHead').innerHTML = `<tr><th>지사/센터</th><th class="text-right">${currentData.year}년</th><th class="text-right">${compareData.year}년</th><th class="text-right">증감</th></tr>`;
+                document.getElementById('branchTableHead').innerHTML = `<tr><th>팀명</th><th class="text-right">${currentData.year}년</th><th class="text-right">${compareData.year}년</th><th class="text-right">평균단가</th><th class="text-right">증감</th><th>비중</th></tr>`;
                 const compareMap = Object.fromEntries(compareData.by_branch || []);
                 tbody.innerHTML = branches.map(d => {
                     const compSales = compareMap[d[0]]?.sales || 0;
                     const diff = d[1].sales - compSales;
                     const diffRate = compSales > 0 ? ((diff / compSales) * 100).toFixed(1) : 0;
-                    return `<tr><td><strong>${d[0]}</strong></td><td class="text-right">${formatCurrency(d[1].sales)}</td><td class="text-right" style="color: var(--gray-400);">${formatCurrency(compSales)}</td><td class="text-right"><span class="change-badge ${diff >= 0 ? 'positive' : 'negative'}">${diff >= 0 ? '+' : ''}${diffRate}%</span></td></tr>`;
+                    const avgPrice = d[1].count > 0 ? d[1].sales / d[1].count : 0;
+                    const percent = (d[1].sales / total * 100).toFixed(1);
+                    return `<tr>
+                        <td><strong>${d[0]}</strong></td>
+                        <td class="text-right">${formatCurrency(d[1].sales)}</td>
+                        <td class="text-right" style="color: var(--gray-400);">${formatCurrency(compSales)}</td>
+                        <td class="text-right">${formatCurrency(avgPrice)}</td>
+                        <td class="text-right"><span class="change-badge ${diff >= 0 ? 'positive' : 'negative'}">${diff >= 0 ? '+' : ''}${diffRate}%</span></td>
+                        <td><div class="progress-bar"><div class="progress-fill" style="width: ${percent}%"></div><span>${percent}%</span></div></td>
+                    </tr>`;
                 }).join('');
             } else {
-                document.getElementById('branchTableHead').innerHTML = `<tr><th>지사/센터</th><th class="text-right">매출액</th><th class="text-right">건수</th><th class="text-right">담당자수</th></tr>`;
-                tbody.innerHTML = branches.map(d => `<tr><td><strong>${d[0]}</strong></td><td class="text-right">${formatCurrency(d[1].sales)}</td><td class="text-right">${d[1].count.toLocaleString()}</td><td class="text-right">${d[1].managers?.size || d[1].managers || '-'}명</td></tr>`).join('');
+                document.getElementById('branchTableHead').innerHTML = `<tr><th>팀명</th><th class="text-right">매출액</th><th class="text-right">건수</th><th class="text-right">평균단가</th><th class="text-right">담당자수</th><th>비중</th></tr>`;
+                tbody.innerHTML = branches.map(d => {
+                    const avgPrice = d[1].count > 0 ? d[1].sales / d[1].count : 0;
+                    const percent = (d[1].sales / total * 100).toFixed(1);
+                    return `<tr>
+                        <td><strong>${d[0]}</strong></td>
+                        <td class="text-right">${formatCurrency(d[1].sales)}</td>
+                        <td class="text-right">${d[1].count.toLocaleString()}건</td>
+                        <td class="text-right">${formatCurrency(avgPrice)}</td>
+                        <td class="text-right">${d[1].managers?.size || d[1].managers || '-'}명</td>
+                        <td><div class="progress-bar"><div class="progress-fill" style="width: ${percent}%"></div><span>${percent}%</span></div></td>
+                    </tr>`;
+                }).join('');
             }
         }
 
