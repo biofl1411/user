@@ -4694,36 +4694,48 @@ HTML_TEMPLATE = '''
                 const monthMap = Object.fromEntries(currentData.by_month || []);
                 const top3Labels = managers.slice(0, 3).map(m => m[0]);
 
-                // 현재 연도 데이터셋
-                const datasets = top3Labels.map((name, i) => ({
-                    label: name,
-                    data: labels.map((_, mi) => {
+                // 현재 연도 데이터셋 (매출, 건수 포함)
+                const datasets = top3Labels.map((name, i) => {
+                    const monthlyInfo = labels.map((_, mi) => {
                         const monthData = monthMap[mi+1];
-                        return monthData?.byManager?.[name]?.sales || 0;
-                    }),
-                    borderColor: colors[i],
-                    backgroundColor: colors[i] + '20',
-                    fill: false,
-                    tension: 0.4,
-                    pointRadius: 5,
-                }));
+                        const sales = monthData?.byManager?.[name]?.sales || 0;
+                        const count = monthData?.byManager?.[name]?.count || 0;
+                        return { sales, count, perCase: count > 0 ? sales / count : 0 };
+                    });
+                    return {
+                        label: name,
+                        data: monthlyInfo.map(d => d.sales),
+                        monthlyInfo,
+                        borderColor: colors[i],
+                        backgroundColor: colors[i] + '20',
+                        fill: false,
+                        tension: 0.4,
+                        pointRadius: 5,
+                        isComparison: false,
+                    };
+                });
 
                 // 전년도 비교 데이터 추가
                 if (compareData && compareData.by_month) {
                     const compMonthMap = Object.fromEntries(compareData.by_month || []);
                     top3Labels.forEach((name, i) => {
+                        const monthlyInfo = labels.map((_, mi) => {
+                            const monthData = compMonthMap[mi+1];
+                            const sales = monthData?.byManager?.[name]?.sales || 0;
+                            const count = monthData?.byManager?.[name]?.count || 0;
+                            return { sales, count, perCase: count > 0 ? sales / count : 0 };
+                        });
                         datasets.push({
                             label: name + ' (' + compareData.year + ')',
-                            data: labels.map((_, mi) => {
-                                const monthData = compMonthMap[mi+1];
-                                return monthData?.byManager?.[name]?.sales || 0;
-                            }),
+                            data: monthlyInfo.map(d => d.sales),
+                            monthlyInfo,
                             borderColor: colors[i] + '60',
                             backgroundColor: 'transparent',
                             fill: false,
                             tension: 0.4,
                             pointRadius: 3,
                             borderDash: [5, 5],
+                            isComparison: true,
                         });
                     });
                 }
@@ -4734,7 +4746,23 @@ HTML_TEMPLATE = '''
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { position: 'top' } },
+                        plugins: {
+                            legend: { position: 'top' },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const ds = context.dataset;
+                                        const info = ds.monthlyInfo?.[context.dataIndex];
+                                        if (!info) return ds.label + ': ' + formatCurrency(context.raw);
+                                        return [
+                                            ds.label + ': ' + formatCurrency(info.sales),
+                                            '  건수: ' + info.count.toLocaleString() + '건',
+                                            '  건당: ' + formatCurrency(info.perCase)
+                                        ];
+                                    }
+                                }
+                            }
+                        },
                         scales: { y: { ticks: { callback: v => formatCurrency(v) } } }
                     }
                 });
@@ -4752,30 +4780,40 @@ HTML_TEMPLATE = '''
                 } else {
                     const monthMap = Object.fromEntries(currentData.by_month || []);
 
-                    // 현재 연도 데이터셋
-                    const datasets = selectedManagers.map((name, i) => ({
-                        label: name,
-                        data: labels.map((_, mi) => {
+                    // 현재 연도 데이터셋 (매출, 건수 포함)
+                    const datasets = selectedManagers.map((name, i) => {
+                        const monthlyInfo = labels.map((_, mi) => {
                             const monthData = monthMap[mi+1];
-                            return monthData?.byManager?.[name]?.sales || 0;
-                        }),
-                        borderColor: colors[i % colors.length],
-                        backgroundColor: colors[i % colors.length] + '20',
-                        fill: false,
-                        tension: 0.4,
-                        pointRadius: 5,
-                    }));
+                            const sales = monthData?.byManager?.[name]?.sales || 0;
+                            const count = monthData?.byManager?.[name]?.count || 0;
+                            return { sales, count, perCase: count > 0 ? sales / count : 0 };
+                        });
+                        return {
+                            label: name,
+                            data: monthlyInfo.map(d => d.sales),
+                            monthlyInfo,
+                            borderColor: colors[i % colors.length],
+                            backgroundColor: colors[i % colors.length] + '20',
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 5,
+                        };
+                    });
 
                     // 전년도 비교 데이터 추가
                     if (compareData && compareData.by_month) {
                         const compMonthMap = Object.fromEntries(compareData.by_month || []);
                         selectedManagers.forEach((name, i) => {
+                            const monthlyInfo = labels.map((_, mi) => {
+                                const monthData = compMonthMap[mi+1];
+                                const sales = monthData?.byManager?.[name]?.sales || 0;
+                                const count = monthData?.byManager?.[name]?.count || 0;
+                                return { sales, count, perCase: count > 0 ? sales / count : 0 };
+                            });
                             datasets.push({
                                 label: name + ' (' + compareData.year + ')',
-                                data: labels.map((_, mi) => {
-                                    const monthData = compMonthMap[mi+1];
-                                    return monthData?.byManager?.[name]?.sales || 0;
-                                }),
+                                data: monthlyInfo.map(d => d.sales),
+                                monthlyInfo,
                                 borderColor: colors[i % colors.length] + '60',
                                 backgroundColor: 'transparent',
                                 fill: false,
@@ -4792,7 +4830,23 @@ HTML_TEMPLATE = '''
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
-                            plugins: { legend: { position: 'top' } },
+                            plugins: {
+                                legend: { position: 'top' },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const ds = context.dataset;
+                                            const info = ds.monthlyInfo?.[context.dataIndex];
+                                            if (!info) return ds.label + ': ' + formatCurrency(context.raw);
+                                            return [
+                                                ds.label + ': ' + formatCurrency(info.sales),
+                                                '  건수: ' + info.count.toLocaleString() + '건',
+                                                '  건당: ' + formatCurrency(info.perCase)
+                                            ];
+                                        }
+                                    }
+                                }
+                            },
                             scales: { y: { ticks: { callback: v => formatCurrency(v) } } }
                         }
                     });
@@ -5518,15 +5572,16 @@ HTML_TEMPLATE = '''
                 branches = branches.filter(b => b[0] === branchMonthlySelected);
             }
 
-            // 팀별 월별 데이터 - 실제 byBranch 데이터 사용
+            // 팀별 월별 데이터 - 실제 byBranch 데이터 사용 (매출, 건수 포함)
             const branchMonthlyData = branches.map(b => {
                 const branchName = b[0];
-                const monthlyData = labels.map((_, mi) => {
-                    // 실제 팀별 월별 데이터 사용
+                const monthlyInfo = labels.map((_, mi) => {
                     const monthData = monthMap[mi+1];
-                    return monthData?.byBranch?.[branchName]?.sales || 0;
+                    const sales = monthData?.byBranch?.[branchName]?.sales || 0;
+                    const count = monthData?.byBranch?.[branchName]?.count || 0;
+                    return { sales, count, perCase: count > 0 ? sales / count : 0 };
                 });
-                return { name: branchName, data: monthlyData, byPurpose: b[1].by_purpose || {} };
+                return { name: branchName, data: monthlyInfo.map(d => d.sales), monthlyInfo, byPurpose: b[1].by_purpose || {} };
             });
 
             // 월별 전체 평균 계산
@@ -5539,6 +5594,7 @@ HTML_TEMPLATE = '''
             const datasets = branchMonthlyData.map((b, i) => ({
                 label: b.name,
                 data: b.data,
+                monthlyInfo: b.monthlyInfo,
                 borderColor: colors[i % colors.length],
                 backgroundColor: colors[i % colors.length],
                 fill: false,
@@ -5566,12 +5622,16 @@ HTML_TEMPLATE = '''
             if (compareData && compareData.by_month) {
                 const compMonthMap = Object.fromEntries(compareData.by_month || []);
                 branchMonthlyData.forEach((b, i) => {
+                    const monthlyInfo = labels.map((_, mi) => {
+                        const monthData = compMonthMap[mi+1];
+                        const sales = monthData?.byBranch?.[b.name]?.sales || 0;
+                        const count = monthData?.byBranch?.[b.name]?.count || 0;
+                        return { sales, count, perCase: count > 0 ? sales / count : 0 };
+                    });
                     datasets.push({
                         label: b.name + ' (' + compareData.year + ')',
-                        data: labels.map((_, mi) => {
-                            const monthData = compMonthMap[mi+1];
-                            return monthData?.byBranch?.[b.name]?.sales || 0;
-                        }),
+                        data: monthlyInfo.map(d => d.sales),
+                        monthlyInfo,
                         borderColor: colors[i % colors.length] + '50',
                         backgroundColor: 'transparent',
                         fill: false,
@@ -5579,6 +5639,7 @@ HTML_TEMPLATE = '''
                         pointRadius: 3,
                         borderDash: [3, 3],
                         borderWidth: 1.5,
+                        isComparison: true,
                     });
                 });
             }
@@ -5594,36 +5655,33 @@ HTML_TEMPLATE = '''
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    const label = context.dataset.label || '';
+                                    const ds = context.dataset;
+                                    const label = ds.label || '';
                                     const value = context.raw || 0;
                                     const monthIdx = context.dataIndex;
-                                    const avg = monthlyAvg[monthIdx];
-                                    const diff = value - avg;
-                                    const diffPct = avg > 0 ? ((diff / avg) * 100).toFixed(1) : 0;
+                                    const info = ds.monthlyInfo?.[monthIdx];
 
                                     if (label === '평균') return `${label}: ${formatCurrency(value)}`;
 
+                                    // 매출, 건수, 건당 단가 표시
                                     let result = [`${label}: ${formatCurrency(value)}`];
-                                    if (diff >= 0) {
-                                        result.push(`📈 평균 대비 +${diffPct}% (${formatCurrency(diff)})`);
-                                    } else {
-                                        result.push(`📉 평균 대비 ${diffPct}% (${formatCurrency(diff)})`);
+                                    if (info) {
+                                        result.push(`  건수: ${info.count.toLocaleString()}건`);
+                                        result.push(`  건당: ${formatCurrency(info.perCase)}`);
                                     }
 
-                                    // 검사목적별 상세 (top 3)
-                                    const branchData = branchMonthlyData.find(b => b.name === label);
-                                    if (branchData && branchData.byPurpose) {
-                                        const purposes = Object.entries(branchData.byPurpose)
-                                            .sort((a, b) => b[1].sales - a[1].sales)
-                                            .slice(0, 3);
-                                        if (purposes.length > 0) {
-                                            result.push('─────────');
-                                            result.push('주요 검사목적:');
-                                            purposes.forEach(([p, d]) => {
-                                                result.push(`  • ${p}: ${formatCurrency(d.sales)}`);
-                                            });
+                                    // 평균 대비 (현재 연도만)
+                                    if (!ds.isComparison) {
+                                        const avg = monthlyAvg[monthIdx];
+                                        const diff = value - avg;
+                                        const diffPct = avg > 0 ? ((diff / avg) * 100).toFixed(1) : 0;
+                                        if (diff >= 0) {
+                                            result.push(`📈 평균 대비 +${diffPct}%`);
+                                        } else {
+                                            result.push(`📉 평균 대비 ${diffPct}%`);
                                         }
                                     }
+
                                     return result;
                                 }
                             }
