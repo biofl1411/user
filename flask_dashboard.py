@@ -5752,10 +5752,31 @@ HTML_TEMPLATE = '''
             const manager = managers.find(m => m[0] === managerName);
             if (!manager) return;
 
-            document.getElementById('modalManagerName').textContent = managerName + ' 상세';
+            // 현재 선택된 검사목적 필터 확인
+            const purposeFilter = document.getElementById('managerPurposeFilter')?.value || '전체';
+            const isPurposeFiltered = purposeFilter !== '전체';
+
+            // 모달 제목 (필터 적용 시 표시)
+            const titleSuffix = isPurposeFiltered ? ` (${purposeFilter})` : '';
+            document.getElementById('modalManagerName').textContent = managerName + ' 상세' + titleSuffix;
 
             // 담당자별 주요 거래 업체 (manager_top_clients 사용)
-            const managerClients = currentData.manager_top_clients?.[managerName] || [];
+            // 필터 적용 시 해당 목적의 업체만 표시
+            let managerClients = currentData.manager_top_clients?.[managerName] || [];
+            if (isPurposeFiltered) {
+                // by_purpose 데이터가 있는 업체 필터링
+                const byPurpose = manager[1].by_purpose || {};
+                const purposeData = byPurpose[purposeFilter];
+                if (purposeData) {
+                    // 해당 목적에서의 매출 기준으로 정렬된 업체 표시
+                    // (현재 manager_top_clients에서 해당 목적 데이터 필터링)
+                    managerClients = managerClients.filter(c => {
+                        // 업체별 목적 데이터 확인 (by_client에서)
+                        const clientData = (currentData.by_client || []).find(cl => cl[0] === c[0]);
+                        return clientData && clientData[1].purposes && clientData[1].purposes[purposeFilter];
+                    });
+                }
+            }
             if (managerClients.length > 0) {
                 document.getElementById('modalTopClients').innerHTML = managerClients.slice(0, 5).map(c => `
                     <div class="modal-client-item">
@@ -5774,10 +5795,25 @@ HTML_TEMPLATE = '''
             // 목적별 담당자 데이터에서 해당 담당자 데이터 추출
             const managerPurposes = [];
             const purposeManagers = currentData.purpose_managers || {};
-            for (const [purpose, managers] of Object.entries(purposeManagers)) {
-                const mgrData = managers.find(m => m.name === managerName);
-                if (mgrData) {
-                    managerPurposes.push({ name: purpose, sales: mgrData.sales });
+
+            if (isPurposeFiltered) {
+                // 필터 적용 시: 해당 목적의 세부 정보만 표시 (by_purpose 사용)
+                const byPurpose = manager[1].by_purpose || {};
+                const purposeData = byPurpose[purposeFilter];
+                if (purposeData) {
+                    managerPurposes.push({
+                        name: purposeFilter,
+                        sales: purposeData.sales,
+                        count: purposeData.count
+                    });
+                }
+            } else {
+                // 전체: 모든 목적별 데이터
+                for (const [purpose, managers] of Object.entries(purposeManagers)) {
+                    const mgrData = managers.find(m => m.name === managerName);
+                    if (mgrData) {
+                        managerPurposes.push({ name: purpose, sales: mgrData.sales });
+                    }
                 }
             }
             managerPurposes.sort((a, b) => b.sales - a.sales);
@@ -7015,13 +7051,22 @@ HTML_TEMPLATE = '''
             const purposeFilter = document.getElementById('managerPurposeFilter')?.value || '전체';
             let managers = [];
 
+            // 원본 by_manager 데이터 맵 (긴급 데이터 참조용)
+            const originalManagerMap = Object.fromEntries((currentData.by_manager || []).map(m => [m[0], m[1]]));
+
             // 검사목적 필터 적용
             if (purposeFilter === '전체') {
                 managers = [...(currentData.by_manager || [])];
             } else {
                 // purpose_managers에서 해당 목적의 담당자 데이터 가져오기
                 const purposeManagerData = currentData.purpose_managers?.[purposeFilter] || [];
-                managers = purposeManagerData.map(m => [m.name, { sales: m.sales, count: m.count, urgent: 0 }]);
+                managers = purposeManagerData.map(m => {
+                    // 원본 데이터에서 해당 목적의 긴급 건수 가져오기
+                    const originalData = originalManagerMap[m.name] || {};
+                    const urgentByPurpose = originalData.urgent_by_purpose || {};
+                    const urgentCount = urgentByPurpose[purposeFilter] || 0;
+                    return [m.name, { sales: m.sales, count: m.count, urgent: urgentCount }];
+                });
             }
 
             const tbody = document.querySelector('#managerTable tbody');
