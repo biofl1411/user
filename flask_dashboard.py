@@ -3570,6 +3570,7 @@ HTML_TEMPLATE = '''
                         </div>
                     </div>
                     <div class="card-body">
+                        <div class="chart-legend" id="branchPerCaseLegend" style="display: none;"></div>
                         <div class="chart-container"><canvas id="branchPerCaseChart"></canvas></div>
                     </div>
                 </div>
@@ -5260,11 +5261,17 @@ HTML_TEMPLATE = '''
             }).filter(d => d.avgPrice > 0).sort((a, b) => b.avgPrice - a.avgPrice);
 
             const avgAll = branchData.reduce((s, d) => s + d.avgPrice, 0) / (branchData.length || 1);
+            const totalSales = branchData.reduce((s, d) => s + d.sales, 0);
+            const totalCount = branchData.reduce((s, d) => s + d.count, 0);
+            const avgAvgPrice = branchData.length > 0 ? branchData.reduce((s, d) => s + d.avgPrice, 0) / branchData.length : 0;
+
+            const legendEl = document.getElementById('branchPerCaseLegend');
 
             if (compareData) {
                 // 비교 데이터 처리 (검사목적 필터 적용)
                 const compareBranches = compareData.by_branch || [];
                 const compareMap = {};
+                let compTotalSales = 0, compTotalCount = 0;
                 compareBranches.forEach(b => {
                     let sales = 0, count = 0;
                     if (selectedPurpose === '전체') {
@@ -5278,8 +5285,20 @@ HTML_TEMPLATE = '''
                         }
                     }
                     const avgPrice = count > 0 ? sales / count : 0;
-                    compareMap[b[0]] = { avgPrice };
+                    compareMap[b[0]] = { avgPrice, sales, count };
+                    compTotalSales += sales;
+                    compTotalCount += count;
                 });
+
+                legendEl.innerHTML = `
+                    <div class="legend-item"><div class="legend-color" style="background: rgba(16, 185, 129, 0.8);"></div><span>${currentData.year}년</span></div>
+                    <div class="legend-item"><div class="legend-color" style="background: rgba(245, 158, 11, 0.6);"></div><span>${compareData.year}년</span></div>
+                    <div style="margin-left: auto; display: flex; gap: 20px; font-size: 12px; color: #666;">
+                        <span>총매출: <strong>${formatCurrency(totalSales)}</strong></span>
+                        <span>총건수: <strong>${totalCount.toLocaleString()}건</strong></span>
+                        <span>평균단가: <strong>${formatCurrency(avgAvgPrice)}</strong></span>
+                    </div>`;
+                legendEl.style.display = 'flex';
 
                 charts.branchPerCase = new Chart(ctx.getContext('2d'), {
                     type: 'bar',
@@ -5293,7 +5312,7 @@ HTML_TEMPLATE = '''
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { position: 'top' } },
+                        plugins: { legend: { display: false } },
                         scales: {
                             y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
                             x: { grid: { display: false } }
@@ -5301,6 +5320,14 @@ HTML_TEMPLATE = '''
                     }
                 });
             } else {
+                legendEl.innerHTML = `
+                    <div style="display: flex; gap: 20px; font-size: 12px; color: #666;">
+                        <span>총매출: <strong>${formatCurrency(totalSales)}</strong></span>
+                        <span>총건수: <strong>${totalCount.toLocaleString()}건</strong></span>
+                        <span>평균단가: <strong>${formatCurrency(avgAvgPrice)}</strong></span>
+                    </div>`;
+                legendEl.style.display = 'flex';
+
                 charts.branchPerCase = new Chart(ctx.getContext('2d'), {
                     type: 'bar',
                     data: {
@@ -5619,24 +5646,41 @@ HTML_TEMPLATE = '''
                 return { name: b[0], sales, count };
             }).filter(d => d.sales > 0).sort((a, b) => b.sales - a.sales);
 
+            // 총계/평균 계산
+            const totalSales = branchData.reduce((sum, d) => sum + d.sales, 0);
+            const totalCount = branchData.reduce((sum, d) => sum + d.count, 0);
+            const avgSales = branchData.length > 0 ? totalSales / branchData.length : 0;
+            const avgCount = branchData.length > 0 ? totalCount / branchData.length : 0;
+
             if (compareData) {
                 // 비교 데이터 처리 (검사목적 필터 적용)
                 const compareBranches = compareData.by_branch || [];
                 const compareMap = {};
+                let compTotalSales = 0, compTotalCount = 0;
                 compareBranches.forEach(b => {
-                    let sales = 0;
+                    let sales = 0, count = 0;
                     if (purposeFilter === '전체') {
                         sales = b[1].sales || 0;
+                        count = b[1].count || 0;
                     } else {
                         const purposeData = b[1].by_purpose?.[purposeFilter];
                         if (purposeData) {
                             sales = purposeData.sales || 0;
+                            count = purposeData.count || 0;
                         }
                     }
-                    compareMap[b[0]] = { sales };
+                    compareMap[b[0]] = { sales, count };
+                    compTotalSales += sales;
+                    compTotalCount += count;
                 });
 
-                document.getElementById('branchLegend').innerHTML = `<div class="legend-item"><div class="legend-color" style="background: rgba(99, 102, 241, 0.8);"></div><span>${currentData.year}년</span></div><div class="legend-item"><div class="legend-color" style="background: rgba(139, 92, 246, 0.5);"></div><span>${compareData.year}년</span></div>`;
+                document.getElementById('branchLegend').innerHTML = `
+                    <div class="legend-item"><div class="legend-color" style="background: rgba(99, 102, 241, 0.8);"></div><span>${currentData.year}년</span></div>
+                    <div class="legend-item"><div class="legend-color" style="background: rgba(139, 92, 246, 0.5);"></div><span>${compareData.year}년</span></div>
+                    <div style="margin-left: auto; display: flex; gap: 20px; font-size: 12px; color: #666;">
+                        <span>총매출: <strong>${formatCurrency(totalSales)}</strong> (평균 ${formatCurrency(avgSales)})</span>
+                        <span>총건수: <strong>${totalCount.toLocaleString()}건</strong> (평균 ${Math.round(avgCount).toLocaleString()}건)</span>
+                    </div>`;
                 document.getElementById('branchLegend').style.display = 'flex';
                 charts.branch = new Chart(ctx, {
                     type: 'bar',
@@ -5650,7 +5694,12 @@ HTML_TEMPLATE = '''
                     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } } } }
                 });
             } else {
-                document.getElementById('branchLegend').style.display = 'none';
+                document.getElementById('branchLegend').innerHTML = `
+                    <div style="display: flex; gap: 20px; font-size: 12px; color: #666;">
+                        <span>총매출: <strong>${formatCurrency(totalSales)}</strong> (평균 ${formatCurrency(avgSales)})</span>
+                        <span>총건수: <strong>${totalCount.toLocaleString()}건</strong> (평균 ${Math.round(avgCount).toLocaleString()}건)</span>
+                    </div>`;
+                document.getElementById('branchLegend').style.display = 'flex';
                 charts.branch = new Chart(ctx, { type: 'bar', data: { labels: branchData.map(d => d.name), datasets: [{ data: branchData.map(d => d.sales), backgroundColor: 'rgba(99, 102, 241, 0.8)', borderRadius: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } }, x: { grid: { display: false } } } } });
             }
         }
