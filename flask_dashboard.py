@@ -427,15 +427,17 @@ def process_data(data, purpose_filter=None):
             for p, d in sorted_stp[:20]
         ]
 
-    # 활동 담당자 수 (매출이 있는 담당자만)
-    active_managers = [m for m, d in sorted_managers if d['sales'] > 0]
+    # 활동 담당자 수 (매출이 있는 담당자만, IBK 제외 - 개인별 탭용)
+    active_managers = [m for m, d in sorted_managers if d['sales'] > 0 and m != 'IBK']
     active_manager_count = len(active_managers)
 
-    # 담당자당 평균 매출
-    avg_sales_per_manager = total_sales / active_manager_count if active_manager_count > 0 else 0
+    # 담당자당 평균 매출 (IBK 제외)
+    personal_total_sales = sum(d['sales'] for m, d in sorted_managers if d['sales'] > 0 and m != 'IBK')
+    avg_sales_per_manager = personal_total_sales / active_manager_count if active_manager_count > 0 else 0
 
-    # 건수 기준 TOP 5 담당자
-    top_count_managers = sorted(by_manager.items(), key=lambda x: x[1]['count'], reverse=True)[:5]
+    # 건수 기준 TOP 5 담당자 (IBK 제외)
+    personal_managers = [(m, d) for m, d in by_manager.items() if m != 'IBK']
+    top_count_managers = sorted(personal_managers, key=lambda x: x[1]['count'], reverse=True)[:5]
     top_count_list = [{'name': m, 'count': d['count'], 'sales': d['sales']} for m, d in top_count_managers]
 
     return {
