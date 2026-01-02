@@ -9872,6 +9872,72 @@ HTML_TEMPLATE = '''
                         });
                     }
 
+                    // 6.5 계절성 패턴 분석 (전년도 동일 패턴 여부)
+                    if (d.compSales > 0) {
+                        // 전년도 이 월의 평균 대비 비교
+                        const compValidMonths = monthlyData.filter(m => m.compSales > 0);
+                        const compMonthlyAvg = compValidMonths.length > 0 ? compValidMonths.reduce((s, m) => s + m.compSales, 0) / compValidMonths.length : 0;
+
+                        const currentBelowAvg = d.sales < monthlyAvg;
+                        const compBelowAvg = d.compSales < compMonthlyAvg;
+
+                        // 현재 연도 평균 대비 비율
+                        const currentVsAvg = monthlyAvg > 0 ? ((d.sales - monthlyAvg) / monthlyAvg * 100) : 0;
+                        // 전년도 평균 대비 비율
+                        const compVsAvg = compMonthlyAvg > 0 ? ((d.compSales - compMonthlyAvg) / compMonthlyAvg * 100) : 0;
+
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 계절성 패턴 분석 ──</div>`;
+
+                        // 양쪽 모두 평균 이하인지 확인
+                        if (currentBelowAvg && compBelowAvg) {
+                            const seasonalIcon = '🔄';
+                            html += `<div style="margin-bottom: 4px; color: #f59e0b;">${seasonalIcon} <strong>계절적 비수기 패턴 감지</strong></div>`;
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px; color: #94a3b8;">• ${currentData.year}년 ${d.month}월: 평균 대비 <span style="color: #ef4444;">${currentVsAvg.toFixed(1)}%</span></div>`;
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px; color: #94a3b8;">• ${compareData?.year || '전년'}년 ${d.month}월: 평균 대비 <span style="color: #ef4444;">${compVsAvg.toFixed(1)}%</span></div>`;
+                            html += `<div style="color: #60a5fa; font-size: 11px; margin-top: 4px;">→ 2년 연속 이 달은 비수기로 보임</div>`;
+                        } else if (currentBelowAvg && !compBelowAvg) {
+                            html += `<div style="margin-bottom: 4px; color: #ef4444;">⚠️ <strong>이례적 하락</strong> - 전년도는 정상 수준</div>`;
+                            html += `<div style="margin-left: 8px; color: #94a3b8;">• ${compareData?.year || '전년'}년 ${d.month}월: 평균 대비 <span style="color: #10b981;">+${compVsAvg.toFixed(1)}%</span></div>`;
+                        } else if (!currentBelowAvg && compBelowAvg) {
+                            html += `<div style="margin-bottom: 4px; color: #10b981;">✨ <strong>비수기 극복</strong> - 전년도 대비 개선</div>`;
+                            html += `<div style="margin-left: 8px; color: #94a3b8;">• ${compareData?.year || '전년'}년 ${d.month}월: 평균 대비 <span style="color: #ef4444;">${compVsAvg.toFixed(1)}%</span></div>`;
+                        }
+                    }
+
+                    // 6.6 검사목적별 매출 분포 (TOP 5)
+                    const purposeBreakdown = Object.entries(d.byPurpose)
+                        .map(([purpose, data]) => ({
+                            purpose,
+                            sales: data.sales,
+                            count: data.count,
+                            share: d.sales > 0 ? (data.sales / d.sales * 100) : 0,
+                            compSales: d.compByPurpose[purpose]?.sales || 0
+                        }))
+                        .sort((a, b) => b.sales - a.sales)
+                        .slice(0, 5);
+
+                    if (purposeBreakdown.length > 0) {
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 검사목적별 분포 TOP 5 ──</div>`;
+                        purposeBreakdown.forEach((p, idx) => {
+                            const yoyChange = p.compSales > 0 ? ((p.sales - p.compSales) / p.compSales * 100) : 0;
+                            const yoyColor = yoyChange >= 0 ? '#10b981' : '#ef4444';
+                            const yoySign = yoyChange >= 0 ? '+' : '';
+                            const rankEmoji = idx === 0 ? '🥇' : (idx === 1 ? '🥈' : (idx === 2 ? '🥉' : '•'));
+                            html += `<div style="margin-left: 8px; margin-bottom: 3px;">
+                                ${rankEmoji} <strong>${p.purpose}</strong>: ${(p.sales / 10000).toFixed(0)}만
+                                <span style="color: #94a3b8;">(${p.share.toFixed(0)}%)</span>
+                                ${p.compSales > 0 ? `<span style="color: ${yoyColor}; font-size: 11px;"> YoY ${yoySign}${yoyChange.toFixed(0)}%</span>` : ''}
+                            </div>`;
+                        });
+
+                        // 기타 비중 표시
+                        const top5Total = purposeBreakdown.reduce((s, p) => s + p.sales, 0);
+                        const othersShare = d.sales > 0 ? ((d.sales - top5Total) / d.sales * 100) : 0;
+                        if (othersShare > 0) {
+                            html += `<div style="margin-left: 8px; color: #94a3b8; font-size: 11px;">• 기타: ${othersShare.toFixed(0)}%</div>`;
+                        }
+                    }
+
                     // 7. YTD 누적 현황
                     const ytdSales = monthlyData.slice(0, monthIdx + 1).reduce((s, m) => s + m.sales, 0);
                     const ytdCompSales = monthlyData.slice(0, monthIdx + 1).reduce((s, m) => s + m.compSales, 0);
