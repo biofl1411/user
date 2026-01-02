@@ -5141,6 +5141,8 @@ HTML_TEMPLATE = '''
                     color: #e2e8f0;
                     min-width: 340px;
                     max-width: 400px;
+                    max-height: 85vh;
+                    overflow-y: auto;
                     box-shadow: 0 20px 40px rgba(0,0,0,0.4);
                     transition: opacity 0.15s ease;
                     line-height: 1.5;
@@ -5674,6 +5676,8 @@ HTML_TEMPLATE = '''
                             box-shadow: 0 20px 40px rgba(0,0,0,0.4);
                             min-width: 340px;
                             max-width: 400px;
+                            max-height: 85vh;
+                            overflow-y: auto;
                             transition: opacity 0.15s ease;
                             line-height: 1.5;
                         `;
@@ -6058,6 +6062,8 @@ HTML_TEMPLATE = '''
                             box-shadow: 0 20px 40px rgba(0,0,0,0.4);
                             min-width: 340px;
                             max-width: 400px;
+                            max-height: 85vh;
+                            overflow-y: auto;
                             transition: opacity 0.15s ease;
                             line-height: 1.5;
                         `;
@@ -6890,6 +6896,8 @@ HTML_TEMPLATE = '''
                         color: #e2e8f0;
                         box-shadow: 0 10px 40px rgba(0,0,0,0.3);
                         max-width: 320px;
+                        max-height: 85vh;
+                        overflow-y: auto;
                         transition: opacity 0.2s ease;
                     `;
                     document.body.appendChild(tooltipEl);
@@ -7151,6 +7159,8 @@ HTML_TEMPLATE = '''
                         box-shadow: 0 20px 40px rgba(0,0,0,0.4);
                         min-width: 320px;
                         max-width: 380px;
+                        max-height: 85vh;
+                        overflow-y: auto;
                         transition: opacity 0.15s ease;
                         line-height: 1.5;
                     `;
@@ -7361,6 +7371,8 @@ HTML_TEMPLATE = '''
                     color: #e2e8f0;
                     min-width: 320px;
                     max-width: 380px;
+                    max-height: 85vh;
+                    overflow-y: auto;
                     box-shadow: 0 20px 40px rgba(0,0,0,0.4);
                     transition: opacity 0.15s ease;
                     line-height: 1.5;
@@ -7865,6 +7877,8 @@ HTML_TEMPLATE = '''
                     color: #e2e8f0;
                     min-width: 340px;
                     max-width: 400px;
+                    max-height: 85vh;
+                    overflow-y: auto;
                     box-shadow: 0 20px 40px rgba(0,0,0,0.4);
                     transition: opacity 0.15s ease;
                     line-height: 1.5;
@@ -8457,6 +8471,8 @@ HTML_TEMPLATE = '''
                         color: #e2e8f0;
                         box-shadow: 0 10px 40px rgba(0,0,0,0.3);
                         max-width: 320px;
+                        max-height: 85vh;
+                        overflow-y: auto;
                         transition: opacity 0.2s ease;
                     `;
                     document.body.appendChild(tooltipEl);
@@ -8928,6 +8944,8 @@ HTML_TEMPLATE = '''
                         box-shadow: 0 20px 40px rgba(0,0,0,0.4);
                         min-width: 340px;
                         max-width: 400px;
+                        max-height: 85vh;
+                        overflow-y: auto;
                         transition: opacity 0.15s ease;
                         line-height: 1.5;
                     `;
@@ -9302,6 +9320,8 @@ HTML_TEMPLATE = '''
                         box-shadow: 0 20px 40px rgba(0,0,0,0.4);
                         min-width: 340px;
                         max-width: 400px;
+                        max-height: 85vh;
+                        overflow-y: auto;
                         transition: opacity 0.15s ease;
                         line-height: 1.5;
                     `;
@@ -10173,6 +10193,8 @@ HTML_TEMPLATE = '''
                         color: #e2e8f0;
                         box-shadow: 0 10px 40px rgba(0,0,0,0.3);
                         max-width: 380px;
+                        max-height: 85vh;
+                        overflow-y: auto;
                         transition: opacity 0.2s ease;
                     `;
                     document.body.appendChild(tooltipEl);
@@ -10560,6 +10582,8 @@ HTML_TEMPLATE = '''
                         box-shadow: 0 20px 40px rgba(0,0,0,0.4);
                         min-width: 340px;
                         max-width: 400px;
+                        max-height: 85vh;
+                        overflow-y: auto;
                         transition: opacity 0.15s ease;
                         line-height: 1.5;
                     `;
@@ -11010,6 +11034,8 @@ HTML_TEMPLATE = '''
                         box-shadow: 0 20px 40px rgba(0,0,0,0.4);
                         min-width: 340px;
                         max-width: 380px;
+                        max-height: 85vh;
+                        overflow-y: auto;
                         transition: opacity 0.15s ease;
                         line-height: 1.5;
                     `;
