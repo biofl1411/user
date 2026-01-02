@@ -10675,26 +10675,65 @@ HTML_TEMPLATE = '''
                         html += `<div style="color: #60a5fa; font-size: 11px; margin-top: 4px;">→ ${mainCause} ${causeDirection}가 주요 원인</div>`;
                     }
 
-                    // 5. 증감 요인 (검사목적별)
+                    // 5. 증감 요인 (검사목적별) - 건수, 매출, 단가 상세 분석
                     const purposeChanges = Object.entries(d.byPurpose).map(([purpose, data]) => {
-                        const compPurpose = d.compByPurpose[purpose] || { sales: 0 };
-                        const diff = data.sales - compPurpose.sales;
-                        const diffPct = compPurpose.sales > 0 ? (diff / compPurpose.sales * 100) : (data.sales > 0 ? 100 : 0);
-                        return { purpose, sales: data.sales, diff, diffPct };
-                    }).sort((a, b) => b.diff - a.diff);
+                        const compPurpose = d.compByPurpose[purpose] || { sales: 0, count: 0 };
+                        const salesDiff = data.sales - compPurpose.sales;
+                        const countDiff = (data.count || 0) - (compPurpose.count || 0);
+                        const avgPrice = data.count > 0 ? data.sales / data.count : 0;
+                        const compAvgPrice = compPurpose.count > 0 ? compPurpose.sales / compPurpose.count : 0;
+                        const priceDiff = avgPrice - compAvgPrice;
+                        const salesDiffPct = compPurpose.sales > 0 ? (salesDiff / compPurpose.sales * 100) : (data.sales > 0 ? 100 : 0);
+                        const countDiffPct = compPurpose.count > 0 ? (countDiff / compPurpose.count * 100) : (data.count > 0 ? 100 : 0);
+                        return {
+                            purpose,
+                            sales: data.sales,
+                            count: data.count || 0,
+                            avgPrice,
+                            salesDiff,
+                            countDiff,
+                            priceDiff,
+                            salesDiffPct,
+                            countDiffPct
+                        };
+                    }).sort((a, b) => b.salesDiff - a.salesDiff);
 
-                    const topIncreases = purposeChanges.filter(p => p.diff > 0).slice(0, 3);
-                    const topDecreases = purposeChanges.filter(p => p.diff < 0).slice(0, 3);
+                    const topIncreases = purposeChanges.filter(p => p.salesDiff > 0).slice(0, 3);
+                    const topDecreases = purposeChanges.filter(p => p.salesDiff < 0).slice(0, 3);
 
                     if (isIncrease && topIncreases.length > 0) {
-                        html += `<div style="color: #10b981; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▲ 증가 요인</div>`;
+                        html += `<div style="color: #10b981; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▲ 증가 요인 (검사목적)</div>`;
                         topIncreases.forEach(p => {
-                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: <span style="color: #10b981;">+${(p.diff / 10000).toFixed(0)}만 (+${p.diffPct.toFixed(0)}%)</span></div>`;
+                            const countColor = p.countDiff >= 0 ? '#10b981' : '#ef4444';
+                            const countSign = p.countDiff >= 0 ? '+' : '';
+                            const priceColor = p.priceDiff >= 0 ? '#10b981' : '#ef4444';
+                            const priceSign = p.priceDiff >= 0 ? '+' : '';
+                            html += `<div style="margin-left: 8px; margin-bottom: 6px; padding: 6px 8px; background: rgba(16, 185, 129, 0.1); border-radius: 6px; border-left: 3px solid #10b981;">
+                                <div style="font-weight: 600; margin-bottom: 4px;">• ${p.purpose}</div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
+                                    <div>📋 건수: <span style="color: ${countColor};">${countSign}${p.countDiff.toLocaleString()}건</span> <span style="color: #94a3b8;">(${countSign}${p.countDiffPct.toFixed(0)}%)</span></div>
+                                    <div>💰 매출: <span style="color: #10b981;">+${(p.salesDiff / 10000).toFixed(0)}만</span></div>
+                                    <div>💵 단가: <span style="color: ${priceColor};">${priceSign}${(p.priceDiff / 10000).toFixed(1)}만</span></div>
+                                    <div>📊 현재: ${p.count.toLocaleString()}건 / ${(p.sales / 10000).toFixed(0)}만</div>
+                                </div>
+                            </div>`;
                         });
                     } else if (!isIncrease && topDecreases.length > 0) {
-                        html += `<div style="color: #ef4444; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▼ 감소 요인</div>`;
+                        html += `<div style="color: #ef4444; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▼ 감소 요인 (검사목적)</div>`;
                         topDecreases.forEach(p => {
-                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: <span style="color: #ef4444;">${(p.diff / 10000).toFixed(0)}만 (${p.diffPct.toFixed(0)}%)</span></div>`;
+                            const countColor = p.countDiff >= 0 ? '#10b981' : '#ef4444';
+                            const countSign = p.countDiff >= 0 ? '+' : '';
+                            const priceColor = p.priceDiff >= 0 ? '#10b981' : '#ef4444';
+                            const priceSign = p.priceDiff >= 0 ? '+' : '';
+                            html += `<div style="margin-left: 8px; margin-bottom: 6px; padding: 6px 8px; background: rgba(239, 68, 68, 0.1); border-radius: 6px; border-left: 3px solid #ef4444;">
+                                <div style="font-weight: 600; margin-bottom: 4px;">• ${p.purpose}</div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
+                                    <div>📋 건수: <span style="color: ${countColor};">${countSign}${p.countDiff.toLocaleString()}건</span> <span style="color: #94a3b8;">(${countSign}${p.countDiffPct.toFixed(0)}%)</span></div>
+                                    <div>💰 매출: <span style="color: #ef4444;">${(p.salesDiff / 10000).toFixed(0)}만</span></div>
+                                    <div>💵 단가: <span style="color: ${priceColor};">${priceSign}${(p.priceDiff / 10000).toFixed(1)}만</span></div>
+                                    <div>📊 현재: ${p.count.toLocaleString()}건 / ${(p.sales / 10000).toFixed(0)}만</div>
+                                </div>
+                            </div>`;
                         });
                     }
 
