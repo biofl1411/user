@@ -5598,14 +5598,18 @@ HTML_TEMPLATE = '''
                 const nonZeroSales = totalMonthly.filter(v => v > 0);
                 const ownAvg = nonZeroSales.length > 0 ? nonZeroSales.reduce((a,b) => a+b, 0) / nonZeroSales.length : 0;
 
-                // 검사목적별 월평균 계산
+                // 검사목적별 월평균 계산 (매출 + 건수)
                 const purposeAvg = {};
+                const purposeAvgCount = {};
                 const allPurposes = new Set();
                 monthlyInfo.forEach(m => Object.keys(m.byPurpose).forEach(p => allPurposes.add(p)));
                 allPurposes.forEach(purpose => {
-                    const values = monthlyInfo.map(m => m.byPurpose[purpose]?.sales || 0);
-                    const nonZero = values.filter(v => v > 0);
-                    purposeAvg[purpose] = nonZero.length > 0 ? nonZero.reduce((a,b) => a+b, 0) / nonZero.length : 0;
+                    const salesValues = monthlyInfo.map(m => m.byPurpose[purpose]?.sales || 0);
+                    const countValues = monthlyInfo.map(m => m.byPurpose[purpose]?.count || 0);
+                    const nonZeroSales = salesValues.filter(v => v > 0);
+                    const nonZeroCount = countValues.filter(v => v > 0);
+                    purposeAvg[purpose] = nonZeroSales.length > 0 ? nonZeroSales.reduce((a,b) => a+b, 0) / nonZeroSales.length : 0;
+                    purposeAvgCount[purpose] = nonZeroCount.length > 0 ? nonZeroCount.reduce((a,b) => a+b, 0) / nonZeroCount.length : 0;
                 });
 
                 // 데이터셋 구성
@@ -5790,26 +5794,59 @@ HTML_TEMPLATE = '''
                                 html += `<div style="color: #60a5fa; font-size: 11px; margin-top: 4px;">→ ${mainCause} ${causeDirection}가 주요 원인</div>`;
                             }
 
-                            // 5. 증감 요인 (검사목적별)
+                            // 5. 증감 요인 (검사목적별) - 건수, 매출, 단가 상세 분석
                             const purposeChanges = Object.entries(info.byPurpose || {}).map(([purpose, data]) => {
                                 const avgP = purposeAvg[purpose] || 0;
-                                const diff = data.sales - avgP;
-                                const diffPct = avgP > 0 ? (diff / avgP * 100) : (data.sales > 0 ? 100 : 0);
-                                return { purpose, sales: data.sales, diff, diffPct };
-                            }).sort((a, b) => b.diff - a.diff);
+                                const avgPCount = purposeAvgCount?.[purpose] || 0;
+                                const salesDiff = data.sales - avgP;
+                                const countDiff = (data.count || 0) - avgPCount;
+                                const avgPrice = data.count > 0 ? data.sales / data.count : 0;
+                                const salesDiffPct = avgP > 0 ? (salesDiff / avgP * 100) : (data.sales > 0 ? 100 : 0);
+                                const countDiffPct = avgPCount > 0 ? (countDiff / avgPCount * 100) : (data.count > 0 ? 100 : 0);
+                                return {
+                                    purpose,
+                                    sales: data.sales,
+                                    count: data.count || 0,
+                                    avgPrice,
+                                    salesDiff,
+                                    countDiff,
+                                    salesDiffPct,
+                                    countDiffPct
+                                };
+                            }).sort((a, b) => b.salesDiff - a.salesDiff);
 
-                            const topIncreases = purposeChanges.filter(p => p.diff > 0).slice(0, 3);
-                            const topDecreases = purposeChanges.filter(p => p.diff < 0).slice(0, 3);
+                            const topIncreases = purposeChanges.filter(p => p.salesDiff > 0).slice(0, 3);
+                            const topDecreases = purposeChanges.filter(p => p.salesDiff < 0).slice(0, 3);
 
                             if (isIncrease && topIncreases.length > 0) {
                                 html += `<div style="color: #10b981; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▲ 증가 요인 (검사목적)</div>`;
                                 topIncreases.forEach(p => {
-                                    html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: <span style="color: #10b981;">+${(p.diff / 10000).toFixed(0)}만 (+${p.diffPct.toFixed(0)}%)</span></div>`;
+                                    const countColor = p.countDiff >= 0 ? '#10b981' : '#ef4444';
+                                    const countSign = p.countDiff >= 0 ? '+' : '';
+                                    html += `<div style="margin-left: 8px; margin-bottom: 6px; padding: 6px 8px; background: rgba(16, 185, 129, 0.1); border-radius: 6px; border-left: 3px solid #10b981;">
+                                        <div style="font-weight: 600; margin-bottom: 4px;">• ${p.purpose}</div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
+                                            <div>📋 건수: <span style="color: ${countColor};">${countSign}${p.countDiff.toLocaleString()}건</span> <span style="color: #94a3b8;">(${countSign}${p.countDiffPct.toFixed(0)}%)</span></div>
+                                            <div>💰 매출: <span style="color: #10b981;">+${(p.salesDiff / 10000).toFixed(0)}만</span></div>
+                                            <div>💵 단가: ${formatCurrency(Math.round(p.avgPrice))}</div>
+                                            <div>📊 현재: ${p.count.toLocaleString()}건 / ${(p.sales / 10000).toFixed(0)}만</div>
+                                        </div>
+                                    </div>`;
                                 });
                             } else if (!isIncrease && topDecreases.length > 0) {
                                 html += `<div style="color: #ef4444; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▼ 감소 요인 (검사목적)</div>`;
                                 topDecreases.forEach(p => {
-                                    html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: <span style="color: #ef4444;">${(p.diff / 10000).toFixed(0)}만 (${p.diffPct.toFixed(0)}%)</span></div>`;
+                                    const countColor = p.countDiff >= 0 ? '#10b981' : '#ef4444';
+                                    const countSign = p.countDiff >= 0 ? '+' : '';
+                                    html += `<div style="margin-left: 8px; margin-bottom: 6px; padding: 6px 8px; background: rgba(239, 68, 68, 0.1); border-radius: 6px; border-left: 3px solid #ef4444;">
+                                        <div style="font-weight: 600; margin-bottom: 4px;">• ${p.purpose}</div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
+                                            <div>📋 건수: <span style="color: ${countColor};">${countSign}${p.countDiff.toLocaleString()}건</span> <span style="color: #94a3b8;">(${countSign}${p.countDiffPct.toFixed(0)}%)</span></div>
+                                            <div>💰 매출: <span style="color: #ef4444;">${(p.salesDiff / 10000).toFixed(0)}만</span></div>
+                                            <div>💵 단가: ${formatCurrency(Math.round(p.avgPrice))}</div>
+                                            <div>📊 현재: ${p.count.toLocaleString()}건 / ${(p.sales / 10000).toFixed(0)}만</div>
+                                        </div>
+                                    </div>`;
                                 });
                             }
 
@@ -5906,16 +5943,21 @@ HTML_TEMPLATE = '''
                     };
                 });
 
-                // 담당자별 검사목적별 월평균 계산
+                // 담당자별 검사목적별 월평균 계산 (매출 + 건수)
                 const managerPurposeAvg = {};
+                const managerPurposeAvgCount = {};
                 datasets.filter(ds => !ds.isComparison).forEach(ds => {
                     managerPurposeAvg[ds.label] = {};
+                    managerPurposeAvgCount[ds.label] = {};
                     const allPurposes = new Set();
                     ds.monthlyInfo.forEach(m => Object.keys(m.byPurpose).forEach(p => allPurposes.add(p)));
                     allPurposes.forEach(purpose => {
-                        const values = ds.monthlyInfo.map(m => m.byPurpose[purpose]?.sales || 0);
-                        const nonZero = values.filter(v => v > 0);
-                        managerPurposeAvg[ds.label][purpose] = nonZero.length > 0 ? nonZero.reduce((a,b) => a+b, 0) / nonZero.length : 0;
+                        const salesValues = ds.monthlyInfo.map(m => m.byPurpose[purpose]?.sales || 0);
+                        const countValues = ds.monthlyInfo.map(m => m.byPurpose[purpose]?.count || 0);
+                        const nonZeroSales = salesValues.filter(v => v > 0);
+                        const nonZeroCount = countValues.filter(v => v > 0);
+                        managerPurposeAvg[ds.label][purpose] = nonZeroSales.length > 0 ? nonZeroSales.reduce((a,b) => a+b, 0) / nonZeroSales.length : 0;
+                        managerPurposeAvgCount[ds.label][purpose] = nonZeroCount.length > 0 ? nonZeroCount.reduce((a,b) => a+b, 0) / nonZeroCount.length : 0;
                     });
                 });
 
@@ -6086,27 +6128,61 @@ HTML_TEMPLATE = '''
                                 html += `<div style="color: #60a5fa; font-size: 11px; margin-top: 4px;">→ ${mainCause} ${causeDirection}가 주요 원인</div>`;
                             }
 
-                            // 5. 증감 요인 (검사목적별)
+                            // 5. 증감 요인 (검사목적별) - 건수, 매출, 단가 상세 분석
                             const purposeAvg = managerPurposeAvg[managerName] || {};
+                            const purposeAvgCnt = managerPurposeAvgCount[managerName] || {};
                             const purposeChanges = Object.entries(info.byPurpose || {}).map(([purpose, data]) => {
                                 const avgP = purposeAvg[purpose] || 0;
-                                const diff = data.sales - avgP;
-                                const diffPct = avgP > 0 ? (diff / avgP * 100) : (data.sales > 0 ? 100 : 0);
-                                return { purpose, sales: data.sales, diff, diffPct };
-                            }).sort((a, b) => b.diff - a.diff);
+                                const avgPCount = purposeAvgCnt[purpose] || 0;
+                                const salesDiff = data.sales - avgP;
+                                const countDiff = (data.count || 0) - avgPCount;
+                                const avgPrice = data.count > 0 ? data.sales / data.count : 0;
+                                const salesDiffPct = avgP > 0 ? (salesDiff / avgP * 100) : (data.sales > 0 ? 100 : 0);
+                                const countDiffPct = avgPCount > 0 ? (countDiff / avgPCount * 100) : (data.count > 0 ? 100 : 0);
+                                return {
+                                    purpose,
+                                    sales: data.sales,
+                                    count: data.count || 0,
+                                    avgPrice,
+                                    salesDiff,
+                                    countDiff,
+                                    salesDiffPct,
+                                    countDiffPct
+                                };
+                            }).sort((a, b) => b.salesDiff - a.salesDiff);
 
-                            const topIncreases = purposeChanges.filter(p => p.diff > 0).slice(0, 3);
-                            const topDecreases = purposeChanges.filter(p => p.diff < 0).slice(0, 3);
+                            const topIncreases = purposeChanges.filter(p => p.salesDiff > 0).slice(0, 3);
+                            const topDecreases = purposeChanges.filter(p => p.salesDiff < 0).slice(0, 3);
 
                             if (isIncrease && topIncreases.length > 0) {
                                 html += `<div style="color: #10b981; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▲ 증가 요인 (검사목적)</div>`;
                                 topIncreases.forEach(p => {
-                                    html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: <span style="color: #10b981;">+${(p.diff / 10000).toFixed(0)}만 (+${p.diffPct.toFixed(0)}%)</span></div>`;
+                                    const countColor = p.countDiff >= 0 ? '#10b981' : '#ef4444';
+                                    const countSign = p.countDiff >= 0 ? '+' : '';
+                                    html += `<div style="margin-left: 8px; margin-bottom: 6px; padding: 6px 8px; background: rgba(16, 185, 129, 0.1); border-radius: 6px; border-left: 3px solid #10b981;">
+                                        <div style="font-weight: 600; margin-bottom: 4px;">• ${p.purpose}</div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
+                                            <div>📋 건수: <span style="color: ${countColor};">${countSign}${p.countDiff.toLocaleString()}건</span> <span style="color: #94a3b8;">(${countSign}${p.countDiffPct.toFixed(0)}%)</span></div>
+                                            <div>💰 매출: <span style="color: #10b981;">+${(p.salesDiff / 10000).toFixed(0)}만</span></div>
+                                            <div>💵 단가: ${formatCurrency(Math.round(p.avgPrice))}</div>
+                                            <div>📊 현재: ${p.count.toLocaleString()}건 / ${(p.sales / 10000).toFixed(0)}만</div>
+                                        </div>
+                                    </div>`;
                                 });
                             } else if (!isIncrease && topDecreases.length > 0) {
                                 html += `<div style="color: #ef4444; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▼ 감소 요인 (검사목적)</div>`;
                                 topDecreases.forEach(p => {
-                                    html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: <span style="color: #ef4444;">${(p.diff / 10000).toFixed(0)}만 (${p.diffPct.toFixed(0)}%)</span></div>`;
+                                    const countColor = p.countDiff >= 0 ? '#10b981' : '#ef4444';
+                                    const countSign = p.countDiff >= 0 ? '+' : '';
+                                    html += `<div style="margin-left: 8px; margin-bottom: 6px; padding: 6px 8px; background: rgba(239, 68, 68, 0.1); border-radius: 6px; border-left: 3px solid #ef4444;">
+                                        <div style="font-weight: 600; margin-bottom: 4px;">• ${p.purpose}</div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
+                                            <div>📋 건수: <span style="color: ${countColor};">${countSign}${p.countDiff.toLocaleString()}건</span> <span style="color: #94a3b8;">(${countSign}${p.countDiffPct.toFixed(0)}%)</span></div>
+                                            <div>💰 매출: <span style="color: #ef4444;">${(p.salesDiff / 10000).toFixed(0)}만</span></div>
+                                            <div>💵 단가: ${formatCurrency(Math.round(p.avgPrice))}</div>
+                                            <div>📊 현재: ${p.count.toLocaleString()}건 / ${(p.sales / 10000).toFixed(0)}만</div>
+                                        </div>
+                                    </div>`;
                                 });
                             }
 
@@ -6213,16 +6289,21 @@ HTML_TEMPLATE = '''
                         };
                     });
 
-                    // 담당자별 검사목적별 월평균 계산
+                    // 담당자별 검사목적별 월평균 계산 (매출 + 건수)
                     const managerPurposeAvg = {};
+                    const managerPurposeAvgCount = {};
                     datasets.forEach(ds => {
                         managerPurposeAvg[ds.label] = {};
+                        managerPurposeAvgCount[ds.label] = {};
                         const allPurposes = new Set();
                         ds.monthlyInfo.forEach(m => Object.keys(m.byPurpose).forEach(p => allPurposes.add(p)));
                         allPurposes.forEach(purpose => {
-                            const values = ds.monthlyInfo.map(m => m.byPurpose[purpose]?.sales || 0);
-                            const nonZero = values.filter(v => v > 0);
-                            managerPurposeAvg[ds.label][purpose] = nonZero.length > 0 ? nonZero.reduce((a,b) => a+b, 0) / nonZero.length : 0;
+                            const salesValues = ds.monthlyInfo.map(m => m.byPurpose[purpose]?.sales || 0);
+                            const countValues = ds.monthlyInfo.map(m => m.byPurpose[purpose]?.count || 0);
+                            const nonZeroSales = salesValues.filter(v => v > 0);
+                            const nonZeroCount = countValues.filter(v => v > 0);
+                            managerPurposeAvg[ds.label][purpose] = nonZeroSales.length > 0 ? nonZeroSales.reduce((a,b) => a+b, 0) / nonZeroSales.length : 0;
+                            managerPurposeAvgCount[ds.label][purpose] = nonZeroCount.length > 0 ? nonZeroCount.reduce((a,b) => a+b, 0) / nonZeroCount.length : 0;
                         });
                     });
 
@@ -6393,27 +6474,61 @@ HTML_TEMPLATE = '''
                                     html += `<div style="color: #60a5fa; font-size: 11px; margin-top: 4px;">→ ${mainCause} ${causeDirection}가 주요 원인</div>`;
                                 }
 
-                                // 5. 증감 요인 (검사목적별)
+                                // 5. 증감 요인 (검사목적별) - 건수, 매출, 단가 상세 분석
                                 const purposeAvg = managerPurposeAvg[managerName] || {};
+                                const purposeAvgCnt = managerPurposeAvgCount[managerName] || {};
                                 const purposeChanges = Object.entries(info.byPurpose || {}).map(([purpose, data]) => {
                                     const avgP = purposeAvg[purpose] || 0;
-                                    const diff = data.sales - avgP;
-                                    const diffPct = avgP > 0 ? (diff / avgP * 100) : (data.sales > 0 ? 100 : 0);
-                                    return { purpose, sales: data.sales, diff, diffPct };
-                                }).sort((a, b) => b.diff - a.diff);
+                                    const avgPCount = purposeAvgCnt[purpose] || 0;
+                                    const salesDiff = data.sales - avgP;
+                                    const countDiff = (data.count || 0) - avgPCount;
+                                    const avgPrice = data.count > 0 ? data.sales / data.count : 0;
+                                    const salesDiffPct = avgP > 0 ? (salesDiff / avgP * 100) : (data.sales > 0 ? 100 : 0);
+                                    const countDiffPct = avgPCount > 0 ? (countDiff / avgPCount * 100) : (data.count > 0 ? 100 : 0);
+                                    return {
+                                        purpose,
+                                        sales: data.sales,
+                                        count: data.count || 0,
+                                        avgPrice,
+                                        salesDiff,
+                                        countDiff,
+                                        salesDiffPct,
+                                        countDiffPct
+                                    };
+                                }).sort((a, b) => b.salesDiff - a.salesDiff);
 
-                                const topIncreases = purposeChanges.filter(p => p.diff > 0).slice(0, 3);
-                                const topDecreases = purposeChanges.filter(p => p.diff < 0).slice(0, 3);
+                                const topIncreases = purposeChanges.filter(p => p.salesDiff > 0).slice(0, 3);
+                                const topDecreases = purposeChanges.filter(p => p.salesDiff < 0).slice(0, 3);
 
                                 if (isIncrease && topIncreases.length > 0) {
                                     html += `<div style="color: #10b981; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▲ 증가 요인 (검사목적)</div>`;
                                     topIncreases.forEach(p => {
-                                        html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: <span style="color: #10b981;">+${(p.diff / 10000).toFixed(0)}만 (+${p.diffPct.toFixed(0)}%)</span></div>`;
+                                        const countColor = p.countDiff >= 0 ? '#10b981' : '#ef4444';
+                                        const countSign = p.countDiff >= 0 ? '+' : '';
+                                        html += `<div style="margin-left: 8px; margin-bottom: 6px; padding: 6px 8px; background: rgba(16, 185, 129, 0.1); border-radius: 6px; border-left: 3px solid #10b981;">
+                                            <div style="font-weight: 600; margin-bottom: 4px;">• ${p.purpose}</div>
+                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
+                                                <div>📋 건수: <span style="color: ${countColor};">${countSign}${p.countDiff.toLocaleString()}건</span> <span style="color: #94a3b8;">(${countSign}${p.countDiffPct.toFixed(0)}%)</span></div>
+                                                <div>💰 매출: <span style="color: #10b981;">+${(p.salesDiff / 10000).toFixed(0)}만</span></div>
+                                                <div>💵 단가: ${formatCurrency(Math.round(p.avgPrice))}</div>
+                                                <div>📊 현재: ${p.count.toLocaleString()}건 / ${(p.sales / 10000).toFixed(0)}만</div>
+                                            </div>
+                                        </div>`;
                                     });
                                 } else if (!isIncrease && topDecreases.length > 0) {
                                     html += `<div style="color: #ef4444; margin: 12px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">▼ 감소 요인 (검사목적)</div>`;
                                     topDecreases.forEach(p => {
-                                        html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.purpose}: <span style="color: #ef4444;">${(p.diff / 10000).toFixed(0)}만 (${p.diffPct.toFixed(0)}%)</span></div>`;
+                                        const countColor = p.countDiff >= 0 ? '#10b981' : '#ef4444';
+                                        const countSign = p.countDiff >= 0 ? '+' : '';
+                                        html += `<div style="margin-left: 8px; margin-bottom: 6px; padding: 6px 8px; background: rgba(239, 68, 68, 0.1); border-radius: 6px; border-left: 3px solid #ef4444;">
+                                            <div style="font-weight: 600; margin-bottom: 4px;">• ${p.purpose}</div>
+                                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 11px;">
+                                                <div>📋 건수: <span style="color: ${countColor};">${countSign}${p.countDiff.toLocaleString()}건</span> <span style="color: #94a3b8;">(${countSign}${p.countDiffPct.toFixed(0)}%)</span></div>
+                                                <div>💰 매출: <span style="color: #ef4444;">${(p.salesDiff / 10000).toFixed(0)}만</span></div>
+                                                <div>💵 단가: ${formatCurrency(Math.round(p.avgPrice))}</div>
+                                                <div>📊 현재: ${p.count.toLocaleString()}건 / ${(p.sales / 10000).toFixed(0)}만</div>
+                                            </div>
+                                        </div>`;
                                     });
                                 }
 
