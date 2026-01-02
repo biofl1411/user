@@ -8558,38 +8558,80 @@ HTML_TEMPLATE = '''
 
             const selectedPurpose = document.getElementById('branchPerCasePurposeSelect')?.value || '전체';
             const branches = currentData.by_branch || [];
+            const managers = currentData.by_manager || [];
+            const managerMap = Object.fromEntries(managers);
             if (branches.length === 0) return;
 
-            // 검사목적별 필터 적용
+            // 검사목적별 필터 적용 + 상세 데이터 수집
             const branchData = branches.map(b => {
                 let sales = 0, count = 0;
+                const byPurpose = b[1].by_purpose || {};
+                const memberNames = Array.from(b[1].managers || []);
+
                 if (selectedPurpose === '전체') {
                     sales = b[1].sales || 0;
                     count = b[1].count || 0;
                 } else {
-                    const purposeData = b[1].by_purpose?.[selectedPurpose];
+                    const purposeData = byPurpose[selectedPurpose];
                     if (purposeData) {
                         sales = purposeData.sales || 0;
                         count = purposeData.count || 0;
                     }
                 }
                 const avgPrice = count > 0 ? sales / count : 0;
-                return { name: b[0], avgPrice, sales, count };
+
+                // 팀원별 단가 정보
+                const memberPrices = memberNames.map(name => {
+                    const m = managerMap[name];
+                    if (!m) return null;
+                    let mSales = 0, mCount = 0;
+                    if (selectedPurpose === '전체') {
+                        mSales = m.sales || 0;
+                        mCount = m.count || 0;
+                    } else {
+                        const pd = m.by_purpose?.[selectedPurpose];
+                        if (pd) { mSales = pd.sales || 0; mCount = pd.count || 0; }
+                    }
+                    const mAvgPrice = mCount > 0 ? mSales / mCount : 0;
+                    return { name, avgPrice: mAvgPrice, sales: mSales, count: mCount };
+                }).filter(m => m && m.count > 0).sort((a, b) => b.avgPrice - a.avgPrice);
+
+                // 검사목적별 단가 정보
+                const purposePrices = Object.entries(byPurpose)
+                    .map(([p, d]) => ({
+                        name: p,
+                        avgPrice: d.count > 0 ? d.sales / d.count : 0,
+                        sales: d.sales,
+                        count: d.count
+                    }))
+                    .filter(p => p.count > 0)
+                    .sort((a, b) => b.avgPrice - a.avgPrice);
+
+                return {
+                    name: b[0],
+                    avgPrice,
+                    sales,
+                    count,
+                    memberCount: memberNames.length,
+                    memberPrices,
+                    purposePrices
+                };
             }).filter(d => d.avgPrice > 0).sort((a, b) => b.avgPrice - a.avgPrice);
+
+            // 순위 부여
+            branchData.forEach((d, i) => d.rank = i + 1);
 
             const avgAll = branchData.reduce((s, d) => s + d.avgPrice, 0) / (branchData.length || 1);
             const totalSales = branchData.reduce((s, d) => s + d.sales, 0);
             const totalCount = branchData.reduce((s, d) => s + d.count, 0);
-            const avgAvgPrice = branchData.length > 0 ? branchData.reduce((s, d) => s + d.avgPrice, 0) / branchData.length : 0;
+            const overallAvgPrice = totalCount > 0 ? totalSales / totalCount : 0;
 
-            const legendEl = document.getElementById('branchPerCaseLegend');
-
+            // 비교 데이터 처리
+            let compareMap = {};
+            let compRankMap = {};
             if (compareData) {
-                // 비교 데이터 처리 (검사목적 필터 적용)
                 const compareBranches = compareData.by_branch || [];
-                const compareMap = {};
-                let compTotalSales = 0, compTotalCount = 0;
-                compareBranches.forEach(b => {
+                const compBranchData = compareBranches.map(b => {
                     let sales = 0, count = 0;
                     if (selectedPurpose === '전체') {
                         sales = b[1].sales || 0;
@@ -8602,18 +8644,230 @@ HTML_TEMPLATE = '''
                         }
                     }
                     const avgPrice = count > 0 ? sales / count : 0;
-                    compareMap[b[0]] = { avgPrice, sales, count };
-                    compTotalSales += sales;
-                    compTotalCount += count;
-                });
+                    return { name: b[0], avgPrice, sales, count };
+                }).filter(d => d.avgPrice > 0).sort((a, b) => b.avgPrice - a.avgPrice);
 
+                compBranchData.forEach((d, i) => {
+                    compRankMap[d.name] = i + 1;
+                    compareMap[d.name] = { avgPrice: d.avgPrice, sales: d.sales, count: d.count };
+                });
+            }
+
+            // 외부 HTML 툴팁 생성 함수
+            const getOrCreateBranchPerCaseTooltip = (chart) => {
+                let tooltipEl = document.getElementById('branchPerCaseChartTooltip');
+                if (!tooltipEl) {
+                    tooltipEl = document.createElement('div');
+                    tooltipEl.id = 'branchPerCaseChartTooltip';
+                    tooltipEl.style.cssText = `
+                        position: fixed;
+                        background: rgba(30, 41, 59, 0.98);
+                        border-radius: 12px;
+                        padding: 16px;
+                        pointer-events: none;
+                        z-index: 99999;
+                        font-size: 13px;
+                        color: #e2e8f0;
+                        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+                        min-width: 340px;
+                        max-width: 400px;
+                        transition: opacity 0.15s ease;
+                        line-height: 1.5;
+                    `;
+                    document.body.appendChild(tooltipEl);
+                }
+                return tooltipEl;
+            };
+
+            // 외부 툴팁 핸들러
+            const externalBranchPerCaseTooltipHandler = (context) => {
+                const { chart, tooltip } = context;
+                const tooltipEl = getOrCreateBranchPerCaseTooltip(chart);
+
+                if (tooltip.opacity === 0) {
+                    tooltipEl.style.opacity = 0;
+                    return;
+                }
+
+                if (tooltip.body && tooltip.dataPoints && tooltip.dataPoints.length > 0) {
+                    const dataIndex = tooltip.dataPoints[0].dataIndex;
+                    const d = branchData[dataIndex];
+                    const isTopTeam = d.rank <= 2;
+                    const isBottomTeam = d.rank >= branchData.length - 1;
+                    const isAboveAvg = d.avgPrice >= avgAll;
+
+                    // 스타일 결정
+                    let borderColor, headerBg, rankIcon;
+                    if (d.rank === 1) {
+                        borderColor = 'rgba(255, 215, 0, 0.8)';
+                        headerBg = 'linear-gradient(135deg, rgba(255, 215, 0, 0.3), rgba(255, 180, 0, 0.2))';
+                        rankIcon = '🏆';
+                    } else if (d.rank === 2) {
+                        borderColor = 'rgba(16, 185, 129, 0.8)';
+                        headerBg = 'linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.2))';
+                        rankIcon = '💎';
+                    } else if (isBottomTeam) {
+                        borderColor = d.rank === branchData.length ? 'rgba(239, 68, 68, 0.8)' : 'rgba(245, 158, 11, 0.8)';
+                        headerBg = d.rank === branchData.length ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)';
+                        rankIcon = d.rank === branchData.length ? '🔴' : '⚠️';
+                    } else {
+                        borderColor = isAboveAvg ? 'rgba(16, 185, 129, 0.6)' : 'rgba(245, 158, 11, 0.6)';
+                        headerBg = isAboveAvg ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)';
+                        rankIcon = '';
+                    }
+                    tooltipEl.style.border = `2px solid ${borderColor}`;
+
+                    let html = '';
+
+                    // 1. 헤더
+                    html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                        <span>${rankIcon} ${d.name}</span>
+                        <span style="background: rgba(255,255,255,0.2); padding: 2px 10px; border-radius: 12px; font-size: 12px;">단가 ${d.rank}위</span>
+                    </div>`;
+
+                    // 2. 기본 지표
+                    html += `<div style="margin-bottom: 4px;">💵 건당 매출: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+                    html += `<div style="margin-bottom: 8px;">📋 총건수: <strong>${d.count.toLocaleString()}건</strong> | 총매출: <strong>${(d.sales / 100000000).toFixed(2)}억</strong></div>`;
+
+                    // 3. 팀 구성 & 생산성
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 팀 구성 & 생산성 ──</div>`;
+                    html += `<div style="margin-bottom: 4px;">👥 소속 인원: <strong>${d.memberCount}명</strong></div>`;
+
+                    const perPersonCount = d.memberCount > 0 ? d.count / d.memberCount : 0;
+                    const totalMembers = branchData.reduce((sum, b) => sum + b.memberCount, 0);
+                    const avgCountPerPerson = totalMembers > 0 ? totalCount / totalMembers : 0;
+                    const perCountVsAvg = avgCountPerPerson > 0 ? ((perPersonCount - avgCountPerPerson) / avgCountPerPerson * 100) : 0;
+                    const pcColor = perCountVsAvg >= 0 ? '#10b981' : '#ef4444';
+                    const pcSign = perCountVsAvg >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">📊 인당 건수: <strong>${Math.round(perPersonCount).toLocaleString()}건</strong> <span style="color: ${pcColor};">(평균 대비 ${pcSign}${perCountVsAvg.toFixed(1)}%)</span></div>`;
+
+                    // 4. 전체 대비 점유율 & 단가 비교
+                    const priceVsAvg = avgAll > 0 ? ((d.avgPrice - avgAll) / avgAll * 100) : 0;
+                    const priceVsOverall = overallAvgPrice > 0 ? ((d.avgPrice - overallAvgPrice) / overallAvgPrice * 100) : 0;
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 전체 대비 점유율 ──</div>`;
+
+                    const avgColor = priceVsAvg >= 0 ? '#10b981' : '#ef4444';
+                    const avgSign = priceVsAvg >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">📈 팀평균 대비: <span style="color: ${avgColor}; font-weight: bold;">${avgSign}${priceVsAvg.toFixed(1)}%</span> (${d.rank}위/${branchData.length}팀)</div>`;
+
+                    const overallColor = priceVsOverall >= 0 ? '#10b981' : '#ef4444';
+                    const overallSign = priceVsOverall >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">📊 전체평균 대비: <span style="color: ${overallColor};">${overallSign}${priceVsOverall.toFixed(1)}%</span> (전체: ${formatCurrency(Math.round(overallAvgPrice))})</div>`;
+
+                    // 5. 전년 대비 성장률
+                    if (compareData && compareMap[d.name]) {
+                        const compData = compareMap[d.name];
+                        const yoyDiff = d.avgPrice - compData.avgPrice;
+                        const yoyPct = compData.avgPrice > 0 ? (yoyDiff / compData.avgPrice * 100) : 0;
+                        const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
+                        const yoySign = yoyDiff >= 0 ? '+' : '';
+
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 전년 대비 성장률 ──</div>`;
+                        html += `<div style="margin-bottom: 4px;">💵 단가 변화: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${formatCurrency(Math.round(yoyDiff))} (${yoySign}${yoyPct.toFixed(1)}%)</span></div>`;
+
+                        // 순위 변동
+                        const compRank = compRankMap[d.name];
+                        if (compRank) {
+                            const rankDiff = compRank - d.rank;
+                            const rankColor = rankDiff > 0 ? '#10b981' : (rankDiff < 0 ? '#ef4444' : '#94a3b8');
+                            const rankIcon = rankDiff > 0 ? '▲' : (rankDiff < 0 ? '▼' : '─');
+                            html += `<div style="margin-bottom: 4px;">🏅 순위 변동: ${compRank}위 → ${d.rank}위 <span style="color: ${rankColor};">(${rankIcon}${Math.abs(rankDiff)})</span></div>`;
+                        }
+                    }
+
+                    // 6. 단가 구성 분석 (고단가/저단가 검사목적)
+                    if (d.purposePrices && d.purposePrices.length > 0) {
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 단가 구성 분석 ──</div>`;
+
+                        // 고단가 TOP 3
+                        const highPrices = d.purposePrices.slice(0, 3);
+                        html += `<div style="margin-bottom: 4px; color: #10b981; font-weight: 600;">▲ 고단가 검사목적</div>`;
+                        highPrices.forEach((p, idx) => {
+                            const emoji = idx === 0 ? '🥇' : (idx === 1 ? '🥈' : '🥉');
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">${emoji} ${p.name}: ${formatCurrency(Math.round(p.avgPrice))} <span style="color: #94a3b8;">(${p.count}건)</span></div>`;
+                        });
+
+                        // 저단가 하위 2개 (있다면)
+                        if (d.purposePrices.length > 3) {
+                            const lowPrices = d.purposePrices.slice(-2).reverse();
+                            html += `<div style="margin-top: 6px; margin-bottom: 4px; color: #f59e0b; font-weight: 600;">▼ 저단가 검사목적</div>`;
+                            lowPrices.forEach(p => {
+                                html += `<div style="margin-left: 8px; margin-bottom: 2px;">• ${p.name}: ${formatCurrency(Math.round(p.avgPrice))} <span style="color: #94a3b8;">(${p.count}건)</span></div>`;
+                            });
+                        }
+                    }
+
+                    // 7. 팀 내 단가 분포 (편차)
+                    if (d.memberPrices && d.memberPrices.length > 1) {
+                        const prices = d.memberPrices.map(m => m.avgPrice);
+                        const maxPrice = Math.max(...prices);
+                        const minPrice = Math.min(...prices);
+                        const priceGap = maxPrice - minPrice;
+                        const priceVariance = Math.sqrt(prices.reduce((sum, p) => sum + Math.pow(p - d.avgPrice, 2), 0) / prices.length);
+                        const cv = d.avgPrice > 0 ? (priceVariance / d.avgPrice * 100) : 0;
+
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 팀 내 단가 분포 ──</div>`;
+                        html += `<div style="margin-bottom: 4px;">📊 최고: <span style="color: #10b981;">${formatCurrency(Math.round(maxPrice))}</span> | 최저: <span style="color: #ef4444;">${formatCurrency(Math.round(minPrice))}</span></div>`;
+                        html += `<div style="margin-bottom: 4px;">📉 단가 편차: ${formatCurrency(Math.round(priceGap))} (CV: ${cv.toFixed(1)}%)</div>`;
+
+                        // TOP/BOTTOM 담당자
+                        const topMember = d.memberPrices[0];
+                        const bottomMember = d.memberPrices[d.memberPrices.length - 1];
+                        html += `<div style="margin-bottom: 2px;">🥇 최고: ${topMember.name} (${formatCurrency(Math.round(topMember.avgPrice))})</div>`;
+                        html += `<div style="margin-bottom: 2px;">🔻 최저: ${bottomMember.name} (${formatCurrency(Math.round(bottomMember.avgPrice))})</div>`;
+                    }
+
+                    // 8. 수익성 기여도 (평균 대비 추가 매출)
+                    const extraRevenue = (d.avgPrice - overallAvgPrice) * d.count;
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 수익성 기여도 ──</div>`;
+
+                    const extraColor = extraRevenue >= 0 ? '#10b981' : '#ef4444';
+                    const extraSign = extraRevenue >= 0 ? '+' : '';
+                    const extraLabel = extraRevenue >= 0 ? '추가 매출 기여' : '매출 손실';
+                    html += `<div style="margin-bottom: 4px;">💰 ${extraLabel}: <span style="color: ${extraColor}; font-weight: bold;">${extraSign}${(extraRevenue / 10000).toFixed(0)}만</span></div>`;
+
+                    if (extraRevenue >= 0) {
+                        html += `<div style="color: #60a5fa; font-size: 11px; margin-top: 4px;">→ 전체 평균 단가보다 높은 단가로 수익성에 기여</div>`;
+                    } else {
+                        // 개선 기회
+                        const potentialGain = (avgAll - d.avgPrice) * d.count;
+                        html += `<div style="color: #f59e0b; font-size: 11px; margin-top: 4px;">💡 팀평균 달성 시: <span style="color: #10b981;">+${(potentialGain / 10000).toFixed(0)}만</span> 추가 가능</div>`;
+                    }
+
+                    tooltipEl.innerHTML = html;
+                }
+
+                // 위치 계산
+                const canvasRect = chart.canvas.getBoundingClientRect();
+                let left = canvasRect.left + tooltip.caretX + 15;
+                let top = canvasRect.top + tooltip.caretY - 10;
+
+                const tooltipWidth = tooltipEl.offsetWidth || 380;
+                if (left + tooltipWidth > window.innerWidth - 20) {
+                    left = canvasRect.left + tooltip.caretX - tooltipWidth - 15;
+                }
+
+                const tooltipHeight = tooltipEl.offsetHeight || 600;
+                if (top + tooltipHeight > window.innerHeight - 20) {
+                    top = window.innerHeight - tooltipHeight - 20;
+                }
+                if (top < 10) top = 10;
+
+                tooltipEl.style.opacity = 1;
+                tooltipEl.style.left = left + 'px';
+                tooltipEl.style.top = top + 'px';
+            };
+
+            const legendEl = document.getElementById('branchPerCaseLegend');
+
+            if (compareData) {
                 legendEl.innerHTML = `
                     <div class="legend-item"><div class="legend-color" style="background: rgba(16, 185, 129, 0.8);"></div><span>${currentData.year}년</span></div>
                     <div class="legend-item"><div class="legend-color" style="background: rgba(245, 158, 11, 0.6);"></div><span>${compareData.year}년</span></div>
                     <div style="margin-left: auto; display: flex; gap: 20px; font-size: 12px; color: #666;">
                         <span>총매출: <strong>${formatCurrency(totalSales)}</strong></span>
                         <span>총건수: <strong>${totalCount.toLocaleString()}건</strong></span>
-                        <span>평균단가: <strong>${formatCurrency(avgAvgPrice)}</strong></span>
+                        <span>평균단가: <strong>${formatCurrency(Math.round(avgAll))}</strong></span>
                     </div>`;
                 legendEl.style.display = 'flex';
 
@@ -8629,7 +8883,13 @@ HTML_TEMPLATE = '''
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                enabled: false,
+                                external: externalBranchPerCaseTooltipHandler
+                            }
+                        },
                         scales: {
                             y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
                             x: { grid: { display: false } }
@@ -8641,7 +8901,7 @@ HTML_TEMPLATE = '''
                     <div style="display: flex; gap: 20px; font-size: 12px; color: #666;">
                         <span>총매출: <strong>${formatCurrency(totalSales)}</strong></span>
                         <span>총건수: <strong>${totalCount.toLocaleString()}건</strong></span>
-                        <span>평균단가: <strong>${formatCurrency(avgAvgPrice)}</strong></span>
+                        <span>평균단가: <strong>${formatCurrency(Math.round(avgAll))}</strong></span>
                     </div>`;
                 legendEl.style.display = 'flex';
 
@@ -8659,7 +8919,13 @@ HTML_TEMPLATE = '''
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                enabled: false,
+                                external: externalBranchPerCaseTooltipHandler
+                            }
+                        },
                         scales: {
                             y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } },
                             x: { grid: { display: false } }
@@ -8676,21 +8942,291 @@ HTML_TEMPLATE = '''
             if (charts.branchEfficiency) charts.branchEfficiency.destroy();
 
             const branches = currentData.by_branch || [];
+            const managers = currentData.by_manager || [];
+            const managerMap = Object.fromEntries(managers);
             if (branches.length === 0) return;
 
             const avgCount = branches.reduce((sum, b) => sum + (b[1].count || 0), 0) / branches.length;
             const avgSales = branches.reduce((sum, b) => sum + (b[1].sales || 0), 0) / branches.length;
+            const totalCount = branches.reduce((sum, b) => sum + (b[1].count || 0), 0);
+            const totalSales = branches.reduce((sum, b) => sum + (b[1].sales || 0), 0);
 
+            // 비교 데이터 처리
+            let compareMap = {};
+            let compAvgCount = 0, compAvgSales = 0;
+            if (compareData) {
+                const compareBranches = compareData.by_branch || [];
+                compAvgCount = compareBranches.reduce((sum, b) => sum + (b[1].count || 0), 0) / (compareBranches.length || 1);
+                compAvgSales = compareBranches.reduce((sum, b) => sum + (b[1].sales || 0), 0) / (compareBranches.length || 1);
+                compareBranches.forEach(b => {
+                    compareMap[b[0]] = { count: b[1].count || 0, sales: b[1].sales || 0 };
+                });
+            }
+
+            // 사분면 정의
+            const getQuadrant = (count, sales) => {
+                const isHighCount = count >= avgCount;
+                const isHighSales = sales >= avgSales;
+                if (isHighCount && isHighSales) return { name: '스타', icon: '⭐', color: 'rgba(16, 185, 129, 0.8)', desc: '고건수 + 고매출' };
+                if (!isHighCount && isHighSales) return { name: '효율형', icon: '💎', color: 'rgba(99, 102, 241, 0.8)', desc: '저건수 + 고매출 (고단가)' };
+                if (isHighCount && !isHighSales) return { name: '볼륨형', icon: '📦', color: 'rgba(245, 158, 11, 0.8)', desc: '고건수 + 저매출 (저단가)' };
+                return { name: '개선필요', icon: '🔴', color: 'rgba(239, 68, 68, 0.8)', desc: '저건수 + 저매출' };
+            };
+
+            // 데이터 가공
             const data = branches.map(b => {
-                const isHighCount = (b[1].count || 0) >= avgCount;
-                const isHighSales = (b[1].sales || 0) >= avgSales;
-                let color;
-                if (isHighCount && isHighSales) color = 'rgba(16, 185, 129, 0.8)';
-                else if (!isHighCount && isHighSales) color = 'rgba(99, 102, 241, 0.8)';
-                else if (isHighCount && !isHighSales) color = 'rgba(245, 158, 11, 0.8)';
-                else color = 'rgba(239, 68, 68, 0.8)';
-                return { x: b[1].count || 0, y: b[1].sales || 0, name: b[0], color };
+                const count = b[1].count || 0;
+                const sales = b[1].sales || 0;
+                const avgPrice = count > 0 ? sales / count : 0;
+                const memberNames = Array.from(b[1].managers || []);
+                const quadrant = getQuadrant(count, sales);
+
+                // 팀원별 사분면 분포
+                const memberQuadrants = { star: 0, efficient: 0, volume: 0, improve: 0 };
+                memberNames.forEach(name => {
+                    const m = managerMap[name];
+                    if (!m) return;
+                    const mq = getQuadrant(m.count || 0, m.sales || 0);
+                    if (mq.name === '스타') memberQuadrants.star++;
+                    else if (mq.name === '효율형') memberQuadrants.efficient++;
+                    else if (mq.name === '볼륨형') memberQuadrants.volume++;
+                    else memberQuadrants.improve++;
+                });
+
+                // 전년 대비 위치
+                const compData = compareMap[b[0]];
+                let movement = null;
+                if (compData) {
+                    const prevQuadrant = getQuadrant(compData.count, compData.sales);
+                    const countDiff = count - compData.count;
+                    const salesDiff = sales - compData.sales;
+                    movement = {
+                        prevQuadrant: prevQuadrant.name,
+                        countDiff,
+                        salesDiff,
+                        direction: salesDiff >= 0 && countDiff >= 0 ? '↗' :
+                                   salesDiff >= 0 && countDiff < 0 ? '↖' :
+                                   salesDiff < 0 && countDiff >= 0 ? '↘' : '↙'
+                    };
+                }
+
+                return {
+                    x: count,
+                    y: sales,
+                    name: b[0],
+                    avgPrice,
+                    memberCount: memberNames.length,
+                    memberQuadrants,
+                    quadrant,
+                    movement,
+                    color: quadrant.color
+                };
             });
+
+            // 순위 부여 (매출 기준)
+            const sortedBySales = [...data].sort((a, b) => b.y - a.y);
+            sortedBySales.forEach((d, i) => d.salesRank = i + 1);
+
+            // 외부 HTML 툴팁 생성 함수
+            const getOrCreateEfficiencyTooltip = (chart) => {
+                let tooltipEl = document.getElementById('branchEfficiencyChartTooltip');
+                if (!tooltipEl) {
+                    tooltipEl = document.createElement('div');
+                    tooltipEl.id = 'branchEfficiencyChartTooltip';
+                    tooltipEl.style.cssText = `
+                        position: fixed;
+                        background: rgba(30, 41, 59, 0.98);
+                        border-radius: 12px;
+                        padding: 16px;
+                        pointer-events: none;
+                        z-index: 99999;
+                        font-size: 13px;
+                        color: #e2e8f0;
+                        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+                        min-width: 340px;
+                        max-width: 400px;
+                        transition: opacity 0.15s ease;
+                        line-height: 1.5;
+                    `;
+                    document.body.appendChild(tooltipEl);
+                }
+                return tooltipEl;
+            };
+
+            // 외부 툴팁 핸들러
+            const externalEfficiencyTooltipHandler = (context) => {
+                const { chart, tooltip } = context;
+                const tooltipEl = getOrCreateEfficiencyTooltip(chart);
+
+                if (tooltip.opacity === 0) {
+                    tooltipEl.style.opacity = 0;
+                    return;
+                }
+
+                if (tooltip.body && tooltip.dataPoints && tooltip.dataPoints.length > 0) {
+                    const dataIndex = tooltip.dataPoints[0].dataIndex;
+                    const d = data[dataIndex];
+
+                    // 스타일 결정
+                    tooltipEl.style.border = `2px solid ${d.quadrant.color}`;
+                    const headerBg = d.quadrant.name === '스타' ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.2))' :
+                                     d.quadrant.name === '효율형' ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.2))' :
+                                     d.quadrant.name === '볼륨형' ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(245, 158, 11, 0.2))' :
+                                     'linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.2))';
+
+                    let html = '';
+
+                    // 1. 헤더 (팀명 + 사분면 배지)
+                    html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                        <span>${d.quadrant.icon} ${d.name}</span>
+                        <span style="background: rgba(255,255,255,0.2); padding: 2px 10px; border-radius: 12px; font-size: 12px;">${d.quadrant.name}</span>
+                    </div>`;
+
+                    // 2. 사분면 설명
+                    html += `<div style="margin-bottom: 8px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 12px;">📍 <strong>${d.quadrant.desc}</strong></div>`;
+
+                    // 3. 기본 지표
+                    html += `<div style="margin-bottom: 4px;">💰 매출: <strong>${(d.y / 100000000).toFixed(2)}억</strong> (${d.salesRank}위)</div>`;
+                    html += `<div style="margin-bottom: 4px;">📋 건수: <strong>${d.x.toLocaleString()}건</strong></div>`;
+                    html += `<div style="margin-bottom: 8px;">💵 건당 매출: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+
+                    // 4. 팀 구성 & 생산성
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 팀 구성 & 생산성 ──</div>`;
+                    html += `<div style="margin-bottom: 4px;">👥 소속 인원: <strong>${d.memberCount}명</strong></div>`;
+
+                    const perPersonSales = d.memberCount > 0 ? d.y / d.memberCount : 0;
+                    const perPersonCount = d.memberCount > 0 ? d.x / d.memberCount : 0;
+                    const totalMembers = data.reduce((sum, b) => sum + b.memberCount, 0);
+                    const avgPerPersonSales = totalMembers > 0 ? totalSales / totalMembers : 0;
+                    const avgPerPersonCount = totalMembers > 0 ? totalCount / totalMembers : 0;
+
+                    const ppSalesVsAvg = avgPerPersonSales > 0 ? ((perPersonSales - avgPerPersonSales) / avgPerPersonSales * 100) : 0;
+                    const ppSalesColor = ppSalesVsAvg >= 0 ? '#10b981' : '#ef4444';
+                    const ppSalesSign = ppSalesVsAvg >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">💵 인당 매출: <strong>${(perPersonSales / 100000000).toFixed(2)}억</strong> <span style="color: ${ppSalesColor};">(${ppSalesSign}${ppSalesVsAvg.toFixed(1)}%)</span></div>`;
+
+                    const ppCountVsAvg = avgPerPersonCount > 0 ? ((perPersonCount - avgPerPersonCount) / avgPerPersonCount * 100) : 0;
+                    const ppCountColor = ppCountVsAvg >= 0 ? '#10b981' : '#ef4444';
+                    const ppCountSign = ppCountVsAvg >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">📊 인당 건수: <strong>${Math.round(perPersonCount).toLocaleString()}건</strong> <span style="color: ${ppCountColor};">(${ppCountSign}${ppCountVsAvg.toFixed(1)}%)</span></div>`;
+
+                    // 5. 평균선 대비 거리
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 평균선 대비 거리 ──</div>`;
+
+                    const countGap = d.x - avgCount;
+                    const salesGap = d.y - avgSales;
+                    const countGapPct = avgCount > 0 ? (countGap / avgCount * 100) : 0;
+                    const salesGapPct = avgSales > 0 ? (salesGap / avgSales * 100) : 0;
+
+                    const countGapColor = countGap >= 0 ? '#10b981' : '#ef4444';
+                    const countGapSign = countGap >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">📋 건수 평균 대비: <span style="color: ${countGapColor};">${countGapSign}${countGap.toLocaleString()}건 (${countGapSign}${countGapPct.toFixed(1)}%)</span></div>`;
+
+                    const salesGapColor = salesGap >= 0 ? '#10b981' : '#ef4444';
+                    const salesGapSign = salesGap >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">💰 매출 평균 대비: <span style="color: ${salesGapColor};">${salesGapSign}${(salesGap / 10000).toFixed(0)}만 (${salesGapSign}${salesGapPct.toFixed(1)}%)</span></div>`;
+
+                    // 6. 전년 대비 이동 방향
+                    if (d.movement) {
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 전년 대비 이동 ──</div>`;
+
+                        const movementColor = d.movement.salesDiff >= 0 ? '#10b981' : '#ef4444';
+                        html += `<div style="margin-bottom: 4px; font-size: 20px; text-align: center;">
+                            <span style="color: ${movementColor};">${d.movement.direction}</span>
+                        </div>`;
+
+                        if (d.movement.prevQuadrant !== d.quadrant.name) {
+                            html += `<div style="margin-bottom: 4px; text-align: center;">🔄 <span style="color: #f59e0b;">${d.movement.prevQuadrant}</span> → <span style="color: #10b981;">${d.quadrant.name}</span></div>`;
+                        } else {
+                            html += `<div style="margin-bottom: 4px; text-align: center; color: #94a3b8;">사분면 유지: ${d.quadrant.name}</div>`;
+                        }
+
+                        const cntDiffColor = d.movement.countDiff >= 0 ? '#10b981' : '#ef4444';
+                        const cntDiffSign = d.movement.countDiff >= 0 ? '+' : '';
+                        const slsDiffColor = d.movement.salesDiff >= 0 ? '#10b981' : '#ef4444';
+                        const slsDiffSign = d.movement.salesDiff >= 0 ? '+' : '';
+                        html += `<div style="margin-bottom: 2px;">📋 건수: <span style="color: ${cntDiffColor};">${cntDiffSign}${d.movement.countDiff.toLocaleString()}건</span></div>`;
+                        html += `<div style="margin-bottom: 2px;">💰 매출: <span style="color: ${slsDiffColor};">${slsDiffSign}${(d.movement.salesDiff / 10000).toFixed(0)}만</span></div>`;
+                    }
+
+                    // 7. 팀원 사분면 분포
+                    if (d.memberCount > 1) {
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 팀원 사분면 분포 ──</div>`;
+
+                        const mq = d.memberQuadrants;
+                        const barColors = { star: '#10b981', efficient: '#6366f1', volume: '#f59e0b', improve: '#ef4444' };
+
+                        let barHtml = '<div style="display: flex; height: 16px; border-radius: 4px; overflow: hidden; margin-bottom: 6px;">';
+                        if (mq.star > 0) barHtml += `<div style="width: ${mq.star / d.memberCount * 100}%; background: ${barColors.star};" title="스타 ${mq.star}명"></div>`;
+                        if (mq.efficient > 0) barHtml += `<div style="width: ${mq.efficient / d.memberCount * 100}%; background: ${barColors.efficient};" title="효율형 ${mq.efficient}명"></div>`;
+                        if (mq.volume > 0) barHtml += `<div style="width: ${mq.volume / d.memberCount * 100}%; background: ${barColors.volume};" title="볼륨형 ${mq.volume}명"></div>`;
+                        if (mq.improve > 0) barHtml += `<div style="width: ${mq.improve / d.memberCount * 100}%; background: ${barColors.improve};" title="개선필요 ${mq.improve}명"></div>`;
+                        barHtml += '</div>';
+                        html += barHtml;
+
+                        html += `<div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px;">`;
+                        if (mq.star > 0) html += `<span>⭐ 스타 ${mq.star}명</span>`;
+                        if (mq.efficient > 0) html += `<span>💎 효율형 ${mq.efficient}명</span>`;
+                        if (mq.volume > 0) html += `<span>📦 볼륨형 ${mq.volume}명</span>`;
+                        if (mq.improve > 0) html += `<span>🔴 개선필요 ${mq.improve}명</span>`;
+                        html += `</div>`;
+                    }
+
+                    // 8. 개선 시뮬레이션 (스타 사분면이 아닌 경우)
+                    if (d.quadrant.name !== '스타') {
+                        html += `<div style="color: #f59e0b; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">── 개선 시뮬레이션 ──</div>`;
+
+                        if (d.quadrant.name === '효율형') {
+                            // 건수 늘리면 스타
+                            const neededCount = avgCount - d.x;
+                            html += `<div style="margin-bottom: 4px;">🎯 스타 진입 조건: 건수 <span style="color: #10b981;">+${neededCount.toLocaleString()}건</span></div>`;
+                            const potentialSales = neededCount * d.avgPrice;
+                            html += `<div style="margin-left: 8px; color: #60a5fa; font-size: 11px;">→ 예상 추가 매출: +${(potentialSales / 10000).toFixed(0)}만</div>`;
+                        } else if (d.quadrant.name === '볼륨형') {
+                            // 단가 올리면 스타
+                            const neededSales = avgSales - d.y;
+                            const avgPriceTarget = d.x > 0 ? avgSales / d.x : 0;
+                            html += `<div style="margin-bottom: 4px;">🎯 스타 진입 조건: 매출 <span style="color: #10b981;">+${(neededSales / 10000).toFixed(0)}만</span></div>`;
+                            html += `<div style="margin-left: 8px; color: #60a5fa; font-size: 11px;">→ 필요 건당 단가: ${formatCurrency(Math.round(avgPriceTarget))}</div>`;
+                        } else {
+                            // 둘 다 필요
+                            const neededCount = avgCount - d.x;
+                            const neededSales = avgSales - d.y;
+                            html += `<div style="margin-bottom: 4px;">🎯 스타 진입 조건:</div>`;
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">• 건수: <span style="color: #10b981;">+${neededCount.toLocaleString()}건</span></div>`;
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">• 매출: <span style="color: #10b981;">+${(neededSales / 10000).toFixed(0)}만</span></div>`;
+                        }
+
+                        // 벤치마크 대상
+                        const starTeams = data.filter(t => t.quadrant.name === '스타').sort((a, b) => b.y - a.y);
+                        if (starTeams.length > 0) {
+                            html += `<div style="margin-top: 6px;">🏆 벤치마크: <span style="color: #60a5fa;">${starTeams[0].name}</span></div>`;
+                        }
+                    }
+
+                    tooltipEl.innerHTML = html;
+                }
+
+                // 위치 계산
+                const canvasRect = chart.canvas.getBoundingClientRect();
+                let left = canvasRect.left + tooltip.caretX + 15;
+                let top = canvasRect.top + tooltip.caretY - 10;
+
+                const tooltipWidth = tooltipEl.offsetWidth || 380;
+                if (left + tooltipWidth > window.innerWidth - 20) {
+                    left = canvasRect.left + tooltip.caretX - tooltipWidth - 15;
+                }
+
+                const tooltipHeight = tooltipEl.offsetHeight || 600;
+                if (top + tooltipHeight > window.innerHeight - 20) {
+                    top = window.innerHeight - tooltipHeight - 20;
+                }
+                if (top < 10) top = 10;
+
+                tooltipEl.style.opacity = 1;
+                tooltipEl.style.left = left + 'px';
+                tooltipEl.style.top = top + 'px';
+            };
 
             charts.branchEfficiency = new Chart(ctx.getContext('2d'), {
                 type: 'scatter',
@@ -8708,13 +9244,8 @@ HTML_TEMPLATE = '''
                     plugins: {
                         legend: { display: false },
                         tooltip: {
-                            callbacks: {
-                                label: (context) => {
-                                    const idx = context.dataIndex;
-                                    const b = branches[idx];
-                                    return [b[0], '매출: ' + formatCurrency(b[1].sales || 0), '건수: ' + (b[1].count || 0).toLocaleString() + '건'];
-                                }
-                            }
+                            enabled: false,
+                            external: externalEfficiencyTooltipHandler
                         }
                     },
                     scales: {
@@ -9472,6 +10003,8 @@ HTML_TEMPLATE = '''
         function updateBranchChart() {
             const purposeFilter = document.getElementById('branchChartPurposeFilter')?.value || '전체';
             const branches = currentData.by_branch || [];
+            const managers = currentData.by_manager || [];
+            const managerMap = Object.fromEntries(managers);
 
             // 뱃지 업데이트
             document.getElementById('branchChartBadge').textContent = currentData.year + '년';
@@ -9479,34 +10012,76 @@ HTML_TEMPLATE = '''
             const ctx = document.getElementById('branchChart').getContext('2d');
             if (charts.branch) charts.branch.destroy();
 
-            // 검사목적 필터 적용
+            // 검사목적 필터 적용 + 팀별 상세 데이터 수집
             const branchData = branches.map(b => {
                 let sales = 0, count = 0;
+                const byPurpose = b[1].by_purpose || {};
+                const memberNames = Array.from(b[1].managers || []);
+
                 if (purposeFilter === '전체') {
                     sales = b[1].sales || 0;
                     count = b[1].count || 0;
                 } else {
-                    const purposeData = b[1].by_purpose?.[purposeFilter];
+                    const purposeData = byPurpose[purposeFilter];
                     if (purposeData) {
                         sales = purposeData.sales || 0;
                         count = purposeData.count || 0;
                     }
                 }
-                return { name: b[0], sales, count };
+
+                // 팀원별 매출/건수 정보
+                const memberStats = memberNames.map(name => {
+                    const m = managerMap[name];
+                    if (!m) return null;
+                    let mSales = 0, mCount = 0;
+                    if (purposeFilter === '전체') {
+                        mSales = m.sales || 0;
+                        mCount = m.count || 0;
+                    } else {
+                        const pd = m.by_purpose?.[purposeFilter];
+                        if (pd) { mSales = pd.sales || 0; mCount = pd.count || 0; }
+                    }
+                    return { name, sales: mSales, count: mCount };
+                }).filter(Boolean).sort((a, b) => b.sales - a.sales);
+
+                // 검사목적별 매출 TOP
+                const topPurposes = Object.entries(byPurpose)
+                    .map(([p, d]) => ({ name: p, sales: d.sales, count: d.count }))
+                    .sort((a, b) => b.sales - a.sales)
+                    .slice(0, 3);
+
+                return {
+                    name: b[0],
+                    sales,
+                    count,
+                    avgPrice: count > 0 ? sales / count : 0,
+                    memberCount: memberNames.length,
+                    memberStats,
+                    topPurposes,
+                    byPurpose
+                };
             }).filter(d => d.sales > 0).sort((a, b) => b.sales - a.sales);
+
+            // 순위 부여
+            branchData.forEach((d, i) => d.rank = i + 1);
 
             // 총계/평균 계산
             const totalSales = branchData.reduce((sum, d) => sum + d.sales, 0);
             const totalCount = branchData.reduce((sum, d) => sum + d.count, 0);
             const avgSales = branchData.length > 0 ? totalSales / branchData.length : 0;
             const avgCount = branchData.length > 0 ? totalCount / branchData.length : 0;
+            const totalMembers = branchData.reduce((sum, d) => sum + d.memberCount, 0);
+            const avgPerPerson = totalMembers > 0 ? totalSales / totalMembers : 0;
+            const avgCountPerPerson = totalMembers > 0 ? totalCount / totalMembers : 0;
+
+            // 비교 데이터 처리
+            let compareMap = {};
+            let compTotalSales = 0, compTotalCount = 0;
+            let compRankMap = {};
 
             if (compareData) {
-                // 비교 데이터 처리 (검사목적 필터 적용)
                 const compareBranches = compareData.by_branch || [];
-                const compareMap = {};
-                let compTotalSales = 0, compTotalCount = 0;
-                compareBranches.forEach(b => {
+                const compBranchData = compareBranches.map(b => {
                     let sales = 0, count = 0;
                     if (purposeFilter === '전체') {
                         sales = b[1].sales || 0;
@@ -9518,11 +10093,254 @@ HTML_TEMPLATE = '''
                             count = purposeData.count || 0;
                         }
                     }
-                    compareMap[b[0]] = { sales, count };
-                    compTotalSales += sales;
-                    compTotalCount += count;
-                });
+                    return { name: b[0], sales, count };
+                }).filter(d => d.sales > 0).sort((a, b) => b.sales - a.sales);
 
+                compBranchData.forEach((d, i) => {
+                    compRankMap[d.name] = i + 1;
+                    compareMap[d.name] = { sales: d.sales, count: d.count };
+                    compTotalSales += d.sales;
+                    compTotalCount += d.count;
+                });
+            }
+
+            // 외부 HTML 툴팁 생성 함수
+            const getOrCreateBranchTooltip = (chart) => {
+                let tooltipEl = document.getElementById('branchChartTooltip');
+                if (!tooltipEl) {
+                    tooltipEl = document.createElement('div');
+                    tooltipEl.id = 'branchChartTooltip';
+                    tooltipEl.style.cssText = `
+                        position: fixed;
+                        background: rgba(30, 41, 59, 0.98);
+                        border-radius: 12px;
+                        padding: 16px;
+                        pointer-events: none;
+                        z-index: 99999;
+                        font-size: 13px;
+                        color: #e2e8f0;
+                        box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+                        min-width: 340px;
+                        max-width: 400px;
+                        transition: opacity 0.15s ease;
+                        line-height: 1.5;
+                    `;
+                    document.body.appendChild(tooltipEl);
+                }
+                return tooltipEl;
+            };
+
+            // 외부 툴팁 핸들러
+            const externalBranchTooltipHandler = (context) => {
+                const { chart, tooltip } = context;
+                const tooltipEl = getOrCreateBranchTooltip(chart);
+
+                if (tooltip.opacity === 0) {
+                    tooltipEl.style.opacity = 0;
+                    return;
+                }
+
+                if (tooltip.body && tooltip.dataPoints && tooltip.dataPoints.length > 0) {
+                    const dataIndex = tooltip.dataPoints[0].dataIndex;
+                    const d = branchData[dataIndex];
+                    const isTopTeam = d.rank <= 2;
+                    const isBottomTeam = d.rank >= branchData.length - 1;
+
+                    // 스타일 결정
+                    let borderColor, headerBg, rankIcon;
+                    if (d.rank === 1) {
+                        borderColor = 'rgba(255, 215, 0, 0.8)';
+                        headerBg = 'linear-gradient(135deg, rgba(255, 215, 0, 0.3), rgba(255, 180, 0, 0.2))';
+                        rankIcon = '🏆';
+                    } else if (d.rank === 2) {
+                        borderColor = 'rgba(99, 102, 241, 0.8)';
+                        headerBg = 'linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.2))';
+                        rankIcon = '💎';
+                    } else if (isBottomTeam) {
+                        borderColor = d.rank === branchData.length ? 'rgba(239, 68, 68, 0.8)' : 'rgba(245, 158, 11, 0.8)';
+                        headerBg = d.rank === branchData.length ? 'rgba(239, 68, 68, 0.2)' : 'rgba(245, 158, 11, 0.2)';
+                        rankIcon = d.rank === branchData.length ? '🔴' : '⚠️';
+                    } else {
+                        borderColor = 'rgba(99, 102, 241, 0.6)';
+                        headerBg = 'rgba(99, 102, 241, 0.2)';
+                        rankIcon = '';
+                    }
+                    tooltipEl.style.border = `2px solid ${borderColor}`;
+
+                    let html = '';
+
+                    // 1. 헤더 (팀명 + 순위 배지)
+                    html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                        <span>${rankIcon} ${d.name}</span>
+                        <span style="background: rgba(255,255,255,0.2); padding: 2px 10px; border-radius: 12px; font-size: 12px;">${d.rank}위</span>
+                    </div>`;
+
+                    // 2. 기본 지표
+                    html += `<div style="margin-bottom: 4px;">💰 매출: <strong>${(d.sales / 100000000).toFixed(2)}억</strong></div>`;
+                    html += `<div style="margin-bottom: 8px;">📋 건수: <strong>${d.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+
+                    // 3. 팀 구성 & 생산성
+                    const perPersonSales = d.memberCount > 0 ? d.sales / d.memberCount : 0;
+                    const perPersonCount = d.memberCount > 0 ? d.count / d.memberCount : 0;
+                    const perPersonVsAvg = avgPerPerson > 0 ? ((perPersonSales - avgPerPerson) / avgPerPerson * 100) : 0;
+                    const perCountVsAvg = avgCountPerPerson > 0 ? ((perPersonCount - avgCountPerPerson) / avgCountPerPerson * 100) : 0;
+
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 팀 구성 & 생산성 ──</div>`;
+                    html += `<div style="margin-bottom: 4px;">👥 소속 인원: <strong>${d.memberCount}명</strong></div>`;
+
+                    const ppColor = perPersonVsAvg >= 0 ? '#10b981' : '#ef4444';
+                    const ppSign = perPersonVsAvg >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">💵 인당 매출: <strong>${(perPersonSales / 100000000).toFixed(2)}억</strong> <span style="color: ${ppColor};">(평균 대비 ${ppSign}${perPersonVsAvg.toFixed(1)}%)</span></div>`;
+
+                    const pcColor = perCountVsAvg >= 0 ? '#10b981' : '#ef4444';
+                    const pcSign = perCountVsAvg >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">📊 인당 건수: <strong>${Math.round(perPersonCount).toLocaleString()}건</strong> <span style="color: ${pcColor};">(평균 대비 ${pcSign}${perCountVsAvg.toFixed(1)}%)</span></div>`;
+
+                    // 4. 전체 대비 점유율
+                    const sharePercent = totalSales > 0 ? (d.sales / totalSales * 100) : 0;
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 전체 대비 점유율 ──</div>`;
+                    html += `<div style="margin-bottom: 4px;">📈 매출 점유율: <strong>${sharePercent.toFixed(1)}%</strong> (${d.rank}위/${branchData.length}팀)</div>`;
+
+                    // 점유율 변화 (전년 대비)
+                    if (compareData && compareMap[d.name]) {
+                        const compShare = compTotalSales > 0 ? (compareMap[d.name].sales / compTotalSales * 100) : 0;
+                        const shareDiff = sharePercent - compShare;
+                        const shareColor = shareDiff >= 0 ? '#10b981' : '#ef4444';
+                        const shareSign = shareDiff >= 0 ? '+' : '';
+                        const shareStatus = shareDiff >= 0 ? '확대' : '축소';
+                        html += `<div style="margin-bottom: 4px;">📊 점유율 변화: <span style="color: ${shareColor};">${shareSign}${shareDiff.toFixed(1)}%p (${shareStatus})</span></div>`;
+                    }
+
+                    // 5. 전년 대비 성장률
+                    if (compareData && compareMap[d.name]) {
+                        const compData = compareMap[d.name];
+                        const yoyDiff = d.sales - compData.sales;
+                        const yoyPct = compData.sales > 0 ? (yoyDiff / compData.sales * 100) : 0;
+                        const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
+                        const yoySign = yoyDiff >= 0 ? '+' : '';
+
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 전년 대비 성장률 ──</div>`;
+                        html += `<div style="margin-bottom: 4px;">💰 금액: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${(yoyDiff / 100000000).toFixed(2)}억 (${yoySign}${yoyPct.toFixed(1)}%)</span></div>`;
+
+                        // 순위 변동
+                        const compRank = compRankMap[d.name];
+                        if (compRank) {
+                            const rankDiff = compRank - d.rank;
+                            const rankColor = rankDiff > 0 ? '#10b981' : (rankDiff < 0 ? '#ef4444' : '#94a3b8');
+                            const rankIcon = rankDiff > 0 ? '▲' : (rankDiff < 0 ? '▼' : '─');
+                            html += `<div style="margin-bottom: 4px;">🏅 순위 변동: ${compRank}위 → ${d.rank}위 <span style="color: ${rankColor};">(${rankIcon}${Math.abs(rankDiff)})</span></div>`;
+                        }
+
+                        // 6. 성장/감소 원인 분해
+                        const compAvgPrice = compData.count > 0 ? compData.sales / compData.count : 0;
+                        const countEffect = (d.count - compData.count) * compAvgPrice;
+                        const priceEffect = (d.avgPrice - compAvgPrice) * d.count;
+
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 변화 원인 분해 ──</div>`;
+
+                        const countColor = countEffect >= 0 ? '#10b981' : '#ef4444';
+                        const countSign = countEffect >= 0 ? '+' : '';
+                        const countPct = yoyDiff !== 0 ? Math.abs(countEffect / yoyDiff * 100) : 0;
+                        html += `<div style="margin-bottom: 4px;">📋 건수 효과: <span style="color: ${countColor};">${countSign}${(countEffect / 10000).toFixed(0)}만</span> <span style="color: #94a3b8;">(${countPct.toFixed(0)}%)</span></div>`;
+
+                        const priceColor = priceEffect >= 0 ? '#10b981' : '#ef4444';
+                        const priceSign = priceEffect >= 0 ? '+' : '';
+                        const pricePct = yoyDiff !== 0 ? Math.abs(priceEffect / yoyDiff * 100) : 0;
+                        html += `<div style="margin-bottom: 4px;">💵 단가 효과: <span style="color: ${priceColor};">${priceSign}${(priceEffect / 10000).toFixed(0)}만</span> <span style="color: #94a3b8;">(${pricePct.toFixed(0)}%)</span></div>`;
+
+                        const mainCause = Math.abs(countEffect) > Math.abs(priceEffect) ? '건수' : '단가';
+                        const causeDirection = (mainCause === '건수' ? countEffect : priceEffect) >= 0 ? '증가' : '감소';
+                        html += `<div style="color: #60a5fa; font-size: 11px; margin-top: 4px;">→ ${mainCause} ${causeDirection}가 주요 원인</div>`;
+                    }
+
+                    // 7. 강점 검사목적 (팀의 주력 검사)
+                    if (d.topPurposes && d.topPurposes.length > 0) {
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 강점 검사목적 TOP 3 ──</div>`;
+                        d.topPurposes.forEach((p, idx) => {
+                            const share = d.sales > 0 ? (p.sales / d.sales * 100) : 0;
+                            const emoji = idx === 0 ? '🥇' : (idx === 1 ? '🥈' : '🥉');
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">${emoji} ${p.name}: ${(p.sales / 10000).toFixed(0)}만 <span style="color: #94a3b8;">(${share.toFixed(0)}%)</span></div>`;
+                        });
+                    }
+
+                    // 8. 팀 내 TOP 기여자 (상위 팀) 또는 개선 기회 (하위 팀)
+                    if (isTopTeam && d.memberStats && d.memberStats.length > 0) {
+                        html += `<div style="color: #10b981; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">── 팀 내 TOP 기여자 ──</div>`;
+                        d.memberStats.slice(0, 3).forEach((m, idx) => {
+                            const contribution = d.sales > 0 ? (m.sales / d.sales * 100) : 0;
+                            const emoji = idx === 0 ? '🥇' : (idx === 1 ? '🥈' : '🥉');
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">${emoji} ${m.name}: ${(m.sales / 10000).toFixed(0)}만 <span style="color: #94a3b8;">(기여율 ${contribution.toFixed(0)}%)</span></div>`;
+                        });
+                    } else if (isBottomTeam) {
+                        html += `<div style="color: #f59e0b; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2); font-weight: 600;">── 개선 기회 ──</div>`;
+
+                        // 평균 대비 부족분
+                        const gapToAvg = avgSales - d.sales;
+                        if (gapToAvg > 0) {
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">💡 평균 도달 시: <span style="color: #10b981;">+${(gapToAvg / 10000).toFixed(0)}만</span></div>`;
+                        }
+
+                        // 인당 생산성이 낮은 경우
+                        if (perPersonVsAvg < 0) {
+                            const potentialGain = d.memberCount * (avgPerPerson - perPersonSales);
+                            html += `<div style="margin-left: 8px; margin-bottom: 2px;">💡 인당 생산성 평균 시: <span style="color: #10b981;">+${(potentialGain / 10000).toFixed(0)}만</span></div>`;
+                        }
+
+                        // 벤치마크 대상 팀
+                        const topTeam = branchData[0];
+                        html += `<div style="margin-left: 8px; margin-bottom: 2px;">🎯 벤치마크 대상: <span style="color: #60a5fa;">${topTeam.name}</span></div>`;
+                    }
+
+                    // 9. 담당자별 기여도 분포 바
+                    if (d.memberStats && d.memberStats.length > 1) {
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 담당자별 기여도 ──</div>`;
+                        const barColors = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e'];
+                        let barHtml = '<div style="display: flex; height: 16px; border-radius: 4px; overflow: hidden; margin-bottom: 6px;">';
+                        d.memberStats.forEach((m, idx) => {
+                            const pct = d.sales > 0 ? (m.sales / d.sales * 100) : 0;
+                            if (pct > 3) {
+                                barHtml += `<div style="width: ${pct}%; background: ${barColors[idx % barColors.length]};" title="${m.name}: ${pct.toFixed(0)}%"></div>`;
+                            }
+                        });
+                        barHtml += '</div>';
+                        html += barHtml;
+
+                        // 범례
+                        let legendHtml = '<div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px;">';
+                        d.memberStats.slice(0, 5).forEach((m, idx) => {
+                            const pct = d.sales > 0 ? (m.sales / d.sales * 100) : 0;
+                            legendHtml += `<span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: ${barColors[idx % barColors.length]}; margin-right: 3px;"></span>${m.name} ${pct.toFixed(0)}%</span>`;
+                        });
+                        legendHtml += '</div>';
+                        html += legendHtml;
+                    }
+
+                    tooltipEl.innerHTML = html;
+                }
+
+                // 위치 계산
+                const canvasRect = chart.canvas.getBoundingClientRect();
+                let left = canvasRect.left + tooltip.caretX + 15;
+                let top = canvasRect.top + tooltip.caretY - 10;
+
+                const tooltipWidth = tooltipEl.offsetWidth || 380;
+                if (left + tooltipWidth > window.innerWidth - 20) {
+                    left = canvasRect.left + tooltip.caretX - tooltipWidth - 15;
+                }
+
+                const tooltipHeight = tooltipEl.offsetHeight || 600;
+                if (top + tooltipHeight > window.innerHeight - 20) {
+                    top = window.innerHeight - tooltipHeight - 20;
+                }
+                if (top < 10) top = 10;
+
+                tooltipEl.style.opacity = 1;
+                tooltipEl.style.left = left + 'px';
+                tooltipEl.style.top = top + 'px';
+            };
+
+            // 범례 업데이트
+            if (compareData) {
                 document.getElementById('branchLegend').innerHTML = `
                     <div class="legend-item"><div class="legend-color" style="background: rgba(99, 102, 241, 0.8);"></div><span>${currentData.year}년</span></div>
                     <div class="legend-item"><div class="legend-color" style="background: rgba(139, 92, 246, 0.5);"></div><span>${compareData.year}년</span></div>
@@ -9531,6 +10349,7 @@ HTML_TEMPLATE = '''
                         <span>총건수: <strong>${totalCount.toLocaleString()}건</strong> (평균 ${Math.round(avgCount).toLocaleString()}건)</span>
                     </div>`;
                 document.getElementById('branchLegend').style.display = 'flex';
+
                 charts.branch = new Chart(ctx, {
                     type: 'bar',
                     data: {
@@ -9540,7 +10359,18 @@ HTML_TEMPLATE = '''
                             { label: compareData.year + '년', data: branchData.map(d => compareMap[d.name]?.sales || 0), backgroundColor: 'rgba(139, 92, 246, 0.5)', borderRadius: 6 }
                         ]
                     },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } } } }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                enabled: false,
+                                external: externalBranchTooltipHandler
+                            }
+                        },
+                        scales: { y: { ticks: { callback: v => formatCurrency(v) } } }
+                    }
                 });
             } else {
                 document.getElementById('branchLegend').innerHTML = `
@@ -9549,7 +10379,26 @@ HTML_TEMPLATE = '''
                         <span>총건수: <strong>${totalCount.toLocaleString()}건</strong> (평균 ${Math.round(avgCount).toLocaleString()}건)</span>
                     </div>`;
                 document.getElementById('branchLegend').style.display = 'flex';
-                charts.branch = new Chart(ctx, { type: 'bar', data: { labels: branchData.map(d => d.name), datasets: [{ data: branchData.map(d => d.sales), backgroundColor: 'rgba(99, 102, 241, 0.8)', borderRadius: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => formatCurrency(v) } }, x: { grid: { display: false } } } } });
+
+                charts.branch = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: branchData.map(d => d.name),
+                        datasets: [{ data: branchData.map(d => d.sales), backgroundColor: 'rgba(99, 102, 241, 0.8)', borderRadius: 6 }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                enabled: false,
+                                external: externalBranchTooltipHandler
+                            }
+                        },
+                        scales: { y: { ticks: { callback: v => formatCurrency(v) } }, x: { grid: { display: false } } }
+                    }
+                });
             }
         }
 
