@@ -6243,15 +6243,46 @@ HTML_TEMPLATE = '''
             if (charts.dailyClient) charts.dailyClient.destroy();
 
             const managers = currentData.by_manager || [];
+            const BUSINESS_DAYS = 250; // 연간 영업일
+
             // 거래처 수는 클라이언트 데이터에서 추정 (데이터가 없으면 건수 기준으로 추정)
-            const chartData = managers.map(m => ({
-                name: m[0],
-                avgDailyClients: Math.round((m[1].count || 0) / 250 * 10) / 10  // 연간 영업일 250일 기준
-            })).sort((a, b) => b.avgDailyClients - a.avgDailyClients);
+            const chartData = managers.map(m => {
+                const count = m[1].count || 0;
+                const sales = m[1].sales || 0;
+                const avgDailyClients = Math.round(count / BUSINESS_DAYS * 10) / 10;
+                const monthlyClients = Math.round(count / 12);
+                const revenuePerVisit = monthlyClients > 0 ? (sales / 12) / monthlyClients : 0;
+                const casesPerVisit = monthlyClients > 0 ? (count / 12) / monthlyClients : 0;
+
+                return {
+                    name: m[0],
+                    avgDailyClients,
+                    monthlyClients,
+                    count,
+                    sales,
+                    revenuePerVisit,
+                    casesPerVisit
+                };
+            }).sort((a, b) => b.avgDailyClients - a.avgDailyClients);
 
             const avgAll = chartData.reduce((s, d) => s + d.avgDailyClients, 0) / (chartData.length || 1);
+            const avgRevenuePerVisit = chartData.reduce((s, d) => s + d.revenuePerVisit, 0) / (chartData.length || 1);
+            const avgCasesPerVisit = chartData.reduce((s, d) => s + d.casesPerVisit, 0) / (chartData.length || 1);
 
             // 전년도 비교 데이터
+            const compareMap = compareData ? Object.fromEntries((compareData.by_manager || []).map(m => [m[0], m[1]])) : {};
+            const compChartData = chartData.map(d => {
+                const compData = compareMap[d.name];
+                if (!compData) return { avgDailyClients: 0, sales: 0, count: 0 };
+                const compCount = compData.count || 0;
+                const compSales = compData.sales || 0;
+                return {
+                    avgDailyClients: Math.round(compCount / BUSINESS_DAYS * 10) / 10,
+                    sales: compSales,
+                    count: compCount
+                };
+            });
+
             const datasets = [{
                 label: currentData.year + '년',
                 data: chartData.map(d => d.avgDailyClients),
@@ -6260,13 +6291,9 @@ HTML_TEMPLATE = '''
             }];
 
             if (compareData && compareData.by_manager) {
-                const compareMap = Object.fromEntries(compareData.by_manager || []);
                 datasets.push({
                     label: compareData.year + '년',
-                    data: chartData.map(d => {
-                        const compData = compareMap[d.name];
-                        return compData ? Math.round((compData.count || 0) / 250 * 10) / 10 : 0;
-                    }),
+                    data: compChartData.map(d => d.avgDailyClients),
                     backgroundColor: 'rgba(139, 92, 246, 0.5)',
                     borderRadius: 6,
                 });
@@ -6275,6 +6302,154 @@ HTML_TEMPLATE = '''
             } else {
                 document.getElementById('dailyClientLegend').style.display = 'none';
             }
+
+            // 외부 HTML 툴팁 생성 함수
+            const getOrCreateDailyClientTooltip = (chart) => {
+                let tooltipEl = document.getElementById('dailyClientChartTooltip');
+                if (!tooltipEl) {
+                    tooltipEl = document.createElement('div');
+                    tooltipEl.id = 'dailyClientChartTooltip';
+                    tooltipEl.style.cssText = `
+                        position: fixed;
+                        background: rgba(30, 41, 59, 0.95);
+                        border: 1px solid rgba(99, 102, 241, 0.5);
+                        border-radius: 12px;
+                        padding: 16px;
+                        pointer-events: none;
+                        z-index: 99999;
+                        font-size: 12px;
+                        color: #e2e8f0;
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                        max-width: 320px;
+                        transition: opacity 0.2s ease;
+                    `;
+                    document.body.appendChild(tooltipEl);
+                }
+                return tooltipEl;
+            };
+
+            // 외부 툴팁 핸들러
+            const externalTooltipHandler = (context) => {
+                const { chart, tooltip } = context;
+                const tooltipEl = getOrCreateDailyClientTooltip(chart);
+
+                if (tooltip.opacity === 0) {
+                    tooltipEl.style.opacity = 0;
+                    return;
+                }
+
+                if (tooltip.body) {
+                    const dataIndex = tooltip.dataPoints[0].dataIndex;
+                    const datasetIndex = tooltip.dataPoints[0].datasetIndex;
+                    const d = chartData[dataIndex];
+                    const compD = compChartData[dataIndex];
+
+                    let html = '';
+
+                    // 헤더
+                    html += `<div style="font-size: 14px; font-weight: bold; color: #fff; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.2);">👤 ${d.name}</div>`;
+
+                    // 1. 기본 지표
+                    html += `<div style="margin-bottom: 4px;">🏢 일 방문 거래처: <strong>${d.avgDailyClients}개</strong></div>`;
+
+                    if (compareData && compD.avgDailyClients > 0) {
+                        html += `<div style="margin-bottom: 4px;">📅 ${compareData.year}년: <strong>${compD.avgDailyClients}개</strong></div>`;
+
+                        // 전년 대비
+                        const visitDiff = d.avgDailyClients - compD.avgDailyClients;
+                        const visitDiffPct = compD.avgDailyClients > 0 ? (visitDiff / compD.avgDailyClients * 100) : 0;
+                        const visitColor = visitDiff >= 0 ? '#10b981' : '#ef4444';
+                        const visitSign = visitDiff >= 0 ? '+' : '';
+                        html += `<div style="margin-bottom: 8px;">📊 전년 대비: <span style="color: ${visitColor}; font-weight: bold;">${visitSign}${visitDiff.toFixed(1)}개 (${visitSign}${visitDiffPct.toFixed(1)}%)</span></div>`;
+                    }
+
+                    // 2. 활동량 상세
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 활동량 분석 ──</div>`;
+                    html += `<div style="margin-bottom: 4px;">📋 월 총 방문 거래처: <strong>${d.monthlyClients.toLocaleString()}개</strong></div>`;
+                    html += `<div style="margin-bottom: 4px;">📆 영업일수: <strong>${Math.round(BUSINESS_DAYS / 12)}일/월</strong></div>`;
+
+                    // 전체 평균 대비
+                    const avgDiff = ((d.avgDailyClients - avgAll) / avgAll * 100);
+                    const avgDiffColor = avgDiff >= 0 ? '#10b981' : '#ef4444';
+                    const avgDiffSign = avgDiff >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 8px;">📈 전체 평균(${avgAll.toFixed(1)}개) 대비: <span style="color: ${avgDiffColor}; font-weight: bold;">${avgDiffSign}${avgDiff.toFixed(1)}%</span></div>`;
+
+                    // 3. 방문 효율성
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 방문 효율성 ──</div>`;
+
+                    // 방문당 매출
+                    const revPerVisitDiff = avgRevenuePerVisit > 0 ? ((d.revenuePerVisit - avgRevenuePerVisit) / avgRevenuePerVisit * 100) : 0;
+                    const revDiffColor = revPerVisitDiff >= 0 ? '#10b981' : '#f59e0b';
+                    const revDiffSign = revPerVisitDiff >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 4px;">💰 방문당 매출: <strong>${formatCurrency(Math.round(d.revenuePerVisit))}</strong> <span style="color: ${revDiffColor};">(평균 대비 ${revDiffSign}${revPerVisitDiff.toFixed(0)}%)</span></div>`;
+
+                    // 방문당 접수 건수
+                    const casePerVisitDiff = avgCasesPerVisit > 0 ? ((d.casesPerVisit - avgCasesPerVisit) / avgCasesPerVisit * 100) : 0;
+                    const caseDiffColor = casePerVisitDiff >= 0 ? '#10b981' : '#f59e0b';
+                    const caseDiffSign = casePerVisitDiff >= 0 ? '+' : '';
+                    html += `<div style="margin-bottom: 8px;">📝 방문당 접수 건수: <strong>${d.casesPerVisit.toFixed(1)}건</strong> <span style="color: ${caseDiffColor};">(평균 대비 ${caseDiffSign}${casePerVisitDiff.toFixed(0)}%)</span></div>`;
+
+                    // 4. 인사이트 태그
+                    if (compareData && compD.avgDailyClients > 0 && compD.sales > 0) {
+                        const visitUp = d.avgDailyClients >= compD.avgDailyClients;
+                        const salesUp = d.sales >= compD.sales;
+
+                        let tagHtml = '';
+                        let tagColor = '';
+                        let tagText = '';
+                        let tagIcon = '';
+
+                        if (visitUp && salesUp) {
+                            tagIcon = '🏆';
+                            tagText = '활발한 영업활동';
+                            tagColor = 'background: rgba(59, 130, 246, 0.3); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.5);';
+                        } else if (visitUp && !salesUp) {
+                            tagIcon = '⚠️';
+                            tagText = '방문 효율 개선 필요';
+                            tagColor = 'background: rgba(245, 158, 11, 0.3); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.5);';
+                        } else if (!visitUp && salesUp) {
+                            tagIcon = '💎';
+                            tagText = '고효율 영업';
+                            tagColor = 'background: rgba(16, 185, 129, 0.3); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.5);';
+                        } else {
+                            tagIcon = '🔴';
+                            tagText = '활동량 증대 필요';
+                            tagColor = 'background: rgba(239, 68, 68, 0.3); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.5);';
+                        }
+
+                        html += `<div style="margin-top: 12px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">`;
+                        html += `<span style="display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; ${tagColor}">${tagIcon} ${tagText}</span>`;
+                        html += `</div>`;
+                    }
+
+                    tooltipEl.innerHTML = html;
+                }
+
+                // 위치 계산 (화면 밖으로 나가지 않도록)
+                const canvasRect = chart.canvas.getBoundingClientRect();
+
+                let left = canvasRect.left + tooltip.caretX + 15;
+                let top = canvasRect.top + tooltip.caretY - 10;
+
+                // 우측 경계 체크
+                const tooltipWidth = tooltipEl.offsetWidth || 320;
+                if (left + tooltipWidth > window.innerWidth - 20) {
+                    left = canvasRect.left + tooltip.caretX - tooltipWidth - 15;
+                }
+
+                // 하단 경계 체크
+                const tooltipHeight = tooltipEl.offsetHeight || 350;
+                if (top + tooltipHeight > window.innerHeight - 20) {
+                    top = window.innerHeight - tooltipHeight - 20;
+                }
+
+                // 상단 경계 체크
+                if (top < 10) top = 10;
+
+                tooltipEl.style.opacity = 1;
+                tooltipEl.style.left = left + 'px';
+                tooltipEl.style.top = top + 'px';
+            };
 
             charts.dailyClient = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
@@ -6285,7 +6460,13 @@ HTML_TEMPLATE = '''
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: false,
+                            external: externalTooltipHandler
+                        }
+                    },
                     scales: { y: { beginAtZero: true, title: { display: true, text: '일평균 건수' } } }
                 }
             });
