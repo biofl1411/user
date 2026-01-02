@@ -4694,24 +4694,43 @@ HTML_TEMPLATE = '''
                 const monthMap = Object.fromEntries(currentData.by_month || []);
                 const top3Labels = managers.slice(0, 3).map(m => m[0]);
 
-                charts.managerMonthly = new Chart(ctx.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels,
-                        datasets: top3Labels.map((name, i) => ({
-                            label: name,
+                // 현재 연도 데이터셋
+                const datasets = top3Labels.map((name, i) => ({
+                    label: name,
+                    data: labels.map((_, mi) => {
+                        const monthData = monthMap[mi+1];
+                        return monthData?.byManager?.[name]?.sales || 0;
+                    }),
+                    borderColor: colors[i],
+                    backgroundColor: colors[i] + '20',
+                    fill: false,
+                    tension: 0.4,
+                    pointRadius: 5,
+                }));
+
+                // 전년도 비교 데이터 추가
+                if (compareData && compareData.by_month) {
+                    const compMonthMap = Object.fromEntries(compareData.by_month || []);
+                    top3Labels.forEach((name, i) => {
+                        datasets.push({
+                            label: name + ' (' + compareData.year + ')',
                             data: labels.map((_, mi) => {
-                                // 실제 담당자별 월별 데이터 사용
-                                const monthData = monthMap[mi+1];
+                                const monthData = compMonthMap[mi+1];
                                 return monthData?.byManager?.[name]?.sales || 0;
                             }),
-                            borderColor: colors[i],
-                            backgroundColor: colors[i] + '20',
+                            borderColor: colors[i] + '60',
+                            backgroundColor: 'transparent',
                             fill: false,
                             tension: 0.4,
-                            pointRadius: 5,
-                        }))
-                    },
+                            pointRadius: 3,
+                            borderDash: [5, 5],
+                        });
+                    });
+                }
+
+                charts.managerMonthly = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: { labels, datasets },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
@@ -4733,24 +4752,43 @@ HTML_TEMPLATE = '''
                 } else {
                     const monthMap = Object.fromEntries(currentData.by_month || []);
 
-                    charts.managerMonthly = new Chart(ctx.getContext('2d'), {
-                        type: 'line',
-                        data: {
-                            labels,
-                            datasets: selectedManagers.map((name, i) => ({
-                                label: name,
+                    // 현재 연도 데이터셋
+                    const datasets = selectedManagers.map((name, i) => ({
+                        label: name,
+                        data: labels.map((_, mi) => {
+                            const monthData = monthMap[mi+1];
+                            return monthData?.byManager?.[name]?.sales || 0;
+                        }),
+                        borderColor: colors[i % colors.length],
+                        backgroundColor: colors[i % colors.length] + '20',
+                        fill: false,
+                        tension: 0.4,
+                        pointRadius: 5,
+                    }));
+
+                    // 전년도 비교 데이터 추가
+                    if (compareData && compareData.by_month) {
+                        const compMonthMap = Object.fromEntries(compareData.by_month || []);
+                        selectedManagers.forEach((name, i) => {
+                            datasets.push({
+                                label: name + ' (' + compareData.year + ')',
                                 data: labels.map((_, mi) => {
-                                    // 실제 담당자별 월별 데이터 사용
-                                    const monthData = monthMap[mi+1];
+                                    const monthData = compMonthMap[mi+1];
                                     return monthData?.byManager?.[name]?.sales || 0;
                                 }),
-                                borderColor: colors[i % colors.length],
-                                backgroundColor: colors[i % colors.length] + '20',
+                                borderColor: colors[i % colors.length] + '60',
+                                backgroundColor: 'transparent',
                                 fill: false,
                                 tension: 0.4,
-                                pointRadius: 5,
-                            }))
-                        },
+                                pointRadius: 3,
+                                borderDash: [5, 5],
+                            });
+                        });
+                    }
+
+                    charts.managerMonthly = new Chart(ctx.getContext('2d'), {
+                        type: 'line',
+                        data: { labels, datasets },
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
@@ -5523,6 +5561,27 @@ HTML_TEMPLATE = '''
                 pointRadius: 0,
                 fill: false,
             });
+
+            // 전년도 비교 데이터 추가
+            if (compareData && compareData.by_month) {
+                const compMonthMap = Object.fromEntries(compareData.by_month || []);
+                branchMonthlyData.forEach((b, i) => {
+                    datasets.push({
+                        label: b.name + ' (' + compareData.year + ')',
+                        data: labels.map((_, mi) => {
+                            const monthData = compMonthMap[mi+1];
+                            return monthData?.byBranch?.[b.name]?.sales || 0;
+                        }),
+                        borderColor: colors[i % colors.length] + '50',
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        tension: 0.4,
+                        pointRadius: 3,
+                        borderDash: [3, 3],
+                        borderWidth: 1.5,
+                    });
+                });
+            }
 
             charts.branchMonthly = new Chart(ctx.getContext('2d'), {
                 type: 'line',
