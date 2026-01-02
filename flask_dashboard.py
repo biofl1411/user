@@ -4706,7 +4706,7 @@ HTML_TEMPLATE = '''
                 const monthMap = Object.fromEntries(currentData.by_month || []);
                 const top3Labels = managers.slice(0, 3).map(m => m[0]);
 
-                // 현재 연도 데이터셋 (매출, 건수, 검사목적 포함)
+                // 현재 연도 데이터셋 (매출, 건수, 검사목적, 자체 월평균 포함)
                 const datasets = top3Labels.map((name, i) => {
                     const monthlyInfo = labels.map((_, mi) => {
                         const monthData = monthMap[mi+1];
@@ -4716,10 +4716,14 @@ HTML_TEMPLATE = '''
                         const byPurpose = mgrData?.byPurpose || {};
                         return { sales, count, perCase: count > 0 ? sales / count : 0, byPurpose };
                     });
+                    const salesArr = monthlyInfo.map(d => d.sales);
+                    const nonZeroSales = salesArr.filter(v => v > 0);
+                    const ownAvg = nonZeroSales.length > 0 ? nonZeroSales.reduce((a,b) => a+b, 0) / nonZeroSales.length : 0;
                     return {
                         label: name,
-                        data: monthlyInfo.map(d => d.sales),
+                        data: salesArr,
                         monthlyInfo,
+                        ownAvg,
                         borderColor: colors[i],
                         backgroundColor: colors[i] + '20',
                         fill: false,
@@ -4740,12 +4744,6 @@ HTML_TEMPLATE = '''
                         const nonZero = values.filter(v => v > 0);
                         managerPurposeAvg[ds.label][purpose] = nonZero.length > 0 ? nonZero.reduce((a,b) => a+b, 0) / nonZero.length : 0;
                     });
-                });
-
-                // 월별 평균 계산
-                const monthlyAvg = labels.map((_, mi) => {
-                    const sum = datasets.filter(ds => !ds.isComparison).reduce((s, ds) => s + ds.data[mi], 0);
-                    return sum / (datasets.filter(ds => !ds.isComparison).length || 1);
                 });
 
                 // 전년도 비교 데이터 추가
@@ -4797,18 +4795,19 @@ HTML_TEMPLATE = '''
                                             '  건당: ' + formatCurrency(info.perCase)
                                         ];
 
-                                        // 평균 대비 및 검사목적별 증감 (현재 연도만)
-                                        if (!ds.isComparison) {
-                                            const avg = monthlyAvg[monthIdx];
-                                            const diff = info.sales - avg;
-                                            const diffPct = avg > 0 ? ((diff / avg) * 100).toFixed(1) : 0;
+                                        // 자체 월평균 대비 및 검사목적별 증감 (현재 연도만)
+                                        if (!ds.isComparison && ds.ownAvg) {
+                                            const ownAvg = ds.ownAvg;
+                                            const diff = info.sales - ownAvg;
+                                            const diffPct = ownAvg > 0 ? ((diff / ownAvg) * 100).toFixed(1) : 0;
 
                                             result.push('─────────');
-                                            const mgrAvg = managerPurposeAvg[ds.label] || {};
+                                            result.push(`월평균: ${formatCurrency(ownAvg)}`);
+                                            const purposeAvg = managerPurposeAvg[ds.label] || {};
                                             if (diff >= 0) {
-                                                result.push(`📈 평균 대비 +${diffPct}%`);
+                                                result.push(`📈 월평균 대비 +${diffPct}%`);
                                                 const increases = Object.entries(info.byPurpose || {})
-                                                    .map(([p, d]) => ({ name: p, sales: d.sales, avg: mgrAvg[p] || 0, diff: d.sales - (mgrAvg[p] || 0) }))
+                                                    .map(([p, d]) => ({ name: p, sales: d.sales, avg: purposeAvg[p] || 0, diff: d.sales - (purposeAvg[p] || 0) }))
                                                     .filter(d => d.diff > 0)
                                                     .sort((a, b) => b.diff - a.diff)
                                                     .slice(0, 3);
@@ -4820,8 +4819,8 @@ HTML_TEMPLATE = '''
                                                     });
                                                 }
                                             } else {
-                                                result.push(`📉 평균 대비 ${diffPct}%`);
-                                                const decreases = Object.entries(mgrAvg)
+                                                result.push(`📉 월평균 대비 ${diffPct}%`);
+                                                const decreases = Object.entries(purposeAvg)
                                                     .map(p => ({ name: p[0], avg: p[1], sales: info.byPurpose?.[p[0]]?.sales || 0 }))
                                                     .map(d => ({ ...d, diff: d.sales - d.avg }))
                                                     .filter(d => d.diff < 0)
@@ -4859,7 +4858,7 @@ HTML_TEMPLATE = '''
                 } else {
                     const monthMap = Object.fromEntries(currentData.by_month || []);
 
-                    // 현재 연도 데이터셋 (매출, 건수, 검사목적 포함)
+                    // 현재 연도 데이터셋 (매출, 건수, 검사목적, 자체 월평균 포함)
                     const datasets = selectedManagers.map((name, i) => {
                         const monthlyInfo = labels.map((_, mi) => {
                             const monthData = monthMap[mi+1];
@@ -4869,10 +4868,14 @@ HTML_TEMPLATE = '''
                             const byPurpose = mgrData?.byPurpose || {};
                             return { sales, count, perCase: count > 0 ? sales / count : 0, byPurpose };
                         });
+                        const salesArr = monthlyInfo.map(d => d.sales);
+                        const nonZeroSales = salesArr.filter(v => v > 0);
+                        const ownAvg = nonZeroSales.length > 0 ? nonZeroSales.reduce((a,b) => a+b, 0) / nonZeroSales.length : 0;
                         return {
                             label: name,
-                            data: monthlyInfo.map(d => d.sales),
+                            data: salesArr,
                             monthlyInfo,
+                            ownAvg,
                             borderColor: colors[i % colors.length],
                             backgroundColor: colors[i % colors.length] + '20',
                             fill: false,
@@ -4893,12 +4896,6 @@ HTML_TEMPLATE = '''
                             const nonZero = values.filter(v => v > 0);
                             managerPurposeAvg[ds.label][purpose] = nonZero.length > 0 ? nonZero.reduce((a,b) => a+b, 0) / nonZero.length : 0;
                         });
-                    });
-
-                    // 월별 평균 계산
-                    const monthlyAvg = labels.map((_, mi) => {
-                        const sum = datasets.reduce((s, ds) => s + ds.data[mi], 0);
-                        return sum / (datasets.length || 1);
                     });
 
                     // 전년도 비교 데이터 추가
@@ -4950,18 +4947,19 @@ HTML_TEMPLATE = '''
                                                 '  건당: ' + formatCurrency(info.perCase)
                                             ];
 
-                                            // 평균 대비 및 검사목적별 증감 (현재 연도만)
-                                            if (!ds.isComparison) {
-                                                const avg = monthlyAvg[monthIdx];
-                                                const diff = info.sales - avg;
-                                                const diffPct = avg > 0 ? ((diff / avg) * 100).toFixed(1) : 0;
+                                            // 자체 월평균 대비 및 검사목적별 증감 (현재 연도만)
+                                            if (!ds.isComparison && ds.ownAvg) {
+                                                const ownAvg = ds.ownAvg;
+                                                const diff = info.sales - ownAvg;
+                                                const diffPct = ownAvg > 0 ? ((diff / ownAvg) * 100).toFixed(1) : 0;
 
                                                 result.push('─────────');
-                                                const mgrAvg = managerPurposeAvg[ds.label] || {};
+                                                result.push(`월평균: ${formatCurrency(ownAvg)}`);
+                                                const purposeAvg = managerPurposeAvg[ds.label] || {};
                                                 if (diff >= 0) {
-                                                    result.push(`📈 평균 대비 +${diffPct}%`);
+                                                    result.push(`📈 월평균 대비 +${diffPct}%`);
                                                     const increases = Object.entries(info.byPurpose || {})
-                                                        .map(([p, d]) => ({ name: p, sales: d.sales, avg: mgrAvg[p] || 0, diff: d.sales - (mgrAvg[p] || 0) }))
+                                                        .map(([p, d]) => ({ name: p, sales: d.sales, avg: purposeAvg[p] || 0, diff: d.sales - (purposeAvg[p] || 0) }))
                                                         .filter(d => d.diff > 0)
                                                         .sort((a, b) => b.diff - a.diff)
                                                         .slice(0, 3);
@@ -4973,8 +4971,8 @@ HTML_TEMPLATE = '''
                                                         });
                                                     }
                                                 } else {
-                                                    result.push(`📉 평균 대비 ${diffPct}%`);
-                                                    const decreases = Object.entries(mgrAvg)
+                                                    result.push(`📉 월평균 대비 ${diffPct}%`);
+                                                    const decreases = Object.entries(purposeAvg)
                                                         .map(p => ({ name: p[0], avg: p[1], sales: info.byPurpose?.[p[0]]?.sales || 0 }))
                                                         .map(d => ({ ...d, diff: d.sales - d.avg }))
                                                         .filter(d => d.diff < 0)
@@ -5731,7 +5729,10 @@ HTML_TEMPLATE = '''
                     const byPurpose = branchData?.byPurpose || {};
                     return { sales, count, perCase: count > 0 ? sales / count : 0, byPurpose };
                 });
-                return { name: branchName, data: monthlyInfo.map(d => d.sales), monthlyInfo };
+                const salesArr = monthlyInfo.map(d => d.sales);
+                const nonZeroSales = salesArr.filter(v => v > 0);
+                const ownAvg = nonZeroSales.length > 0 ? nonZeroSales.reduce((a,b) => a+b, 0) / nonZeroSales.length : 0;
+                return { name: branchName, data: salesArr, monthlyInfo, ownAvg };
             });
 
             // 팀별 검사목적별 월평균 계산 (증감 비교용)
@@ -5747,26 +5748,21 @@ HTML_TEMPLATE = '''
                 });
             });
 
-            // 월별 전체 평균 계산
-            const monthlyAvg = labels.map((_, mi) => {
-                const sum = branchMonthlyData.reduce((s, b) => s + b.data[mi], 0);
-                return sum / (branchMonthlyData.length || 1);
-            });
-
-            // 데이터셋 생성
+            // 데이터셋 생성 (자체 월평균 포함)
             const datasets = branchMonthlyData.map((b, i) => ({
                 label: b.name,
                 data: b.data,
                 monthlyInfo: b.monthlyInfo,
+                ownAvg: b.ownAvg,
                 borderColor: colors[i % colors.length],
                 backgroundColor: colors[i % colors.length],
                 fill: false,
                 tension: 0.4,
                 pointRadius: 8,
                 pointHoverRadius: 12,
-                pointStyle: b.data.map((v, mi) => v < monthlyAvg[mi] ? 'triangle' : 'circle'),
-                pointBackgroundColor: b.data.map((v, mi) => v < monthlyAvg[mi] ? '#ef4444' : colors[i % colors.length]),
-                pointBorderColor: b.data.map((v, mi) => v < monthlyAvg[mi] ? '#ef4444' : colors[i % colors.length]),
+                pointStyle: b.data.map(v => v < b.ownAvg ? 'triangle' : 'circle'),
+                pointBackgroundColor: b.data.map(v => v < b.ownAvg ? '#ef4444' : colors[i % colors.length]),
+                pointBorderColor: b.data.map(v => v < b.ownAvg ? '#ef4444' : colors[i % colors.length]),
                 borderWidth: 2,
             }));
 
@@ -5833,19 +5829,20 @@ HTML_TEMPLATE = '''
                                         result.push(`  건당: ${formatCurrency(info.perCase)}`);
                                     }
 
-                                    // 평균 대비 및 검사목적별 증감 (현재 연도만)
-                                    if (!ds.isComparison && info) {
-                                        const avg = monthlyAvg[monthIdx];
-                                        const diff = value - avg;
-                                        const diffPct = avg > 0 ? ((diff / avg) * 100).toFixed(1) : 0;
+                                    // 자체 월평균 대비 및 검사목적별 증감 (현재 연도만)
+                                    if (!ds.isComparison && info && ds.ownAvg) {
+                                        const ownAvg = ds.ownAvg;
+                                        const diff = value - ownAvg;
+                                        const diffPct = ownAvg > 0 ? ((diff / ownAvg) * 100).toFixed(1) : 0;
 
                                         result.push('─────────');
+                                        result.push(`월평균: ${formatCurrency(ownAvg)}`);
                                         if (diff >= 0) {
-                                            result.push(`📈 평균 대비 +${diffPct}%`);
+                                            result.push(`📈 월평균 대비 +${diffPct}%`);
                                             // 평균보다 높은 검사목적 (증가 요인)
-                                            const branchAvg = branchPurposeAvg[label] || {};
+                                            const purposeAvg = branchPurposeAvg[label] || {};
                                             const increases = Object.entries(info.byPurpose || {})
-                                                .map(([p, d]) => ({ name: p, sales: d.sales, avg: branchAvg[p] || 0, diff: d.sales - (branchAvg[p] || 0) }))
+                                                .map(([p, d]) => ({ name: p, sales: d.sales, avg: purposeAvg[p] || 0, diff: d.sales - (purposeAvg[p] || 0) }))
                                                 .filter(d => d.diff > 0)
                                                 .sort((a, b) => b.diff - a.diff)
                                                 .slice(0, 3);
@@ -5857,10 +5854,10 @@ HTML_TEMPLATE = '''
                                                 });
                                             }
                                         } else {
-                                            result.push(`📉 평균 대비 ${diffPct}%`);
+                                            result.push(`📉 월평균 대비 ${diffPct}%`);
                                             // 평균보다 낮은 검사목적 (감소 요인)
-                                            const branchAvg = branchPurposeAvg[label] || {};
-                                            const decreases = Object.entries(branchAvg)
+                                            const purposeAvg = branchPurposeAvg[label] || {};
+                                            const decreases = Object.entries(purposeAvg)
                                                 .map(p => ({ name: p[0], avg: p[1], sales: info.byPurpose?.[p[0]]?.sales || 0 }))
                                                 .map(d => ({ ...d, diff: d.sales - d.avg }))
                                                 .filter(d => d.diff < 0)
