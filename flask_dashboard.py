@@ -11635,8 +11635,8 @@ HTML_TEMPLATE = '''
                 if (!el) {
                     el = document.createElement('div');
                     el.id = 'monthlyCountTooltip';
-                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:none;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:280px;max-width:350px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
-                    document.body.appendChild(el);
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:280px;max-width:350px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
+                    document.body.appendChild(el); setupTooltipHover(el);
                 }
                 return el;
             };
@@ -11653,7 +11653,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateCountTooltip(context.chart);
-                                if (context.tooltip.opacity === 0) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -11741,8 +11741,8 @@ HTML_TEMPLATE = '''
                 if (!el) {
                     el = document.createElement('div');
                     el.id = 'quarterlyChartTooltip';
-                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:none;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:280px;max-width:350px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
-                    document.body.appendChild(el);
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:280px;max-width:350px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
+                    document.body.appendChild(el); setupTooltipHover(el);
                 }
                 return el;
             };
@@ -11759,7 +11759,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateQuarterlyTooltip(context.chart);
-                                if (context.tooltip.opacity === 0) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -11838,8 +11838,8 @@ HTML_TEMPLATE = '''
                 if (!el) {
                     el = document.createElement('div');
                     el.id = 'avgPriceChartTooltip';
-                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:none;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:280px;max-width:350px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
-                    document.body.appendChild(el);
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:280px;max-width:350px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
+                    document.body.appendChild(el); setupTooltipHover(el);
                 }
                 return el;
             };
@@ -11856,7 +11856,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateAvgPriceTooltip(context.chart);
-                                if (context.tooltip.opacity === 0) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -11945,8 +11945,8 @@ HTML_TEMPLATE = '''
                 if (!el) {
                     el = document.createElement('div');
                     el.id = 'yoyChartTooltip';
-                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:none;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:300px;max-width:380px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
-                    document.body.appendChild(el);
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:300px;max-width:380px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
+                    document.body.appendChild(el); setupTooltipHover(el);
                 }
                 return el;
             };
@@ -11963,7 +11963,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateYoyTooltip(context.chart);
-                                if (context.tooltip.opacity === 0) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -12753,8 +12753,8 @@ HTML_TEMPLATE = '''
                 if (!el) {
                     el = document.createElement('div');
                     el.id = 'clientSalesChartTooltip';
-                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:none;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:300px;max-width:380px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
-                    document.body.appendChild(el);
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:300px;max-width:380px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
+                    document.body.appendChild(el); setupTooltipHover(el);
                 }
                 return el;
             };
@@ -12779,7 +12779,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateClientSalesTooltip();
-                                if (context.tooltip.opacity === 0) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -12854,8 +12854,8 @@ HTML_TEMPLATE = '''
                 if (!el) {
                     el = document.createElement('div');
                     el.id = 'clientCountChartTooltip';
-                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:none;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:300px;max-width:380px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
-                    document.body.appendChild(el);
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:300px;max-width:380px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
+                    document.body.appendChild(el); setupTooltipHover(el);
                 }
                 return el;
             };
@@ -12880,7 +12880,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateClientCountTooltip();
-                                if (context.tooltip.opacity === 0) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -13437,8 +13437,8 @@ HTML_TEMPLATE = '''
                 if (!el) {
                     el = document.createElement('div');
                     el.id = 'regionSalesChartTooltip';
-                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:none;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:280px;max-width:350px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
-                    document.body.appendChild(el);
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:280px;max-width:350px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
+                    document.body.appendChild(el); setupTooltipHover(el);
                 }
                 return el;
             };
@@ -13464,7 +13464,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateRegionSalesTooltip();
-                                if (context.tooltip.opacity === 0) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -13528,8 +13528,8 @@ HTML_TEMPLATE = '''
                 if (!el) {
                     el = document.createElement('div');
                     el.id = 'regionGrowthChartTooltip';
-                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:none;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:300px;max-width:380px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
-                    document.body.appendChild(el);
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:300px;max-width:380px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
+                    document.body.appendChild(el); setupTooltipHover(el);
                 }
                 return el;
             };
@@ -13555,7 +13555,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateRegionGrowthTooltip();
-                                if (context.tooltip.opacity === 0) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
