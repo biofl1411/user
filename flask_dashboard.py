@@ -3722,31 +3722,35 @@ HTML_TEMPLATE = '''
         <div id="team" class="tab-content">
             <!-- 팀별 전용 KPI 카드 -->
             <div class="kpi-section team-kpi-section">
-                <div class="kpi-card sales">
+                <div class="kpi-card sales" style="position: relative;">
                     <div class="kpi-header">
                         <div class="kpi-icon">🏢</div>
                     </div>
                     <div class="kpi-label">총 팀 수</div>
                     <div class="kpi-value" id="teamTotalBranches">-</div>
-                    <div class="kpi-compare">활동 중인 팀</div>
+                    <div class="kpi-compare" id="teamBranchNames" style="font-size: 11px; line-height: 1.4; max-height: 40px; overflow: hidden;">활동 중인 팀</div>
+                    <div class="kpi-compare-overlay" id="teamTotalBranchesCompare" style="display: none; position: absolute; top: 8px; right: 8px; background: rgba(99,102,241,0.1); padding: 4px 8px; border-radius: 6px; font-size: 11px; color: #6366f1;"></div>
                 </div>
-                <div class="kpi-card count">
+                <div class="kpi-card count" style="position: relative;">
                     <div class="kpi-header">
                         <div class="kpi-icon">💵</div>
                     </div>
                     <div class="kpi-label">팀 평균 매출</div>
                     <div class="kpi-value" id="teamAvgSales">-</div>
-                    <div class="kpi-compare">팀당 평균</div>
+                    <div class="kpi-compare" id="teamTierInfo" style="font-size: 11px; line-height: 1.4;">팀당 평균</div>
+                    <div class="kpi-compare-overlay" id="teamAvgSalesCompare" style="display: none; position: absolute; top: 8px; right: 8px; background: rgba(99,102,241,0.1); padding: 4px 8px; border-radius: 6px; font-size: 11px; color: #6366f1;"></div>
                 </div>
-                <div class="kpi-card price">
+                <div class="kpi-card price" style="position: relative;">
                     <div class="kpi-header">
                         <div class="kpi-icon">🏆</div>
                     </div>
                     <div class="kpi-label">최고 성과 팀</div>
                     <div class="kpi-value" id="teamTopBranch" style="font-size: 20px;">-</div>
                     <div class="kpi-compare" id="teamTopBranchSales">-</div>
+                    <div class="kpi-compare" id="teamTopBranchReason" style="font-size: 10px; color: #10b981; margin-top: 2px;"></div>
+                    <div class="kpi-compare-overlay" id="teamTopBranchCompare" style="display: none; position: absolute; top: 8px; right: 8px; background: rgba(99,102,241,0.1); padding: 4px 8px; border-radius: 6px; font-size: 11px; color: #6366f1;"></div>
                 </div>
-                <div class="kpi-card goal">
+                <div class="kpi-card goal" style="position: relative;">
                     <div class="kpi-header">
                         <div class="kpi-icon">🚀</div>
                         <div class="kpi-trend up" id="teamTopGrowthTrend" style="visibility: hidden;">↑ 0%</div>
@@ -3754,6 +3758,7 @@ HTML_TEMPLATE = '''
                     <div class="kpi-label">최고 성장 팀</div>
                     <div class="kpi-value" id="teamTopGrowth" style="font-size: 20px;">-</div>
                     <div class="kpi-compare" id="teamTopGrowthRate">전년 대비</div>
+                    <div class="kpi-compare" id="teamTopGrowthDetail" style="font-size: 10px; color: #f59e0b; margin-top: 2px;"></div>
                 </div>
             </div>
 
@@ -9013,36 +9018,123 @@ HTML_TEMPLATE = '''
 
             const totalBranches = branches.length;
             const totalSales = branches.reduce((sum, b) => sum + (b[1].sales || 0), 0);
+            const totalCount = branches.reduce((sum, b) => sum + (b[1].count || 0), 0);
             const avgSales = totalSales / totalBranches;
 
-            // KPI 카드 업데이트
+            // 매출 기준 정렬
+            const sortedBranches = [...branches].sort((a, b) => (b[1].sales || 0) - (a[1].sales || 0));
+
+            // ===== 1. 총 팀 수 카드 =====
             document.getElementById('teamTotalBranches').textContent = totalBranches + '개';
+            // 팀명 목록 표시
+            const branchNames = sortedBranches.map(b => b[0]).join(', ');
+            document.getElementById('teamBranchNames').textContent = branchNames;
+            document.getElementById('teamBranchNames').title = branchNames; // 전체 보기용 툴팁
+
+            // 비교년도 팀 수
+            if (compareData && compareData.by_branch) {
+                const compBranches = compareData.by_branch.length;
+                const diff = totalBranches - compBranches;
+                const diffText = diff > 0 ? `+${diff}` : diff.toString();
+                document.getElementById('teamTotalBranchesCompare').textContent = `${compareData.year}년: ${compBranches}개 (${diffText})`;
+                document.getElementById('teamTotalBranchesCompare').style.display = 'block';
+            } else {
+                document.getElementById('teamTotalBranchesCompare').style.display = 'none';
+            }
+
+            // ===== 2. 팀 평균 매출 카드 =====
             document.getElementById('teamAvgSales').textContent = formatCurrency(avgSales);
 
-            // 최고 성과 팀
-            const topBranch = branches.reduce((max, b) => (b[1].sales > (max[1]?.sales || 0)) ? b : max, branches[0]);
+            // 상위/중간/하위 팀 분류
+            const tierCount = Math.ceil(totalBranches / 3);
+            const topTier = sortedBranches.slice(0, tierCount).map(b => b[0]);
+            const midTier = sortedBranches.slice(tierCount, tierCount * 2).map(b => b[0]);
+            const bottomTier = sortedBranches.slice(tierCount * 2).map(b => b[0]);
+
+            let tierInfo = `🥇 상위: ${topTier.join(', ')}`;
+            if (midTier.length > 0) tierInfo += ` | 중간: ${midTier.join(', ')}`;
+            if (bottomTier.length > 0) tierInfo += ` | 🔻 하위: ${bottomTier.join(', ')}`;
+            document.getElementById('teamTierInfo').textContent = tierInfo;
+            document.getElementById('teamTierInfo').title = tierInfo;
+
+            // 비교년도 평균
+            if (compareData && compareData.by_branch) {
+                const compTotalSales = compareData.by_branch.reduce((sum, b) => sum + (b[1].sales || 0), 0);
+                const compAvgSales = compTotalSales / compareData.by_branch.length;
+                const avgDiff = ((avgSales - compAvgSales) / compAvgSales * 100).toFixed(1);
+                const avgDiffSign = avgDiff > 0 ? '+' : '';
+                document.getElementById('teamAvgSalesCompare').textContent = `${compareData.year}년: ${formatCurrency(compAvgSales)} (${avgDiffSign}${avgDiff}%)`;
+                document.getElementById('teamAvgSalesCompare').style.display = 'block';
+                document.getElementById('teamAvgSalesCompare').style.color = avgDiff >= 0 ? '#10b981' : '#ef4444';
+            } else {
+                document.getElementById('teamAvgSalesCompare').style.display = 'none';
+            }
+
+            // ===== 3. 최고 성과 팀 카드 =====
+            const topBranch = sortedBranches[0];
             document.getElementById('teamTopBranch').textContent = topBranch[0];
             document.getElementById('teamTopBranchSales').textContent = '매출: ' + formatCurrency(topBranch[1].sales);
 
-            // 최고 성장 팀 (전년 비교 시)
+            // 최고 성과 이유 분석
+            const topShare = (topBranch[1].sales / totalSales * 100).toFixed(1);
+            const topCount = topBranch[1].count || 0;
+            const topAvgPrice = topCount > 0 ? topBranch[1].sales / topCount : 0;
+            const overallAvgPrice = totalCount > 0 ? totalSales / totalCount : 0;
+            const priceVsAvg = overallAvgPrice > 0 ? ((topAvgPrice - overallAvgPrice) / overallAvgPrice * 100).toFixed(0) : 0;
+
+            let reasonText = `전체의 ${topShare}% 점유`;
+            if (priceVsAvg > 10) reasonText += ` | 단가 +${priceVsAvg}%`;
+            document.getElementById('teamTopBranchReason').textContent = reasonText;
+
+            // 비교년도 최고 성과 팀
+            if (compareData && compareData.by_branch) {
+                const compSorted = [...compareData.by_branch].sort((a, b) => (b[1].sales || 0) - (a[1].sales || 0));
+                if (compSorted.length > 0) {
+                    document.getElementById('teamTopBranchCompare').textContent = `${compareData.year}년: ${compSorted[0][0]}`;
+                    document.getElementById('teamTopBranchCompare').style.display = 'block';
+                }
+            } else {
+                document.getElementById('teamTopBranchCompare').style.display = 'none';
+            }
+
+            // ===== 4. 최고 성장 팀 카드 =====
             if (compareData && compareData.by_branch) {
                 const compareMap = Object.fromEntries(compareData.by_branch);
                 const withGrowth = branches.map(b => {
-                    const compSales = compareMap[b[0]]?.sales || 0;
-                    const growth = compSales > 0 ? ((b[1].sales - compSales) / compSales * 100) : 0;
-                    return { name: b[0], growth };
-                }).sort((a, b) => b.growth - a.growth);
+                    const compData = compareMap[b[0]];
+                    const compSales = compData?.sales || 0;
+                    const compCount = compData?.count || 0;
+                    const salesGrowth = compSales > 0 ? ((b[1].sales - compSales) / compSales * 100) : 0;
+                    const countGrowth = compCount > 0 ? ((b[1].count - compCount) / compCount * 100) : 0;
+                    const salesDiff = b[1].sales - compSales;
+                    const countDiff = (b[1].count || 0) - compCount;
+                    return { name: b[0], salesGrowth, countGrowth, salesDiff, countDiff };
+                }).sort((a, b) => b.salesGrowth - a.salesGrowth);
 
-                if (withGrowth.length > 0) {
-                    document.getElementById('teamTopGrowth').textContent = withGrowth[0].name;
-                    document.getElementById('teamTopGrowthRate').textContent = '전년 대비 +' + withGrowth[0].growth.toFixed(1) + '%';
+                if (withGrowth.length > 0 && withGrowth[0].salesGrowth > 0) {
+                    const top = withGrowth[0];
+                    document.getElementById('teamTopGrowth').textContent = top.name;
+                    document.getElementById('teamTopGrowthRate').textContent = '전년 대비 +' + top.salesGrowth.toFixed(1) + '%';
                     document.getElementById('teamTopGrowthTrend').style.visibility = 'visible';
-                    document.getElementById('teamTopGrowthTrend').innerHTML = '↑ +' + withGrowth[0].growth.toFixed(1) + '%';
+                    document.getElementById('teamTopGrowthTrend').innerHTML = '↑ +' + top.salesGrowth.toFixed(1) + '%';
+
+                    // 성장 상세 (매출 증가액, 건수 변화)
+                    let detailParts = [];
+                    if (top.salesDiff > 0) detailParts.push(`매출 +${formatCurrency(top.salesDiff)}`);
+                    if (top.countDiff > 0) detailParts.push(`건수 +${top.countDiff.toLocaleString()}건`);
+                    else if (top.countDiff < 0) detailParts.push(`건수 ${top.countDiff.toLocaleString()}건`);
+                    document.getElementById('teamTopGrowthDetail').textContent = detailParts.join(' | ');
+                } else {
+                    document.getElementById('teamTopGrowth').textContent = '-';
+                    document.getElementById('teamTopGrowthRate').textContent = '성장팀 없음';
+                    document.getElementById('teamTopGrowthTrend').style.visibility = 'hidden';
+                    document.getElementById('teamTopGrowthDetail').textContent = '';
                 }
             } else {
                 document.getElementById('teamTopGrowth').textContent = '-';
                 document.getElementById('teamTopGrowthRate').textContent = '전년 비교 필요';
                 document.getElementById('teamTopGrowthTrend').style.visibility = 'hidden';
+                document.getElementById('teamTopGrowthDetail').textContent = '';
             }
 
             // 드롭다운 초기화
