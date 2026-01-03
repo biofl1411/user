@@ -4059,9 +4059,12 @@ HTML_TEMPLATE = '''
 
             <!-- 월별 성장률 추이 차트 -->
             <div class="card" style="margin-bottom: 24px;" id="growthTrendCard">
-                <div class="card-header">
+                <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
                     <div class="card-title">📈 월별 성장률 추이 (전년 대비)</div>
-                    <div class="chart-controls" style="display: flex; gap: 8px;">
+                    <div class="chart-controls" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <select id="growthPurposeFilter" onchange="updateGrowthTrendChart()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px;">
+                            <option value="전체">전체 목적</option>
+                        </select>
                         <select id="growthMetricSelect" onchange="updateGrowthTrendChart()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px;">
                             <option value="sales">매출 성장률</option>
                             <option value="count">건수 성장률</option>
@@ -4070,11 +4073,12 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
                 <div class="card-body">
-                    <div class="chart-legend" id="growthTrendLegend" style="display: flex; gap: 16px; margin-bottom: 10px; font-size: 12px;">
+                    <div class="chart-legend" id="growthTrendLegend" style="display: flex; gap: 16px; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap;">
                         <span style="color: #10b981;">● 성장 (0% 초과)</span>
                         <span style="color: #ef4444;">● 역성장 (0% 미만)</span>
                         <span style="color: #f59e0b;">--- 평균 성장률</span>
                     </div>
+                    <div class="chart-summary" id="growthTrendSummary" style="display: flex; gap: 12px; margin-bottom: 10px; font-size: 12px; flex-wrap: wrap;"></div>
                     <div class="chart-container" style="height: 280px;"><canvas id="growthTrendChart"></canvas></div>
                 </div>
             </div>
@@ -12173,6 +12177,7 @@ HTML_TEMPLATE = '''
         // 월별 탭 전체 업데이트
         function updateMonthlyTab() {
             initMonthlyChartFilters();
+            initGrowthPurposeFilter();
             updateMonthlyKPI();
             updateMonthlyChartWithFilter();
             updateMonthlyCountChartWithFilter();
@@ -13388,12 +13393,33 @@ HTML_TEMPLATE = '''
             });
         }
 
+        // 월별 성장률 추이 차트 - 검사목적 필터 초기화
+        function initGrowthPurposeFilter() {
+            const select = document.getElementById('growthPurposeFilter');
+            if (!select) return;
+
+            const purposes = currentData.by_purpose || [];
+            const currentValue = select.value;
+
+            select.innerHTML = '<option value="전체">전체 목적</option>';
+            purposes.forEach(p => {
+                if (p[0] !== '접수취소') {
+                    select.innerHTML += `<option value="${p[0]}">${p[0]}</option>`;
+                }
+            });
+
+            // 이전 선택값 복원
+            if (currentValue && Array.from(select.options).some(o => o.value === currentValue)) {
+                select.value = currentValue;
+            }
+        }
+
         // 월별 성장률 추이 차트
         function updateGrowthTrendChart() {
             const monthly = currentData.by_month || [];
-            const monthMap = Object.fromEntries(monthly);
+            const originalMonthMap = Object.fromEntries(monthly);
             const compMonthly = compareData?.by_month || [];
-            const compMap = Object.fromEntries(compMonthly);
+            const originalCompMap = Object.fromEntries(compMonthly);
             const hasCompare = compareData && compMonthly.length > 0;
 
             const ctx = document.getElementById('growthTrendChart');
@@ -13407,18 +13433,56 @@ HTML_TEMPLATE = '''
             }
             if (cardEl) cardEl.style.display = '';
 
+            // 검사목적 필터
+            const purposeFilter = document.getElementById('growthPurposeFilter')?.value || '전체';
+
+            // 필터 적용된 데이터 생성
+            let monthMap = originalMonthMap;
+            let compMap = originalCompMap;
+
+            if (purposeFilter !== '전체') {
+                monthMap = {};
+                compMap = {};
+                for (let m = 1; m <= 12; m++) {
+                    const data = originalMonthMap[m];
+                    if (data && data.byPurpose && data.byPurpose[purposeFilter]) {
+                        const pd = data.byPurpose[purposeFilter];
+                        monthMap[m] = { sales: pd.sales || 0, count: pd.count || 0 };
+                    } else {
+                        monthMap[m] = { sales: 0, count: 0 };
+                    }
+
+                    const compData = originalCompMap[m];
+                    if (compData && compData.byPurpose && compData.byPurpose[purposeFilter]) {
+                        const cpd = compData.byPurpose[purposeFilter];
+                        compMap[m] = { sales: cpd.sales || 0, count: cpd.count || 0 };
+                    } else {
+                        compMap[m] = { sales: 0, count: 0 };
+                    }
+                }
+            }
+
             if (charts.growthTrend) charts.growthTrend.destroy();
 
             const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
             const metric = document.getElementById('growthMetricSelect')?.value || 'sales';
 
-            // 성장률 계산
+            // 성장률 계산 및 실제 데이터
             const salesGrowth = [];
             const countGrowth = [];
+            const currSalesData = [];
+            const compSalesData = [];
+            const currCountData = [];
+            const compCountData = [];
 
             for (let m = 1; m <= 12; m++) {
                 const curr = monthMap[m] || { sales: 0, count: 0 };
                 const comp = compMap[m] || { sales: 0, count: 0 };
+
+                currSalesData.push(curr.sales > 0 ? curr.sales : null);
+                compSalesData.push(comp.sales > 0 ? comp.sales : null);
+                currCountData.push(curr.count > 0 ? curr.count : null);
+                compCountData.push(comp.count > 0 ? comp.count : null);
 
                 if (comp.sales > 0 && curr.sales > 0) {
                     salesGrowth.push(((curr.sales - comp.sales) / comp.sales) * 100);
@@ -13431,6 +13495,29 @@ HTML_TEMPLATE = '''
                 } else {
                     countGrowth.push(null);
                 }
+            }
+
+            // 요약 정보 표시
+            const summaryEl = document.getElementById('growthTrendSummary');
+            if (summaryEl) {
+                const validCurr = currSalesData.filter(v => v !== null);
+                const validComp = compSalesData.filter(v => v !== null);
+                const totalCurr = validCurr.reduce((s, v) => s + v, 0);
+                const totalComp = validComp.reduce((s, v) => s + v, 0);
+                const totalGrowth = totalComp > 0 ? ((totalCurr - totalComp) / totalComp * 100) : 0;
+                const growthColor = totalGrowth >= 0 ? '#10b981' : '#ef4444';
+
+                summaryEl.innerHTML = `
+                    <span style="background:#f1f5f9;padding:4px 10px;border-radius:6px;">
+                        <strong style="color:#60a5fa;">${currentData.year}년:</strong> ${formatCurrency(totalCurr)}
+                    </span>
+                    <span style="background:#f1f5f9;padding:4px 10px;border-radius:6px;">
+                        <strong style="color:#f59e0b;">${compareData.year}년:</strong> ${formatCurrency(totalComp)}
+                    </span>
+                    <span style="background:#f1f5f9;padding:4px 10px;border-radius:6px;">
+                        <strong>총 성장률:</strong> <span style="color:${growthColor};font-weight:bold;">${totalGrowth >= 0 ? '+' : ''}${totalGrowth.toFixed(1)}%</span>
+                    </span>
+                `;
             }
 
             // 평균 성장률 계산
@@ -13446,25 +13533,60 @@ HTML_TEMPLATE = '''
             const datasets = [];
 
             if (metric === 'sales' || metric === 'both') {
+                // 성장률 막대
                 datasets.push({
-                    label: '매출 성장률 (%)',
+                    label: '성장률 (%)',
                     data: salesGrowth,
                     backgroundColor: salesColors,
                     borderRadius: 4,
-                    order: 2
+                    order: 3,
+                    yAxisID: 'y'
+                });
+
+                // 2025년 매출 라인
+                datasets.push({
+                    label: `${currentData.year}년 매출`,
+                    data: currSalesData,
+                    type: 'line',
+                    borderColor: '#60a5fa',
+                    backgroundColor: 'rgba(96,165,250,0.1)',
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#60a5fa',
+                    fill: false,
+                    order: 1,
+                    yAxisID: 'y1',
+                    tension: 0.3
+                });
+
+                // 2024년 매출 라인
+                datasets.push({
+                    label: `${compareData.year}년 매출`,
+                    data: compSalesData,
+                    type: 'line',
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245,158,11,0.1)',
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#f59e0b',
+                    fill: false,
+                    order: 2,
+                    yAxisID: 'y1',
+                    tension: 0.3
                 });
 
                 // 평균 성장률 라인
                 datasets.push({
-                    label: '평균 매출 성장률',
+                    label: '평균 성장률',
                     data: Array(12).fill(avgSalesGrowth),
                     type: 'line',
-                    borderColor: '#f59e0b',
-                    borderWidth: 2,
+                    borderColor: '#94a3b8',
+                    borderWidth: 1,
                     borderDash: [5, 5],
                     pointRadius: 0,
                     fill: false,
-                    order: 1
+                    order: 4,
+                    yAxisID: 'y'
                 });
             }
 
@@ -13474,20 +13596,52 @@ HTML_TEMPLATE = '''
                     data: countGrowth,
                     backgroundColor: countColors,
                     borderRadius: 4,
-                    order: 2
+                    order: 3,
+                    yAxisID: 'y'
                 });
 
                 if (metric === 'count') {
+                    // 2025년 건수 라인
+                    datasets.push({
+                        label: `${currentData.year}년 건수`,
+                        data: currCountData,
+                        type: 'line',
+                        borderColor: '#60a5fa',
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#60a5fa',
+                        fill: false,
+                        order: 1,
+                        yAxisID: 'y1',
+                        tension: 0.3
+                    });
+
+                    // 2024년 건수 라인
+                    datasets.push({
+                        label: `${compareData.year}년 건수`,
+                        data: compCountData,
+                        type: 'line',
+                        borderColor: '#f59e0b',
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#f59e0b',
+                        fill: false,
+                        order: 2,
+                        yAxisID: 'y1',
+                        tension: 0.3
+                    });
+
                     datasets.push({
                         label: '평균 건수 성장률',
                         data: Array(12).fill(avgCountGrowth),
                         type: 'line',
-                        borderColor: '#f59e0b',
-                        borderWidth: 2,
+                        borderColor: '#94a3b8',
+                        borderWidth: 1,
                         borderDash: [5, 5],
                         pointRadius: 0,
                         fill: false,
-                        order: 1
+                        order: 4,
+                        yAxisID: 'y'
                     });
                 }
             }
@@ -13496,20 +13650,24 @@ HTML_TEMPLATE = '''
             const legendEl = document.getElementById('growthTrendLegend');
             if (metric === 'sales') {
                 legendEl.innerHTML = `
-                    <span style="color: #10b981;">● 매출 성장 (0% 초과)</span>
-                    <span style="color: #ef4444;">● 매출 역성장 (0% 미만)</span>
-                    <span style="color: #f59e0b;">--- 평균 ${avgSalesGrowth.toFixed(1)}%</span>
+                    <span style="color: #10b981;">■ 성장 (0% 초과)</span>
+                    <span style="color: #ef4444;">■ 역성장 (0% 미만)</span>
+                    <span style="color: #60a5fa;">─● ${currentData.year}년</span>
+                    <span style="color: #f59e0b;">─● ${compareData.year}년</span>
+                    <span style="color: #94a3b8;">--- 평균 ${avgSalesGrowth.toFixed(1)}%</span>
                 `;
             } else if (metric === 'count') {
                 legendEl.innerHTML = `
-                    <span style="color: #3b82f6;">● 건수 성장 (0% 초과)</span>
-                    <span style="color: #f97316;">● 건수 역성장 (0% 미만)</span>
-                    <span style="color: #f59e0b;">--- 평균 ${avgCountGrowth.toFixed(1)}%</span>
+                    <span style="color: #3b82f6;">■ 성장 (0% 초과)</span>
+                    <span style="color: #f97316;">■ 역성장 (0% 미만)</span>
+                    <span style="color: #60a5fa;">─● ${currentData.year}년</span>
+                    <span style="color: #f59e0b;">─● ${compareData.year}년</span>
+                    <span style="color: #94a3b8;">--- 평균 ${avgCountGrowth.toFixed(1)}%</span>
                 `;
             } else {
                 legendEl.innerHTML = `
-                    <span style="color: #10b981;">● 매출 성장</span>
-                    <span style="color: #ef4444;">● 매출 역성장</span>
+                    <span style="color: #10b981;">■ 매출 성장</span>
+                    <span style="color: #ef4444;">■ 매출 역성장</span>
                     <span style="color: #3b82f6;">● 건수 성장</span>
                     <span style="color: #f97316;">● 건수 역성장</span>
                 `;
@@ -13605,10 +13763,33 @@ HTML_TEMPLATE = '''
                     },
                     scales: {
                         y: {
+                            type: 'linear',
+                            position: 'left',
                             beginAtZero: false,
                             grid: { color: 'rgba(148, 163, 184, 0.1)' },
                             ticks: {
                                 callback: function(value) { return value.toFixed(0) + '%'; }
+                            },
+                            title: {
+                                display: true,
+                                text: '성장률 (%)',
+                                color: '#94a3b8',
+                                font: { size: 11 }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            beginAtZero: true,
+                            grid: { display: false },
+                            ticks: {
+                                callback: function(value) { return formatCurrency(value); }
+                            },
+                            title: {
+                                display: true,
+                                text: metric === 'count' ? '건수' : '매출',
+                                color: '#94a3b8',
+                                font: { size: 11 }
                             }
                         },
                         x: { grid: { display: false } }
