@@ -4609,23 +4609,49 @@ HTML_TEMPLATE = '''
         let currentTab = 'main';
         let managerTableSort = { column: null, direction: 'desc' };
 
-        // 툴팁 hover 상태 관리 (스크롤 가능하도록)
+        // 툴팁 hover 상태 관리 (스크롤 가능하도록 + 민감도 감소)
         const tooltipHoverState = {};
+        const tooltipHideTimers = {};
+        const TOOLTIP_HIDE_DELAY = 200; // ms
+
         function setupTooltipHover(tooltipEl) {
             if (!tooltipEl || tooltipEl._hoverSetup) return;
             tooltipEl._hoverSetup = true;
             tooltipEl.addEventListener('mouseenter', () => {
+                // 숨김 타이머 취소
+                if (tooltipHideTimers[tooltipEl.id]) {
+                    clearTimeout(tooltipHideTimers[tooltipEl.id]);
+                    tooltipHideTimers[tooltipEl.id] = null;
+                }
                 tooltipHoverState[tooltipEl.id] = true;
                 tooltipEl.style.opacity = 1;
                 tooltipEl.style.pointerEvents = 'auto';
             });
             tooltipEl.addEventListener('mouseleave', () => {
                 tooltipHoverState[tooltipEl.id] = false;
-                tooltipEl.style.opacity = 0;
+                // 지연 후 숨김
+                tooltipHideTimers[tooltipEl.id] = setTimeout(() => {
+                    if (!tooltipHoverState[tooltipEl.id]) {
+                        tooltipEl.style.opacity = 0;
+                    }
+                }, TOOLTIP_HIDE_DELAY);
             });
         }
         function isTooltipHovered(tooltipEl) {
             return tooltipEl && tooltipHoverState[tooltipEl.id];
+        }
+
+        // 툴팁 숨김 지연 처리
+        function hideTooltipWithDelay(tooltipEl) {
+            if (!tooltipEl) return;
+            if (tooltipHideTimers[tooltipEl.id]) {
+                clearTimeout(tooltipHideTimers[tooltipEl.id]);
+            }
+            tooltipHideTimers[tooltipEl.id] = setTimeout(() => {
+                if (!tooltipHoverState[tooltipEl.id]) {
+                    tooltipEl.style.opacity = 0;
+                }
+            }, TOOLTIP_HIDE_DELAY);
         }
 
         // 유틸리티 함수
@@ -5292,7 +5318,7 @@ HTML_TEMPLATE = '''
                                 const tooltipModel = context.tooltip;
 
                                 if (tooltipModel.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                                    tooltipEl.style.opacity = 0;
+                                    hideTooltipWithDelay(tooltipEl);
                                     return;
                                 }
 
@@ -5304,7 +5330,7 @@ HTML_TEMPLATE = '''
                                     const customData = dataset.customData;
 
                                     if (!customData || !customData[idx]) {
-                                        tooltipEl.style.opacity = 0;
+                                        hideTooltipWithDelay(tooltipEl);
                                         return;
                                     }
 
@@ -5732,7 +5758,7 @@ HTML_TEMPLATE = '''
                     const tooltipEl = getOrCreateMgrMonthlyTooltip(chart);
 
                     if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                        tooltipEl.style.opacity = 0;
+                        hideTooltipWithDelay(tooltipEl);
                         return;
                     }
 
@@ -6119,7 +6145,7 @@ HTML_TEMPLATE = '''
                     const tooltipEl = getOrCreateMgrMonthlyTooltipTop3(chart);
 
                     if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                        tooltipEl.style.opacity = 0;
+                        hideTooltipWithDelay(tooltipEl);
                         return;
                     }
 
@@ -6511,7 +6537,7 @@ HTML_TEMPLATE = '''
                         const tooltipEl = getOrCreateMgrMonthlyTooltipSelected(chart);
 
                         if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                            tooltipEl.style.opacity = 0;
+                            hideTooltipWithDelay(tooltipEl);
                             return;
                         }
 
@@ -6990,7 +7016,7 @@ HTML_TEMPLATE = '''
                 const tooltipEl = getOrCreatePerCaseTooltip(chart);
 
                 if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                    tooltipEl.style.opacity = 0;
+                    hideTooltipWithDelay(tooltipEl);
                     return;
                 }
 
@@ -7328,7 +7354,7 @@ HTML_TEMPLATE = '''
                 const tooltipEl = getOrCreateUrgentTooltip(chart);
 
                 if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                    tooltipEl.style.opacity = 0;
+                    hideTooltipWithDelay(tooltipEl);
                     return;
                 }
 
@@ -7660,7 +7686,7 @@ HTML_TEMPLATE = '''
                                 const tooltipModel = context.tooltip;
 
                                 if (tooltipModel.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                                    tooltipEl.style.opacity = 0;
+                                    hideTooltipWithDelay(tooltipEl);
                                     return;
                                 }
 
@@ -8234,7 +8260,7 @@ HTML_TEMPLATE = '''
                                 const tooltipModel = context.tooltip;
 
                                 if (tooltipModel.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                                    tooltipEl.style.opacity = 0;
+                                    hideTooltipWithDelay(tooltipEl);
                                     return;
                                 }
 
@@ -8717,7 +8743,7 @@ HTML_TEMPLATE = '''
                 const tooltipEl = getOrCreateDailyClientTooltip(chart);
 
                 if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                    tooltipEl.style.opacity = 0;
+                    hideTooltipWithDelay(tooltipEl);
                     return;
                 }
 
@@ -9192,7 +9218,7 @@ HTML_TEMPLATE = '''
                 const tooltipEl = getOrCreateBranchPerCaseTooltip(chart);
 
                 if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                    tooltipEl.style.opacity = 0;
+                    hideTooltipWithDelay(tooltipEl);
                     return;
                 }
 
@@ -9569,7 +9595,7 @@ HTML_TEMPLATE = '''
                 const tooltipEl = getOrCreateEfficiencyTooltip(chart);
 
                 if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                    tooltipEl.style.opacity = 0;
+                    hideTooltipWithDelay(tooltipEl);
                     return;
                 }
 
@@ -9960,7 +9986,7 @@ HTML_TEMPLATE = '''
                 const tooltipEl = getOrCreateBranchMonthlyTooltip(chart);
 
                 if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                    tooltipEl.style.opacity = 0;
+                    hideTooltipWithDelay(tooltipEl);
                     return;
                 }
 
@@ -10454,7 +10480,7 @@ HTML_TEMPLATE = '''
                 const tooltipEl = getOrCreateManagerTooltip(chart);
 
                 if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                    tooltipEl.style.opacity = 0;
+                    hideTooltipWithDelay(tooltipEl);
                     return;
                 }
 
@@ -10845,7 +10871,7 @@ HTML_TEMPLATE = '''
                 const tooltipEl = getOrCreateBranchTooltip(chart);
 
                 if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                    tooltipEl.style.opacity = 0;
+                    hideTooltipWithDelay(tooltipEl);
                     return;
                 }
 
@@ -11298,7 +11324,7 @@ HTML_TEMPLATE = '''
                 const tooltipEl = getOrCreateMonthlyTooltip(chart);
 
                 if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
-                    tooltipEl.style.opacity = 0;
+                    hideTooltipWithDelay(tooltipEl);
                     return;
                 }
 
@@ -11653,7 +11679,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateCountTooltip(context.chart);
-                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { hideTooltipWithDelay(tooltipEl); return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -11759,7 +11785,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateQuarterlyTooltip(context.chart);
-                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { hideTooltipWithDelay(tooltipEl); return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -11856,7 +11882,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateAvgPriceTooltip(context.chart);
-                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { hideTooltipWithDelay(tooltipEl); return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -11963,7 +11989,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateYoyTooltip(context.chart);
-                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { hideTooltipWithDelay(tooltipEl); return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -12779,7 +12805,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateClientSalesTooltip();
-                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { hideTooltipWithDelay(tooltipEl); return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -12880,7 +12906,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateClientCountTooltip();
-                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { hideTooltipWithDelay(tooltipEl); return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -13464,7 +13490,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateRegionSalesTooltip();
-                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { hideTooltipWithDelay(tooltipEl); return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
@@ -13555,7 +13581,7 @@ HTML_TEMPLATE = '''
                             enabled: false,
                             external: function(context) {
                                 const tooltipEl = getOrCreateRegionGrowthTooltip();
-                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { tooltipEl.style.opacity = 0; return; }
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { hideTooltipWithDelay(tooltipEl); return; }
 
                                 const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
                                 if (idx === undefined) return;
