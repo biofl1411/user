@@ -3947,6 +3947,16 @@ HTML_TEMPLATE = '''
                     <div class="card-badge" id="branchRetentionBadge">0개</div>
                 </div>
                 <div class="card-body">
+                    <!-- 색상 범례 -->
+                    <div id="branchRetentionLegend" style="display: flex; gap: 20px; margin-bottom: 12px; font-size: 12px; color: #64748b; flex-wrap: wrap;">
+                        <span><strong>거래처 수:</strong></span>
+                        <span><span style="color: #10b981;">●</span> 리텐션 50% 이상</span>
+                        <span><span style="color: #f59e0b;">●</span> 리텐션 30~50%</span>
+                        <span><span style="color: #ef4444;">●</span> 리텐션 30% 미만</span>
+                        <span style="margin-left: 20px;"><strong>증감:</strong></span>
+                        <span><span style="color: #10b981;">(+)</span> 증가</span>
+                        <span><span style="color: #ef4444;">(-)</span> 감소</span>
+                    </div>
                     <div class="scroll-table">
                         <table class="data-table" id="branchRetentionTable">
                             <thead>
@@ -11123,6 +11133,31 @@ HTML_TEMPLATE = '''
 
             // 비교 데이터
             const compareBranchRetention = compareData?.branch_client_retention || {};
+
+            // 범례 업데이트
+            const legend = document.getElementById('branchRetentionLegend');
+            if (legend) {
+                if (compareData) {
+                    legend.innerHTML = `
+                        <span><strong>거래처 수:</strong></span>
+                        <span><span style="color: #10b981;">●</span> 리텐션 50% 이상</span>
+                        <span><span style="color: #f59e0b;">●</span> 리텐션 30~50%</span>
+                        <span><span style="color: #ef4444;">●</span> 리텐션 30% 미만</span>
+                        <span style="margin-left: 20px;"><strong>전년 대비:</strong></span>
+                        <span><span style="color: #10b981;">(+)</span> 증가</span>
+                        <span><span style="color: #ef4444;">(-)</span> 감소</span>
+                    `;
+                } else {
+                    legend.innerHTML = `
+                        <span><strong>거래처 수:</strong></span>
+                        <span><span style="color: #10b981;">●</span> 리텐션 50% 이상</span>
+                        <span><span style="color: #f59e0b;">●</span> 리텐션 30~50%</span>
+                        <span><span style="color: #ef4444;">●</span> 리텐션 30% 미만</span>
+                        <span style="margin-left: 20px;"><strong>신규:</strong></span>
+                        <span><span style="color: #888;">(+N)</span> 신규 거래처 수</span>
+                    `;
+                }
+            }
 
             document.getElementById('branchRetentionBadge').textContent = branches.length + '개';
 
