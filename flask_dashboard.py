@@ -4612,7 +4612,7 @@ HTML_TEMPLATE = '''
         // 툴팁 hover 상태 관리 (스크롤 가능하도록 + 민감도 감소)
         const tooltipHoverState = {};
         const tooltipHideTimers = {};
-        const TOOLTIP_HIDE_DELAY = 200; // ms
+        const TOOLTIP_HIDE_DELAY = 350; // ms - 툴팁 숨김 지연
 
         function setupTooltipHover(tooltipEl) {
             if (!tooltipEl || tooltipEl._hoverSetup) return;
@@ -11097,6 +11097,7 @@ HTML_TEMPLATE = '''
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: true },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
@@ -11124,6 +11125,7 @@ HTML_TEMPLATE = '''
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: true },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
