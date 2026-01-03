@@ -4535,36 +4535,36 @@ HTML_TEMPLATE = '''
                 <div class="section-title-bar" style="margin-bottom: 12px;">
                     <div class="section-title">🎯 담당자 영업력 (업체 확보/성장)</div>
                 </div>
-                <div class="manager-kpi-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
-                    <div class="manager-kpi-card" id="kpiClientKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #6366f1; cursor: pointer; position: relative;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">👑</div>
-                        <div style="font-size: 13px; color: #64748b;">업체 보유왕</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiClientKingName">-</div>
-                        <div style="font-size: 12px; color: #94a3b8;" id="kpiClientKingValue">-</div>
+                <section class="kpi-section" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="kpi-card manager-kpi-card" id="kpiClientKing" style="border-top: 4px solid #6366f1; cursor: pointer; position: relative;">
+                        <div class="kpi-header"><div class="kpi-icon" style="background: #eef2ff; color: #6366f1;">👑</div></div>
+                        <div class="kpi-label">업체 보유왕</div>
+                        <div class="kpi-value" style="font-size: 20px; color: #1e293b;" id="kpiClientKingName">-</div>
+                        <div class="kpi-compare" id="kpiClientKingValue">-</div>
                         <div class="manager-kpi-overlay" id="kpiClientKingOverlay" style="display: none;"></div>
                     </div>
-                    <div class="manager-kpi-card" id="kpiNewKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #10b981; cursor: pointer; position: relative;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">🌱</div>
-                        <div style="font-size: 13px; color: #64748b;">신규 확보왕</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiNewKingName">-</div>
-                        <div style="font-size: 12px; color: #94a3b8;" id="kpiNewKingValue">-</div>
+                    <div class="kpi-card manager-kpi-card" id="kpiNewKing" style="border-top: 4px solid #10b981; cursor: pointer; position: relative;">
+                        <div class="kpi-header"><div class="kpi-icon" style="background: #d1fae5; color: #10b981;">🌱</div></div>
+                        <div class="kpi-label">신규 확보왕</div>
+                        <div class="kpi-value" style="font-size: 20px; color: #1e293b;" id="kpiNewKingName">-</div>
+                        <div class="kpi-compare" id="kpiNewKingValue">-</div>
                         <div class="manager-kpi-overlay" id="kpiNewKingOverlay" style="display: none;"></div>
                     </div>
-                    <div class="manager-kpi-card" id="kpiGrowthKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #8b5cf6; cursor: pointer; position: relative;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">💰</div>
-                        <div style="font-size: 13px; color: #64748b;">성장 기여왕</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiGrowthKingName">-</div>
-                        <div style="font-size: 12px; color: #94a3b8;" id="kpiGrowthKingValue">-</div>
+                    <div class="kpi-card manager-kpi-card" id="kpiGrowthKing" style="border-top: 4px solid #8b5cf6; cursor: pointer; position: relative;">
+                        <div class="kpi-header"><div class="kpi-icon" style="background: #ede9fe; color: #8b5cf6;">💰</div></div>
+                        <div class="kpi-label">성장 기여왕</div>
+                        <div class="kpi-value" style="font-size: 20px; color: #1e293b;" id="kpiGrowthKingName">-</div>
+                        <div class="kpi-compare" id="kpiGrowthKingValue">-</div>
                         <div class="manager-kpi-overlay" id="kpiGrowthKingOverlay" style="display: none;"></div>
                     </div>
-                    <div class="manager-kpi-card" id="kpiVipKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #f59e0b; cursor: pointer; position: relative;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">💎</div>
-                        <div style="font-size: 13px; color: #64748b;">VIP 확보왕</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiVipKingName">-</div>
-                        <div style="font-size: 12px; color: #94a3b8;" id="kpiVipKingValue">-</div>
+                    <div class="kpi-card manager-kpi-card" id="kpiVipKing" style="border-top: 4px solid #f59e0b; cursor: pointer; position: relative;">
+                        <div class="kpi-header"><div class="kpi-icon" style="background: #fef3c7; color: #f59e0b;">💎</div></div>
+                        <div class="kpi-label">VIP 확보왕</div>
+                        <div class="kpi-value" style="font-size: 20px; color: #1e293b;" id="kpiVipKingName">-</div>
+                        <div class="kpi-compare" id="kpiVipKingValue">-</div>
                         <div class="manager-kpi-overlay" id="kpiVipKingOverlay" style="display: none;"></div>
                     </div>
-                </div>
+                </section>
             </section>
 
             <!-- 담당자 관리력 KPI -->
@@ -4572,36 +4572,36 @@ HTML_TEMPLATE = '''
                 <div class="section-title-bar" style="margin-bottom: 12px;">
                     <div class="section-title">🤝 담당자 관리력 (유지/활성화)</div>
                 </div>
-                <div class="manager-kpi-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
-                    <div class="manager-kpi-card" id="kpiRetentionKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #06b6d4; cursor: pointer; position: relative;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">🔄</div>
-                        <div style="font-size: 13px; color: #64748b;">유지율 TOP</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiRetentionKingName">-</div>
-                        <div style="font-size: 12px; color: #94a3b8;" id="kpiRetentionKingValue">-</div>
+                <section class="kpi-section" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="kpi-card manager-kpi-card" id="kpiRetentionKing" style="border-top: 4px solid #06b6d4; cursor: pointer; position: relative;">
+                        <div class="kpi-header"><div class="kpi-icon" style="background: #cffafe; color: #06b6d4;">🔄</div></div>
+                        <div class="kpi-label">유지율 TOP</div>
+                        <div class="kpi-value" style="font-size: 20px; color: #1e293b;" id="kpiRetentionKingName">-</div>
+                        <div class="kpi-compare" id="kpiRetentionKingValue">-</div>
                         <div class="manager-kpi-overlay" id="kpiRetentionKingOverlay" style="display: none;"></div>
                     </div>
-                    <div class="manager-kpi-card" id="kpiSteadyKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #14b8a6; cursor: pointer; position: relative;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">📅</div>
-                        <div style="font-size: 13px; color: #64748b;">꾸준 거래왕</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiSteadyKingName">-</div>
-                        <div style="font-size: 12px; color: #94a3b8;" id="kpiSteadyKingValue">-</div>
+                    <div class="kpi-card manager-kpi-card" id="kpiSteadyKing" style="border-top: 4px solid #14b8a6; cursor: pointer; position: relative;">
+                        <div class="kpi-header"><div class="kpi-icon" style="background: #ccfbf1; color: #14b8a6;">📅</div></div>
+                        <div class="kpi-label">꾸준 거래왕</div>
+                        <div class="kpi-value" style="font-size: 20px; color: #1e293b;" id="kpiSteadyKingName">-</div>
+                        <div class="kpi-compare" id="kpiSteadyKingValue">-</div>
                         <div class="manager-kpi-overlay" id="kpiSteadyKingOverlay" style="display: none;"></div>
                     </div>
-                    <div class="manager-kpi-card" id="kpiActiveKing" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #ec4899; cursor: pointer; position: relative;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">🔥</div>
-                        <div style="font-size: 13px; color: #64748b;">활성 관리왕</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiActiveKingName">-</div>
-                        <div style="font-size: 12px; color: #94a3b8;" id="kpiActiveKingValue">-</div>
+                    <div class="kpi-card manager-kpi-card" id="kpiActiveKing" style="border-top: 4px solid #ec4899; cursor: pointer; position: relative;">
+                        <div class="kpi-header"><div class="kpi-icon" style="background: #fce7f3; color: #ec4899;">🔥</div></div>
+                        <div class="kpi-label">활성 관리왕</div>
+                        <div class="kpi-value" style="font-size: 20px; color: #1e293b;" id="kpiActiveKingName">-</div>
+                        <div class="kpi-compare" id="kpiActiveKingValue">-</div>
                         <div class="manager-kpi-overlay" id="kpiActiveKingOverlay" style="display: none;"></div>
                     </div>
-                    <div class="manager-kpi-card" id="kpiChurnWarning" style="background: white; border-radius: 12px; padding: 16px; border-left: 4px solid #ef4444; cursor: pointer; position: relative;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">⚠️</div>
-                        <div style="font-size: 13px; color: #64748b;">이탈 주의</div>
-                        <div style="font-size: 18px; font-weight: 700; color: #1e293b;" id="kpiChurnWarningName">-</div>
-                        <div style="font-size: 12px; color: #94a3b8;" id="kpiChurnWarningValue">-</div>
+                    <div class="kpi-card manager-kpi-card" id="kpiChurnWarning" style="border-top: 4px solid #ef4444; cursor: pointer; position: relative;">
+                        <div class="kpi-header"><div class="kpi-icon" style="background: #fee2e2; color: #ef4444;">⚠️</div></div>
+                        <div class="kpi-label">이탈 주의</div>
+                        <div class="kpi-value" style="font-size: 20px; color: #1e293b;" id="kpiChurnWarningName">-</div>
+                        <div class="kpi-compare" id="kpiChurnWarningValue">-</div>
                         <div class="manager-kpi-overlay" id="kpiChurnWarningOverlay" style="display: none;"></div>
                     </div>
-                </div>
+                </section>
             </section>
 
             <!-- 매출/건수 TOP 10 차트 -->
