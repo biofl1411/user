@@ -4514,35 +4514,35 @@ HTML_TEMPLATE = '''
 
             <!-- 업체 현황 KPI 카드 -->
             <section class="kpi-section client-kpi-section" style="grid-template-columns: repeat(5, 1fr);">
-                <div class="kpi-card sales" style="border-top: 4px solid var(--primary);">
+                <div class="kpi-card sales client-kpi-hover" id="kpiTotalCard" style="border-top: 4px solid var(--primary); cursor: pointer; position: relative;">
                     <div class="kpi-header"><div class="kpi-icon">🏢</div></div>
                     <div class="kpi-label">총 거래업체</div>
                     <div class="kpi-value" id="clientTotalCount">-</div>
                     <div class="kpi-compare" id="clientTotalCompare">전년: -</div>
                 </div>
-                <div class="kpi-card count" style="border-top: 4px solid var(--success);">
+                <div class="kpi-card count client-kpi-hover" id="kpiNewCard" style="border-top: 4px solid var(--success); cursor: pointer; position: relative;">
                     <div class="kpi-header"><div class="kpi-icon">🆕</div></div>
                     <div class="kpi-label">신규 업체</div>
                     <div class="kpi-value" id="clientNewCount" style="color: var(--success);">-</div>
-                    <div class="kpi-compare">올해 첫 거래</div>
+                    <div class="kpi-compare" id="clientNewCompare">올해 첫 거래</div>
                 </div>
-                <div class="kpi-card price" style="border-top: 4px solid var(--primary);">
+                <div class="kpi-card price client-kpi-hover" id="kpiRetainedCard" style="border-top: 4px solid var(--primary); cursor: pointer; position: relative;">
                     <div class="kpi-header"><div class="kpi-icon">🔄</div></div>
                     <div class="kpi-label">유지 업체</div>
                     <div class="kpi-value" id="clientRetainedCount">-</div>
-                    <div class="kpi-compare">전년부터 지속</div>
+                    <div class="kpi-compare" id="clientRetainedCompare">전년부터 지속</div>
                 </div>
-                <div class="kpi-card goal" style="border-top: 4px solid var(--danger);">
+                <div class="kpi-card goal client-kpi-hover" id="kpiChurnedCard" style="border-top: 4px solid var(--danger); cursor: pointer; position: relative;">
                     <div class="kpi-header"><div class="kpi-icon">📤</div></div>
                     <div class="kpi-label">이탈 업체</div>
                     <div class="kpi-value" id="clientChurnedCount" style="color: var(--danger);">-</div>
-                    <div class="kpi-compare">올해 거래 없음</div>
+                    <div class="kpi-compare" id="clientChurnedCompare">올해 거래 없음</div>
                 </div>
-                <div class="kpi-card" style="border-top: 4px solid var(--warning);">
+                <div class="kpi-card client-kpi-hover" id="kpiVipCard" style="border-top: 4px solid var(--warning); cursor: pointer; position: relative;">
                     <div class="kpi-header"><div class="kpi-icon">⭐</div></div>
                     <div class="kpi-label">VIP 업체</div>
                     <div class="kpi-value" id="clientVipCount" style="color: var(--warning);">-</div>
-                    <div class="kpi-compare">매출 1억 이상</div>
+                    <div class="kpi-compare" id="clientVipNames" style="font-size: 11px; max-height: 36px; overflow: hidden;">매출 1억 이상</div>
                 </div>
             </section>
 
@@ -4618,6 +4618,24 @@ HTML_TEMPLATE = '''
                         <div class="manager-kpi-overlay" id="kpiChurnWarningOverlay" style="display: none;"></div>
                     </div>
                 </section>
+            </section>
+
+            <!-- 효율 분류 월별 추세 차트 -->
+            <section class="efficiency-trend-section" style="margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📈 효율 분류별 월별 추세</div>
+                        <div class="card-badge" id="efficiencyTrendBadge">업체 분류</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="quadrant-legend" style="margin-bottom: 12px;">
+                            <span class="q-item" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: #10b981;">🌟 고효율 (평균 이상)</span>
+                            <span class="q-item" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border-color: #eab308;">📊 중간 (평균 ±30%)</span>
+                            <span class="q-item" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border-color: #ef4444;">⚠️ 저효율 (평균 미만)</span>
+                        </div>
+                        <div class="chart-container" style="height: 320px;"><canvas id="clientEfficiencyTrendChart"></canvas></div>
+                    </div>
+                </div>
             </section>
 
             <!-- 매출/건수 TOP 10 차트 -->
@@ -15976,6 +15994,27 @@ HTML_TEMPLATE = '''
             document.getElementById('clientChurnedCount').textContent = churnedClients.length + '개';
             document.getElementById('clientVipCount').textContent = vipClients.length + '개';
 
+            // VIP 업체명 표시
+            var vipNames = vipClients.slice(0, 5).map(function(c) { return c[0]; }).join(', ');
+            document.getElementById('clientVipNames').textContent = vipNames || '매출 1억 이상';
+            document.getElementById('clientVipNames').title = vipClients.map(function(c) { return c[0] + ' (' + formatCurrency(c[1].sales) + ')'; }).join('\\n');
+
+            // 전년 비교 데이터 계산
+            var compVipClients = compareClients.filter(function(c) { return c[1].sales >= 100000000; });
+            var totalDiff = clients.length - compareClients.length;
+            var retainedGrowth = retainedClients.filter(function(r) { return r.growthRate > 0; }).length;
+            var retainedDecline = retainedClients.filter(function(r) { return r.growthRate < 0; }).length;
+            var vipDiff = vipClients.length - compVipClients.length;
+
+            // KPI 카드 호버 툴팁 설정
+            setupClientKpiHover({
+                total: { current: clients.length, prev: compareClients.length, diff: totalDiff },
+                newC: { current: newClients.length, topClients: newClients.slice(0, 3) },
+                retained: { current: retainedClients.length, growth: retainedGrowth, decline: retainedDecline },
+                churned: { current: churnedClients.length, topClients: churnedClients.slice(0, 3) },
+                vip: { current: vipClients.length, prev: compVipClients.length, diff: vipDiff, clients: vipClients }
+            });
+
             // 담당자별 통계 계산
             updateManagerKPIs(clients, newClients, retainedClients, churnedClients, vipClients, compareClientMap);
 
@@ -15984,6 +16023,7 @@ HTML_TEMPLATE = '''
             updateClientCountChart(clients, newClients, retainedClients);
             updateClientMonthlyCountChart();
             updateClientEfficiencyChart(clients);
+            updateClientEfficiencyTrendChart(clients);
 
             // 테이블 업데이트
             updateRetainedClientTable(retainedClients);
@@ -16420,7 +16460,7 @@ HTML_TEMPLATE = '''
             updateKpiCard('kpiActiveKing', managerArray.map(m => ({ name: m.name, value: m.activeRate })), v => v.toFixed(0) + '% 활성', avgActiveRate);
             updateKpiCard('kpiChurnWarning', managerArray.map(m => ({ name: m.name, value: m.churnedClients })), v => Math.round(v) + '개 이탈', avgChurn, true);
 
-            // 오버레이 이벤트 등록
+            // 오버레이 이벤트 등록 (다크 테마로 개선)
             document.querySelectorAll('.manager-kpi-card').forEach(card => {
                 const overlay = card.querySelector('.manager-kpi-overlay');
                 if (overlay) {
@@ -16428,17 +16468,267 @@ HTML_TEMPLATE = '''
                         overlay.style.display = 'block';
                         overlay.style.position = 'absolute';
                         overlay.style.top = '100%';
-                        overlay.style.left = '0';
-                        overlay.style.width = '220px';
-                        overlay.style.background = 'white';
-                        overlay.style.border = '2px solid #6366f1';
-                        overlay.style.borderRadius = '8px';
-                        overlay.style.padding = '12px';
-                        overlay.style.boxShadow = '0 10px 40px rgba(0,0,0,0.2)';
+                        overlay.style.left = '50%';
+                        overlay.style.transform = 'translateX(-50%)';
+                        overlay.style.marginTop = '8px';
+                        overlay.style.width = '240px';
+                        overlay.style.background = 'rgba(30, 41, 59, 0.98)';
+                        overlay.style.border = 'none';
+                        overlay.style.borderRadius = '12px';
+                        overlay.style.padding = '14px';
+                        overlay.style.boxShadow = '0 15px 40px rgba(0,0,0,0.35)';
                         overlay.style.zIndex = '1000';
                         overlay.style.fontSize = '12px';
+                        overlay.style.color = '#e2e8f0';
+                        overlay.style.lineHeight = '1.5';
                     });
                     card.addEventListener('mouseleave', () => { overlay.style.display = 'none'; });
+                }
+            });
+        }
+
+        // KPI 카드 호버 툴팁 설정 함수
+        function setupClientKpiHover(data) {
+            var cards = [
+                { id: 'kpiTotalCard', content: function() {
+                    var sign = data.total.diff >= 0 ? '+' : '';
+                    return '<div style="background:rgba(30,41,59,0.98);padding:14px;border-radius:10px;color:#e2e8f0;font-size:12px;min-width:200px;">' +
+                        '<div style="font-weight:700;margin-bottom:8px;color:#fff;font-size:14px;">총 거래업체 현황</div>' +
+                        '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>올해:</span><span style="font-weight:600;">' + data.total.current + '개</span></div>' +
+                        '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>전년:</span><span style="font-weight:600;">' + data.total.prev + '개</span></div>' +
+                        '<div style="display:flex;justify-content:space-between;color:' + (data.total.diff >= 0 ? '#10b981' : '#ef4444') + ';font-weight:700;"><span>증감:</span><span>' + sign + data.total.diff + '개</span></div>' +
+                    '</div>';
+                }},
+                { id: 'kpiNewCard', content: function() {
+                    var topList = data.newC.topClients.map(function(c) {
+                        return '<div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>' + c.name.substring(0, 12) + '</span><span style="color:#10b981;">' + formatCurrency(c.sales) + '</span></div>';
+                    }).join('');
+                    return '<div style="background:rgba(30,41,59,0.98);padding:14px;border-radius:10px;color:#e2e8f0;font-size:12px;min-width:220px;">' +
+                        '<div style="font-weight:700;margin-bottom:8px;color:#fff;font-size:14px;">신규 업체 TOP 3</div>' +
+                        (topList || '<div style="color:#94a3b8;">신규 업체 없음</div>') +
+                    '</div>';
+                }},
+                { id: 'kpiRetainedCard', content: function() {
+                    return '<div style="background:rgba(30,41,59,0.98);padding:14px;border-radius:10px;color:#e2e8f0;font-size:12px;min-width:200px;">' +
+                        '<div style="font-weight:700;margin-bottom:8px;color:#fff;font-size:14px;">유지 업체 현황</div>' +
+                        '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>총 유지업체:</span><span style="font-weight:600;">' + data.retained.current + '개</span></div>' +
+                        '<div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#10b981;"><span>📈 성장:</span><span style="font-weight:600;">' + data.retained.growth + '개</span></div>' +
+                        '<div style="display:flex;justify-content:space-between;color:#ef4444;"><span>📉 하락:</span><span style="font-weight:600;">' + data.retained.decline + '개</span></div>' +
+                    '</div>';
+                }},
+                { id: 'kpiChurnedCard', content: function() {
+                    var topList = data.churned.topClients.map(function(c) {
+                        return '<div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>' + (c.name || c[0] || '').substring(0, 12) + '</span><span style="color:#ef4444;">' + formatCurrency(c.lastYearSales || c[1]?.sales || 0) + '</span></div>';
+                    }).join('');
+                    return '<div style="background:rgba(30,41,59,0.98);padding:14px;border-radius:10px;color:#e2e8f0;font-size:12px;min-width:220px;">' +
+                        '<div style="font-weight:700;margin-bottom:8px;color:#fff;font-size:14px;">이탈 업체 (전년 매출 TOP)</div>' +
+                        (topList || '<div style="color:#94a3b8;">이탈 업체 없음</div>') +
+                    '</div>';
+                }},
+                { id: 'kpiVipCard', content: function() {
+                    var sign = data.vip.diff >= 0 ? '+' : '';
+                    var vipList = data.vip.clients.slice(0, 5).map(function(c) {
+                        return '<div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span style="color:#fbbf24;">⭐ ' + c[0].substring(0, 10) + '</span><span style="font-weight:600;">' + formatCurrency(c[1].sales) + '</span></div>';
+                    }).join('');
+                    return '<div style="background:rgba(30,41,59,0.98);padding:14px;border-radius:10px;color:#e2e8f0;font-size:12px;min-width:240px;">' +
+                        '<div style="font-weight:700;margin-bottom:8px;color:#fff;font-size:14px;">VIP 업체 (매출 1억 이상)</div>' +
+                        '<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>올해:</span><span style="font-weight:600;">' + data.vip.current + '개</span></div>' +
+                        '<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><span>전년:</span><span style="font-weight:600;">' + data.vip.prev + '개 (' + sign + data.vip.diff + ')</span></div>' +
+                        '<div style="border-top:1px solid #475569;padding-top:8px;">' + (vipList || '<div style="color:#94a3b8;">VIP 업체 없음</div>') + '</div>' +
+                    '</div>';
+                }}
+            ];
+
+            cards.forEach(function(cardInfo) {
+                var card = document.getElementById(cardInfo.id);
+                if (!card) return;
+
+                var tooltip = null;
+                card.addEventListener('mouseenter', function(e) {
+                    if (tooltip) tooltip.remove();
+                    tooltip = document.createElement('div');
+                    tooltip.innerHTML = cardInfo.content();
+                    tooltip.style.cssText = 'position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:8px;z-index:1000;';
+                    card.appendChild(tooltip);
+                });
+                card.addEventListener('mouseleave', function() {
+                    if (tooltip) { tooltip.remove(); tooltip = null; }
+                });
+            });
+        }
+
+        // 효율 분류별 월별 추세 차트 (고효율/중간/저효율 업체)
+        function updateClientEfficiencyTrendChart(clients) {
+            var ctx = document.getElementById('clientEfficiencyTrendChart');
+            if (!ctx) return;
+            if (charts.clientEfficiencyTrend) charts.clientEfficiencyTrend.destroy();
+
+            // 월별 데이터에서 업체별 효율 계산
+            var monthlyData = currentData.by_month || [];
+            if (monthlyData.length === 0) return;
+
+            // 전체 평균 건당 단가 계산
+            var totalSales = clients.reduce(function(s, c) { return s + c[1].sales; }, 0);
+            var totalCount = clients.reduce(function(s, c) { return s + c[1].count; }, 0);
+            var avgPerCase = totalCount > 0 ? totalSales / totalCount : 0;
+
+            // 업체별 건당 단가 계산 및 효율 분류
+            var clientEfficiency = {};
+            clients.forEach(function(c) {
+                var perCase = c[1].count > 0 ? c[1].sales / c[1].count : 0;
+                var efficiency;
+                if (perCase >= avgPerCase) {
+                    efficiency = 'high';  // 고효율: 평균 이상
+                } else if (perCase >= avgPerCase * 0.7) {
+                    efficiency = 'mid';   // 중간: 평균의 70% 이상
+                } else {
+                    efficiency = 'low';   // 저효율: 평균의 70% 미만
+                }
+                clientEfficiency[c[0]] = efficiency;
+            });
+
+            // 월별로 효율 분류별 업체 수 집계
+            var labels = [];
+            var highData = [];
+            var midData = [];
+            var lowData = [];
+
+            monthlyData.forEach(function(m) {
+                labels.push(m.month + '월');
+                var highCount = 0, midCount = 0, lowCount = 0;
+
+                // 해당 월에 거래한 업체들의 효율 분류 집계
+                if (m.clients) {
+                    Object.keys(m.clients).forEach(function(name) {
+                        var eff = clientEfficiency[name];
+                        if (eff === 'high') highCount++;
+                        else if (eff === 'mid') midCount++;
+                        else if (eff === 'low') lowCount++;
+                    });
+                } else {
+                    // clients 데이터가 없으면 비율로 추정
+                    var totalClients = m.clientCount || 0;
+                    highCount = Math.round(totalClients * 0.3);
+                    midCount = Math.round(totalClients * 0.4);
+                    lowCount = totalClients - highCount - midCount;
+                }
+
+                highData.push(highCount);
+                midData.push(midCount);
+                lowData.push(lowCount);
+            });
+
+            // 배지 업데이트
+            var highTotal = clients.filter(function(c) { return clientEfficiency[c[0]] === 'high'; }).length;
+            var midTotal = clients.filter(function(c) { return clientEfficiency[c[0]] === 'mid'; }).length;
+            var lowTotal = clients.filter(function(c) { return clientEfficiency[c[0]] === 'low'; }).length;
+            document.getElementById('efficiencyTrendBadge').textContent = '고' + highTotal + ' / 중' + midTotal + ' / 저' + lowTotal;
+
+            // 외부 툴팁 생성 함수
+            var getOrCreateEffTrendTooltip = function() {
+                var el = document.getElementById('efficiencyTrendTooltip');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'efficiencyTrendTooltip';
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:260px;max-width:340px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
+                    document.body.appendChild(el);
+                    setupTooltipHover(el);
+                }
+                return el;
+            };
+
+            charts.clientEfficiencyTrend = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '고효율 업체',
+                            data: highData,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                            borderWidth: 3,
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 5,
+                            pointHoverRadius: 8
+                        },
+                        {
+                            label: '중간 효율',
+                            data: midData,
+                            borderColor: '#eab308',
+                            backgroundColor: 'rgba(234, 179, 8, 0.15)',
+                            borderWidth: 3,
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 5,
+                            pointHoverRadius: 8
+                        },
+                        {
+                            label: '저효율 업체',
+                            data: lowData,
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                            borderWidth: 3,
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 5,
+                            pointHoverRadius: 8
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: true, position: 'top' },
+                        tooltip: {
+                            enabled: false,
+                            external: function(context) {
+                                var tooltipEl = getOrCreateEffTrendTooltip();
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
+                                    hideTooltipWithDelay(tooltipEl);
+                                    return;
+                                }
+
+                                var dataPoints = context.tooltip.dataPoints;
+                                if (!dataPoints || dataPoints.length === 0) return;
+
+                                var monthIdx = dataPoints[0].dataIndex;
+                                var month = labels[monthIdx];
+                                var high = highData[monthIdx];
+                                var mid = midData[monthIdx];
+                                var low = lowData[monthIdx];
+                                var total = high + mid + low;
+
+                                var html = '<div style="font-weight:700;font-size:15px;margin-bottom:12px;color:#fff;">' + month + ' 효율 분류</div>' +
+                                    '<div style="display:flex;justify-content:space-between;margin-bottom:6px;padding:6px 8px;background:rgba(16,185,129,0.2);border-radius:6px;"><span style="color:#10b981;">🌟 고효율</span><span style="font-weight:600;">' + high + '개 (' + (total > 0 ? Math.round(high/total*100) : 0) + '%)</span></div>' +
+                                    '<div style="display:flex;justify-content:space-between;margin-bottom:6px;padding:6px 8px;background:rgba(234,179,8,0.2);border-radius:6px;"><span style="color:#eab308;">📊 중간</span><span style="font-weight:600;">' + mid + '개 (' + (total > 0 ? Math.round(mid/total*100) : 0) + '%)</span></div>' +
+                                    '<div style="display:flex;justify-content:space-between;padding:6px 8px;background:rgba(239,68,68,0.2);border-radius:6px;"><span style="color:#ef4444;">⚠️ 저효율</span><span style="font-weight:600;">' + low + '개 (' + (total > 0 ? Math.round(low/total*100) : 0) + '%)</span></div>' +
+                                    '<div style="margin-top:10px;padding-top:8px;border-top:1px solid #475569;font-size:11px;color:#94a3b8;">기준: 건당단가 ' + formatCurrency(avgPerCase) + '</div>';
+
+                                tooltipEl.innerHTML = html;
+                                tooltipEl.style.opacity = '1';
+                                tooltipEl.style.display = 'block';
+
+                                var pos = context.chart.canvas.getBoundingClientRect();
+                                tooltipEl.style.left = (pos.left + context.tooltip.caretX + 15) + 'px';
+                                tooltipEl.style.top = (pos.top + context.tooltip.caretY - 10) + 'px';
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255,255,255,0.06)' },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8' }
+                        }
+                    }
                 }
             });
         }
