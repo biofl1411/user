@@ -4085,10 +4085,23 @@ HTML_TEMPLATE = '''
 
             <!-- 목적별 월별 히트맵 -->
             <div class="card" style="margin-bottom: 24px;">
-                <div class="card-header">
+                <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
                     <div class="card-title">🔥 검사목적별 월별 히트맵</div>
+                    <div class="chart-controls" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <select id="heatmapMetric" onchange="updateHeatmap()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px;">
+                            <option value="sales">매출</option>
+                            <option value="count">건수</option>
+                            <option value="growth">성장률</option>
+                        </select>
+                        <select id="heatmapColorScheme" onchange="updateHeatmap()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px;">
+                            <option value="blue">파란색 계열</option>
+                            <option value="green">녹색 계열</option>
+                            <option value="heat">열 지도 (빨강-노랑)</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="card-body">
+                    <div class="heatmap-legend" id="heatmapLegend" style="display: flex; gap: 16px; margin-bottom: 12px; font-size: 11px; color: #64748b; flex-wrap: wrap;"></div>
                     <div class="scroll-table">
                         <table class="data-table heatmap-table" id="purposeHeatmapTable">
                             <thead><tr id="heatmapHeader"><th>검사목적</th></tr></thead>
@@ -14244,54 +14257,198 @@ HTML_TEMPLATE = '''
             });
         }
 
+        // 히트맵 정렬 상태
+        let heatmapSortCol = 'total';
+        let heatmapSortDir = 'desc';
+
+        // 히트맵 정렬 함수
+        function sortHeatmap(col) {
+            if (heatmapSortCol === col) {
+                heatmapSortDir = heatmapSortDir === 'desc' ? 'asc' : 'desc';
+            } else {
+                heatmapSortCol = col;
+                heatmapSortDir = 'desc';
+            }
+            updateHeatmap();
+        }
+
         // 히트맵 업데이트
         function updateHeatmap() {
             const monthly = currentData.by_month || [];
             const monthMap = Object.fromEntries(monthly);
+            const compMonthly = compareData?.by_month || [];
+            const compMap = Object.fromEntries(compMonthly);
+            const hasCompare = compareData && compMonthly.length > 0;
+
+            const metric = document.getElementById('heatmapMetric')?.value || 'sales';
+            const colorScheme = document.getElementById('heatmapColorScheme')?.value || 'blue';
+
             const purposes = {};
 
             // 모든 목적과 월별 데이터 수집
             for (let m = 1; m <= 12; m++) {
                 const byPurpose = monthMap[m]?.byPurpose || {};
+                const compByPurpose = compMap[m]?.byPurpose || {};
                 for (const [purpose, data] of Object.entries(byPurpose)) {
-                    if (!purposes[purpose]) purposes[purpose] = {};
-                    purposes[purpose][m] = data.sales;
+                    if (purpose === '접수취소') continue;
+                    if (!purposes[purpose]) purposes[purpose] = { months: {}, compMonths: {} };
+                    purposes[purpose].months[m] = { sales: data.sales || 0, count: data.count || 0 };
+                }
+                // 비교 연도 데이터
+                for (const [purpose, data] of Object.entries(compByPurpose)) {
+                    if (purpose === '접수취소') continue;
+                    if (!purposes[purpose]) purposes[purpose] = { months: {}, compMonths: {} };
+                    purposes[purpose].compMonths[m] = { sales: data.sales || 0, count: data.count || 0 };
                 }
             }
 
-            // 헤더 구성
-            const headerRow = document.getElementById('heatmapHeader');
-            headerRow.innerHTML = '<th>검사목적</th>' + ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'].map(m => `<th class="text-center">${m}</th>`).join('') + '<th class="text-right">합계</th>';
+            // 값 추출 함수
+            const getValue = (purposeData, m) => {
+                const curr = purposeData.months[m] || { sales: 0, count: 0 };
+                const comp = purposeData.compMonths[m] || { sales: 0, count: 0 };
+                if (metric === 'sales') return curr.sales;
+                if (metric === 'count') return curr.count;
+                if (metric === 'growth') {
+                    if (!hasCompare || comp.sales <= 0) return null;
+                    return ((curr.sales - comp.sales) / comp.sales * 100);
+                }
+                return curr.sales;
+            };
 
-            // 최대값 계산 (색상 스케일용)
-            let maxVal = 0;
-            for (const purpose of Object.keys(purposes)) {
+            // 합계 계산 함수
+            const getTotal = (purposeData) => {
+                let total = 0, compTotal = 0;
                 for (let m = 1; m <= 12; m++) {
-                    const val = purposes[purpose][m] || 0;
-                    if (val > maxVal) maxVal = val;
+                    const curr = purposeData.months[m] || { sales: 0, count: 0 };
+                    const comp = purposeData.compMonths[m] || { sales: 0, count: 0 };
+                    if (metric === 'sales') { total += curr.sales; compTotal += comp.sales; }
+                    else if (metric === 'count') { total += curr.count; compTotal += comp.count; }
+                }
+                if (metric === 'growth' && hasCompare && compTotal > 0) {
+                    return ((total - compTotal) / compTotal * 100);
+                }
+                return total;
+            };
+
+            // 최대/최소값 계산
+            let maxVal = -Infinity, minVal = Infinity;
+            for (const [purpose, pData] of Object.entries(purposes)) {
+                for (let m = 1; m <= 12; m++) {
+                    const val = getValue(pData, m);
+                    if (val !== null) {
+                        if (val > maxVal) maxVal = val;
+                        if (val < minVal) minVal = val;
+                    }
                 }
             }
+            if (maxVal === -Infinity) maxVal = 0;
+            if (minVal === Infinity) minVal = 0;
+
+            // 색상 함수
+            const getColor = (val, intensity) => {
+                if (val === null || val === 0) return { bg: '', text: '#999' };
+
+                if (metric === 'growth') {
+                    // 성장률: 녹색(+) / 빨간색(-)
+                    if (val >= 0) {
+                        const int = Math.min(val / 50, 1);
+                        return { bg: `rgba(16, 185, 129, ${0.15 + int * 0.6})`, text: int > 0.4 ? '#fff' : '#065f46' };
+                    } else {
+                        const int = Math.min(Math.abs(val) / 50, 1);
+                        return { bg: `rgba(239, 68, 68, ${0.15 + int * 0.6})`, text: int > 0.4 ? '#fff' : '#991b1b' };
+                    }
+                }
+
+                if (colorScheme === 'blue') {
+                    return { bg: `rgba(59, 130, 246, ${0.1 + intensity * 0.7})`, text: intensity > 0.5 ? '#fff' : '#1e40af' };
+                } else if (colorScheme === 'green') {
+                    return { bg: `rgba(34, 197, 94, ${0.1 + intensity * 0.7})`, text: intensity > 0.5 ? '#fff' : '#166534' };
+                } else if (colorScheme === 'heat') {
+                    // 열 지도: 낮음(노랑) -> 높음(빨강)
+                    const r = 255;
+                    const g = Math.round(255 * (1 - intensity * 0.8));
+                    const b = Math.round(100 * (1 - intensity));
+                    return { bg: `rgba(${r}, ${g}, ${b}, ${0.3 + intensity * 0.5})`, text: intensity > 0.6 ? '#fff' : '#7c2d12' };
+                }
+                return { bg: '', text: '#333' };
+            };
+
+            // 범례 생성
+            const legendEl = document.getElementById('heatmapLegend');
+            if (metric === 'growth') {
+                legendEl.innerHTML = `
+                    <span>📈 <strong>성장률 기준</strong></span>
+                    <span style="background:rgba(16,185,129,0.3);padding:2px 8px;border-radius:4px;color:#065f46;">+50%↑ 고성장</span>
+                    <span style="background:rgba(16,185,129,0.15);padding:2px 8px;border-radius:4px;color:#065f46;">+0~50%</span>
+                    <span style="background:rgba(239,68,68,0.15);padding:2px 8px;border-radius:4px;color:#991b1b;">-0~50%</span>
+                    <span style="background:rgba(239,68,68,0.5);padding:2px 8px;border-radius:4px;color:#fff;">-50%↓ 급감</span>
+                `;
+            } else {
+                const metricName = metric === 'sales' ? '매출' : '건수';
+                const schemeColors = colorScheme === 'blue' ? ['#dbeafe', '#3b82f6'] :
+                                     colorScheme === 'green' ? ['#dcfce7', '#22c55e'] : ['#fef3c7', '#ef4444'];
+                legendEl.innerHTML = `
+                    <span>📊 <strong>${metricName} 기준</strong></span>
+                    <span style="background:${schemeColors[0]};padding:2px 8px;border-radius:4px;">낮음</span>
+                    <span>→</span>
+                    <span style="background:${schemeColors[1]};padding:2px 8px;border-radius:4px;color:#fff;">높음</span>
+                    <span style="color:#94a3b8;margin-left:8px;">클릭하여 정렬</span>
+                `;
+            }
+
+            // 헤더 구성 (정렬 기능 추가)
+            const headerRow = document.getElementById('heatmapHeader');
+            const sortIcon = (col) => {
+                if (heatmapSortCol === col) return heatmapSortDir === 'desc' ? ' ▼' : ' ▲';
+                return '';
+            };
+            const headerStyle = 'cursor:pointer;user-select:none;';
+            headerRow.innerHTML = `<th style="${headerStyle}" onclick="sortHeatmap('name')">검사목적${sortIcon('name')}</th>` +
+                ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'].map((m, i) =>
+                    `<th class="text-center" style="${headerStyle}" onclick="sortHeatmap(${i+1})">${m}${sortIcon(i+1)}</th>`
+                ).join('') +
+                `<th class="text-right" style="${headerStyle}" onclick="sortHeatmap('total')">합계${sortIcon('total')}</th>`;
+
+            // 정렬
+            let purposeEntries = Object.entries(purposes);
+            purposeEntries.sort((a, b) => {
+                let aVal, bVal;
+                if (heatmapSortCol === 'name') {
+                    aVal = a[0]; bVal = b[0];
+                    return heatmapSortDir === 'desc' ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+                } else if (heatmapSortCol === 'total') {
+                    aVal = getTotal(a[1]); bVal = getTotal(b[1]);
+                } else {
+                    aVal = getValue(a[1], heatmapSortCol) || 0;
+                    bVal = getValue(b[1], heatmapSortCol) || 0;
+                }
+                return heatmapSortDir === 'desc' ? bVal - aVal : aVal - bVal;
+            });
 
             // 본문 구성
             const tbody = document.getElementById('heatmapBody');
-            const purposeEntries = Object.entries(purposes).sort((a, b) => {
-                const aSum = Object.values(a[1]).reduce((s, v) => s + v, 0);
-                const bSum = Object.values(b[1]).reduce((s, v) => s + v, 0);
-                return bSum - aSum;
-            });
-
-            tbody.innerHTML = purposeEntries.map(([purpose, months]) => {
+            tbody.innerHTML = purposeEntries.map(([purpose, pData]) => {
                 const cells = [];
-                let sum = 0;
                 for (let m = 1; m <= 12; m++) {
-                    const val = months[m] || 0;
-                    sum += val;
-                    const intensity = maxVal > 0 ? val / maxVal : 0;
-                    const bgColor = val > 0 ? `rgba(99, 102, 241, ${0.1 + intensity * 0.7})` : '';
-                    const textColor = intensity > 0.5 ? '#fff' : '#333';
-                    cells.push(`<td class="text-center" style="background: ${bgColor}; color: ${textColor};">${val > 0 ? formatCurrency(val) : '-'}</td>`);
+                    const val = getValue(pData, m);
+                    const range = maxVal - minVal;
+                    const intensity = range > 0 && val !== null ? (val - minVal) / range : 0;
+                    const { bg, text } = getColor(val, intensity);
+
+                    let displayVal = '-';
+                    if (val !== null && val !== 0) {
+                        if (metric === 'sales') displayVal = formatCurrency(val);
+                        else if (metric === 'count') displayVal = val.toLocaleString() + '건';
+                        else if (metric === 'growth') displayVal = (val >= 0 ? '+' : '') + val.toFixed(1) + '%';
+                    }
+                    cells.push(`<td class="text-center" style="background:${bg};color:${text};font-size:12px;">${displayVal}</td>`);
                 }
-                return `<tr><td>${purpose}</td>${cells.join('')}<td class="text-right font-bold">${formatCurrency(sum)}</td></tr>`;
+                const total = getTotal(pData);
+                let totalDisplay = metric === 'sales' ? formatCurrency(total) :
+                                   metric === 'count' ? total.toLocaleString() + '건' :
+                                   (total >= 0 ? '+' : '') + total.toFixed(1) + '%';
+                const totalColor = metric === 'growth' ? (total >= 0 ? '#10b981' : '#ef4444') : '#1e293b';
+                return `<tr><td style="font-weight:500;">${purpose}</td>${cells.join('')}<td class="text-right" style="font-weight:700;color:${totalColor};">${totalDisplay}</td></tr>`;
             }).join('');
         }
 
