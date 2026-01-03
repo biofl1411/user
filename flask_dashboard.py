@@ -3988,29 +3988,37 @@ HTML_TEMPLATE = '''
         <div id="monthly" class="tab-content">
             <!-- 월별 KPI 카드 -->
             <section class="kpi-section monthly-kpi-section">
-                <div class="kpi-card sales">
+                <div class="kpi-card sales" style="position: relative;">
                     <div class="kpi-header"><div class="kpi-icon">🏆</div></div>
                     <div class="kpi-label">최고 매출월</div>
                     <div class="kpi-value" id="monthlyMaxMonth">-</div>
                     <div class="kpi-compare" id="monthlyMaxValue">-</div>
+                    <div class="kpi-compare" id="monthlyMaxYoY" style="font-size: 11px; margin-top: 4px;"></div>
+                    <div class="kpi-compare-overlay" id="monthlyMaxCompare" style="display: none; position: absolute; top: 8px; right: 8px; padding: 4px 8px; border-radius: 6px; font-size: 11px;"></div>
                 </div>
-                <div class="kpi-card count">
+                <div class="kpi-card count" style="position: relative;">
                     <div class="kpi-header"><div class="kpi-icon">📉</div></div>
                     <div class="kpi-label">최저 매출월</div>
                     <div class="kpi-value" id="monthlyMinMonth">-</div>
                     <div class="kpi-compare" id="monthlyMinValue">-</div>
+                    <div class="kpi-compare" id="monthlyMinYoY" style="font-size: 11px; margin-top: 4px;"></div>
+                    <div class="kpi-compare-overlay" id="monthlyMinCompare" style="display: none; position: absolute; top: 8px; right: 8px; padding: 4px 8px; border-radius: 6px; font-size: 11px;"></div>
                 </div>
-                <div class="kpi-card price">
+                <div class="kpi-card price" style="position: relative;">
                     <div class="kpi-header"><div class="kpi-icon">📊</div></div>
                     <div class="kpi-label">월평균 매출</div>
                     <div class="kpi-value" id="monthlyAvgSales">-</div>
                     <div class="kpi-compare" id="monthlyAvgCount">-</div>
+                    <div class="kpi-compare" id="monthlyAvgYoY" style="font-size: 11px; margin-top: 4px;"></div>
+                    <div class="kpi-compare-overlay" id="monthlyAvgCompare" style="display: none; position: absolute; top: 8px; right: 8px; padding: 4px 8px; border-radius: 6px; font-size: 11px;"></div>
                 </div>
-                <div class="kpi-card goal">
+                <div class="kpi-card goal" style="position: relative;">
                     <div class="kpi-header"><div class="kpi-icon">📅</div></div>
                     <div class="kpi-label">YTD 누적</div>
                     <div class="kpi-value" id="monthlyYtdSales">-</div>
                     <div class="kpi-compare" id="monthlyYtdCount">-</div>
+                    <div class="kpi-compare" id="monthlyYtdYoY" style="font-size: 11px; margin-top: 4px;"></div>
+                    <div class="kpi-compare-overlay" id="monthlyYtdCompare" style="display: none; position: absolute; top: 8px; right: 8px; padding: 4px 8px; border-radius: 6px; font-size: 11px;"></div>
                 </div>
             </section>
 
@@ -4032,6 +4040,28 @@ HTML_TEMPLATE = '''
                     <div class="card-body">
                         <div class="chart-container" style="height: 350px;"><canvas id="monthlyCountChart"></canvas></div>
                     </div>
+                </div>
+            </div>
+
+            <!-- 월별 성장률 추이 차트 -->
+            <div class="card" style="margin-bottom: 24px;" id="growthTrendCard">
+                <div class="card-header">
+                    <div class="card-title">📈 월별 성장률 추이 (전년 대비)</div>
+                    <div class="chart-controls" style="display: flex; gap: 8px;">
+                        <select id="growthMetricSelect" onchange="updateGrowthTrendChart()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px;">
+                            <option value="sales">매출 성장률</option>
+                            <option value="count">건수 성장률</option>
+                            <option value="both">매출 + 건수</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-legend" id="growthTrendLegend" style="display: flex; gap: 16px; margin-bottom: 10px; font-size: 12px;">
+                        <span style="color: #10b981;">● 성장 (0% 초과)</span>
+                        <span style="color: #ef4444;">● 역성장 (0% 미만)</span>
+                        <span style="color: #f59e0b;">--- 평균 성장률</span>
+                    </div>
+                    <div class="chart-container" style="height: 280px;"><canvas id="growthTrendChart"></canvas></div>
                 </div>
             </div>
 
@@ -4085,9 +4115,27 @@ HTML_TEMPLATE = '''
                     <div class="card-badge" id="monthlyTableBadge">12개월</div>
                 </div>
                 <div class="card-body">
+                    <!-- 범례 -->
+                    <div id="monthlyTableLegend" style="display: none; margin-bottom: 12px; font-size: 12px; color: #64748b; flex-wrap: wrap; gap: 20px;">
+                        <span><strong>전년 대비:</strong></span>
+                        <span><span style="color: #10b981;">▲</span> 증가</span>
+                        <span><span style="color: #ef4444;">▼</span> 감소</span>
+                        <span style="margin-left: 10px;"><strong>성장률:</strong></span>
+                        <span><span style="background: rgba(16,185,129,0.2); padding: 2px 6px; border-radius: 4px; color: #10b981;">+10%↑</span> 고성장</span>
+                        <span><span style="background: rgba(239,68,68,0.2); padding: 2px 6px; border-radius: 4px; color: #ef4444;">-10%↓</span> 역성장</span>
+                    </div>
                     <div class="scroll-table">
                         <table class="data-table" id="monthlyDetailTable">
-                            <thead><tr><th>월</th><th class="text-right">매출액</th><th class="text-right">건수</th><th class="text-right">평균단가</th><th class="text-right">비중</th><th>상세</th></tr></thead>
+                            <thead><tr>
+                                <th>월</th>
+                                <th class="text-right">매출액</th>
+                                <th class="text-right" id="monthlyYoySalesHeader" style="display: none;">전년대비</th>
+                                <th class="text-right">건수</th>
+                                <th class="text-right" id="monthlyYoyCountHeader" style="display: none;">전년대비</th>
+                                <th class="text-right">평균단가</th>
+                                <th class="text-right">비중</th>
+                                <th>상세</th>
+                            </tr></thead>
                             <tbody></tbody>
                         </table>
                     </div>
@@ -12074,6 +12122,7 @@ HTML_TEMPLATE = '''
             updateMonthlyKPI();
             updateMonthlyChart();
             updateMonthlyCountChart();
+            updateGrowthTrendChart();
             updateQuarterlyChart();
             updateAvgPriceChart();
             updateYoyChart();
@@ -12085,10 +12134,15 @@ HTML_TEMPLATE = '''
         function updateMonthlyKPI() {
             const monthly = currentData.by_month || [];
             const monthMap = Object.fromEntries(monthly);
+            const compMonthMap = compareData ? Object.fromEntries(compareData.by_month || []) : {};
             const monthNames = ['', '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
 
             let maxMonth = 0, maxSales = 0, minMonth = 0, minSales = Infinity;
             let totalSales = 0, totalCount = 0, monthCount = 0;
+
+            // 전년도 데이터
+            let compMaxMonth = 0, compMaxSales = 0, compMinMonth = 0, compMinSales = Infinity;
+            let compTotalSales = 0, compTotalCount = 0, compMonthCount = 0;
 
             for (let m = 1; m <= 12; m++) {
                 const data = monthMap[m];
@@ -12099,8 +12153,19 @@ HTML_TEMPLATE = '''
                     if (data.sales > maxSales) { maxSales = data.sales; maxMonth = m; }
                     if (data.sales < minSales) { minSales = data.sales; minMonth = m; }
                 }
+
+                // 전년도 계산
+                const compData = compMonthMap[m];
+                if (compData && compData.sales > 0) {
+                    compTotalSales += compData.sales;
+                    compTotalCount += compData.count;
+                    compMonthCount++;
+                    if (compData.sales > compMaxSales) { compMaxSales = compData.sales; compMaxMonth = m; }
+                    if (compData.sales < compMinSales) { compMinSales = compData.sales; compMinMonth = m; }
+                }
             }
 
+            // 기본 KPI 표시
             document.getElementById('monthlyMaxMonth').textContent = maxMonth > 0 ? monthNames[maxMonth] : '-';
             document.getElementById('monthlyMaxValue').textContent = maxMonth > 0 ? formatCurrency(maxSales) : '-';
             document.getElementById('monthlyMinMonth').textContent = minMonth > 0 && minMonth < 13 ? monthNames[minMonth] : '-';
@@ -12109,6 +12174,107 @@ HTML_TEMPLATE = '''
             document.getElementById('monthlyAvgCount').textContent = monthCount > 0 ? `월평균 ${Math.round(totalCount / monthCount).toLocaleString()}건` : '-';
             document.getElementById('monthlyYtdSales').textContent = formatCurrency(totalSales);
             document.getElementById('monthlyYtdCount').textContent = `총 ${totalCount.toLocaleString()}건`;
+
+            // 전년 대비 증감 표시
+            const maxYoYEl = document.getElementById('monthlyMaxYoY');
+            const minYoYEl = document.getElementById('monthlyMinYoY');
+            const avgYoYEl = document.getElementById('monthlyAvgYoY');
+            const ytdYoYEl = document.getElementById('monthlyYtdYoY');
+
+            const maxCompareEl = document.getElementById('monthlyMaxCompare');
+            const minCompareEl = document.getElementById('monthlyMinCompare');
+            const avgCompareEl = document.getElementById('monthlyAvgCompare');
+            const ytdCompareEl = document.getElementById('monthlyYtdCompare');
+
+            if (compareData && compMonthCount > 0) {
+                // 최고 매출월 전년 비교
+                if (maxMonth > 0 && compMaxSales > 0) {
+                    const maxDiff = maxSales - compMaxSales;
+                    const maxPct = (maxDiff / compMaxSales * 100);
+                    const maxSign = maxDiff >= 0 ? '+' : '';
+                    const maxColor = maxDiff >= 0 ? '#10b981' : '#ef4444';
+
+                    if (maxMonth === compMaxMonth) {
+                        maxYoYEl.innerHTML = `<span style="color: ${maxColor};">전년 동월 대비 ${maxSign}${maxPct.toFixed(1)}%</span>`;
+                    } else {
+                        maxYoYEl.innerHTML = `<span style="color: #64748b;">전년: ${monthNames[compMaxMonth]} (${formatCurrency(compMaxSales)})</span>`;
+                    }
+                    maxCompareEl.style.display = 'block';
+                    maxCompareEl.style.background = maxDiff >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                    maxCompareEl.style.color = maxColor;
+                    maxCompareEl.innerHTML = `${maxSign}${maxPct.toFixed(1)}%`;
+                } else {
+                    maxYoYEl.innerHTML = '';
+                    maxCompareEl.style.display = 'none';
+                }
+
+                // 최저 매출월 전년 비교
+                if (minMonth > 0 && minSales < Infinity && compMinSales < Infinity && compMinSales > 0) {
+                    const minDiff = minSales - compMinSales;
+                    const minPct = (minDiff / compMinSales * 100);
+                    const minSign = minDiff >= 0 ? '+' : '';
+                    const minColor = minDiff >= 0 ? '#10b981' : '#ef4444';
+
+                    if (minMonth === compMinMonth) {
+                        minYoYEl.innerHTML = `<span style="color: ${minColor};">전년 동월 대비 ${minSign}${minPct.toFixed(1)}%</span>`;
+                    } else {
+                        minYoYEl.innerHTML = `<span style="color: #64748b;">전년: ${monthNames[compMinMonth]} (${formatCurrency(compMinSales)})</span>`;
+                    }
+                    minCompareEl.style.display = 'block';
+                    minCompareEl.style.background = minDiff >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                    minCompareEl.style.color = minColor;
+                    minCompareEl.innerHTML = `${minSign}${minPct.toFixed(1)}%`;
+                } else {
+                    minYoYEl.innerHTML = '';
+                    minCompareEl.style.display = 'none';
+                }
+
+                // 월평균 전년 비교
+                const avgSales = monthCount > 0 ? totalSales / monthCount : 0;
+                const compAvgSales = compMonthCount > 0 ? compTotalSales / compMonthCount : 0;
+                if (avgSales > 0 && compAvgSales > 0) {
+                    const avgDiff = avgSales - compAvgSales;
+                    const avgPct = (avgDiff / compAvgSales * 100);
+                    const avgSign = avgDiff >= 0 ? '+' : '';
+                    const avgColor = avgDiff >= 0 ? '#10b981' : '#ef4444';
+
+                    avgYoYEl.innerHTML = `<span style="color: ${avgColor};">전년 대비 ${avgSign}${avgPct.toFixed(1)}% (${avgSign}${(avgDiff / 10000).toFixed(0)}만)</span>`;
+                    avgCompareEl.style.display = 'block';
+                    avgCompareEl.style.background = avgDiff >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                    avgCompareEl.style.color = avgColor;
+                    avgCompareEl.innerHTML = `${avgSign}${avgPct.toFixed(1)}%`;
+                } else {
+                    avgYoYEl.innerHTML = '';
+                    avgCompareEl.style.display = 'none';
+                }
+
+                // YTD 누적 전년 비교
+                if (totalSales > 0 && compTotalSales > 0) {
+                    const ytdDiff = totalSales - compTotalSales;
+                    const ytdPct = (ytdDiff / compTotalSales * 100);
+                    const ytdSign = ytdDiff >= 0 ? '+' : '';
+                    const ytdColor = ytdDiff >= 0 ? '#10b981' : '#ef4444';
+
+                    ytdYoYEl.innerHTML = `<span style="color: ${ytdColor};">전년 대비 ${ytdSign}${ytdPct.toFixed(1)}% (${ytdSign}${(ytdDiff / 100000000).toFixed(2)}억)</span>`;
+                    ytdCompareEl.style.display = 'block';
+                    ytdCompareEl.style.background = ytdDiff >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                    ytdCompareEl.style.color = ytdColor;
+                    ytdCompareEl.innerHTML = `${ytdSign}${ytdPct.toFixed(1)}%`;
+                } else {
+                    ytdYoYEl.innerHTML = '';
+                    ytdCompareEl.style.display = 'none';
+                }
+            } else {
+                // 비교 연도 없을 때 숨기기
+                maxYoYEl.innerHTML = '';
+                minYoYEl.innerHTML = '';
+                avgYoYEl.innerHTML = '';
+                ytdYoYEl.innerHTML = '';
+                maxCompareEl.style.display = 'none';
+                minCompareEl.style.display = 'none';
+                avgCompareEl.style.display = 'none';
+                ytdCompareEl.style.display = 'none';
+            }
         }
 
         // 월별 매출 차트
@@ -12580,13 +12746,32 @@ HTML_TEMPLATE = '''
             const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
             const monthMap = Object.fromEntries(monthly);
             const data = labels.map((_, i) => monthMap[i+1]?.count || 0);
+            const validMonths = data.filter(c => c > 0);
             const totalCount = data.reduce((s, v) => s + v, 0);
-            const avgCount = totalCount / 12;
+            const avgCount = validMonths.length > 0 ? totalCount / validMonths.length : 0;
 
             // 전년도 데이터
             const compMonthly = compareData?.by_month || [];
             const compMap = Object.fromEntries(compMonthly);
             const compData = labels.map((_, i) => compMap[i+1]?.count || 0);
+            const compValidMonths = compData.filter(c => c > 0);
+            const compTotalCount = compData.reduce((s, v) => s + v, 0);
+            const compAvgCount = compValidMonths.length > 0 ? compTotalCount / compValidMonths.length : 0;
+
+            // 트렌드 계산 함수
+            const calcCountTrend = (monthIdx) => {
+                if (monthIdx < 1) return { type: null, count: 0 };
+                let cnt = 0, dir = null;
+                for (let i = monthIdx; i >= 1; i--) {
+                    const curr = data[i], prev = data[i - 1];
+                    if (prev === 0) break;
+                    const isUp = curr >= prev;
+                    if (dir === null) { dir = isUp ? 'up' : 'down'; cnt = 1; }
+                    else if ((dir === 'up' && isUp) || (dir === 'down' && !isUp)) { cnt++; }
+                    else break;
+                }
+                return { type: dir, count: cnt };
+            };
 
             // 외부 툴팁 생성
             const getOrCreateCountTooltip = (chart) => {
@@ -12594,7 +12779,7 @@ HTML_TEMPLATE = '''
                 if (!el) {
                     el = document.createElement('div');
                     el.id = 'monthlyCountTooltip';
-                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:280px;max-width:350px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:320px;max-width:380px;max-height:85vh;overflow-y:auto;transition:opacity 0.15s ease;line-height:1.5;';
                     document.body.appendChild(el); setupTooltipHover(el);
                 }
                 return el;
@@ -12621,50 +12806,382 @@ HTML_TEMPLATE = '''
                                 const count = data[idx];
                                 const compCount = compData[idx];
                                 const monthData = monthMap[idx + 1] || {};
+                                const compMonthData = compMap[idx + 1] || {};
                                 const vsAvg = avgCount > 0 ? ((count - avgCount) / avgCount * 100) : 0;
                                 const vsAvgColor = vsAvg >= 0 ? '#10b981' : '#ef4444';
+                                const isIncrease = count >= avgCount;
 
                                 // 시즌 판단
                                 let seasonTag = '평시', seasonIcon = '📊', seasonColor = '#94a3b8';
                                 if (count > avgCount * 1.15) { seasonTag = '성수기'; seasonIcon = '🔥'; seasonColor = '#ef4444'; }
                                 else if (count < avgCount * 0.85) { seasonTag = '비수기'; seasonIcon = '❄️'; seasonColor = '#3b82f6'; }
 
-                                let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                                    <span style="font-size:16px;font-weight:bold;">${labels[idx]}</span>
+                                const borderColor = isIncrease ? 'rgba(34, 197, 94, 0.8)' : 'rgba(239, 68, 68, 0.8)';
+                                tooltipEl.style.border = `2px solid ${borderColor}`;
+
+                                // 1. 헤더
+                                const headerBg = isIncrease ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+                                let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin:-16px -16px 12px -16px;padding:12px 16px;background:${headerBg};border-radius:10px 10px 0 0;">
+                                    <span style="font-size:16px;font-weight:bold;color:#fff;">📅 ${labels[idx]}</span>
                                     <span style="background:${seasonColor}22;color:${seasonColor};padding:4px 10px;border-radius:6px;font-size:12px;">${seasonIcon} ${seasonTag}</span>
                                 </div>`;
 
+                                // 2. 기본 지표
                                 html += `<div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;margin-bottom:10px;">`;
-                                html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>📋 건수</span><strong>${count.toLocaleString()}건</strong></div>`;
-                                html += `<div style="display:flex;justify-content:space-between;"><span>📊 평균 대비</span><span style="color:${vsAvgColor};font-weight:bold;">${vsAvg >= 0 ? '+' : ''}${vsAvg.toFixed(1)}%</span></div>`;
+                                html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>📋 건수</span><strong style="font-size:15px;">${count.toLocaleString()}건</strong></div>`;
+                                if (monthData.sales) {
+                                    const avgPrice = count > 0 ? monthData.sales / count : 0;
+                                    html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>💰 매출액</span><strong>${formatCurrency(monthData.sales)}</strong></div>`;
+                                    html += `<div style="display:flex;justify-content:space-between;"><span>💵 건당 단가</span><strong>${formatCurrency(Math.round(avgPrice))}</strong></div>`;
+                                }
                                 html += `</div>`;
 
+                                // 3. 비교 분석
+                                html += `<div style="color:#94a3b8;margin:12px 0 8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.2);">── 비교 분석 ──</div>`;
+
+                                // 월평균 대비
+                                html += `<div style="margin-bottom:4px;">📊 월평균 대비: <span style="color:${vsAvgColor};font-weight:bold;">${vsAvg >= 0 ? '+' : ''}${vsAvg.toFixed(1)}%</span> <span style="color:#94a3b8;">(${Math.round(count - avgCount).toLocaleString()}건)</span></div>`;
+
+                                // 전년 동월 대비
                                 if (compareData && compCount > 0) {
-                                    const yoyDiff = ((count - compCount) / compCount * 100);
+                                    const yoyDiff = count - compCount;
+                                    const yoyPct = (yoyDiff / compCount * 100);
                                     const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
-                                    html += `<div style="padding:8px;border-radius:6px;background:rgba(99,102,241,0.1);margin-bottom:10px;">
-                                        📅 ${compareData.year}년 대비: <span style="color:${yoyColor};font-weight:bold;">${yoyDiff >= 0 ? '+' : ''}${yoyDiff.toFixed(1)}%</span>
-                                        <span style="color:#94a3b8;font-size:11px;">(${compCount.toLocaleString()}건 → ${count.toLocaleString()}건)</span>
+                                    html += `<div style="margin-bottom:4px;">📆 전년 동월 대비: <span style="color:${yoyColor};font-weight:bold;">${yoyDiff >= 0 ? '+' : ''}${yoyPct.toFixed(1)}%</span> <span style="color:#94a3b8;">(${yoyDiff >= 0 ? '+' : ''}${yoyDiff.toLocaleString()}건)</span></div>`;
+                                }
+
+                                // 전월 대비
+                                if (idx > 0 && data[idx - 1] > 0) {
+                                    const prevCount = data[idx - 1];
+                                    const momDiff = count - prevCount;
+                                    const momPct = (momDiff / prevCount * 100);
+                                    const momColor = momDiff >= 0 ? '#10b981' : '#ef4444';
+
+                                    // 트렌드
+                                    const trend = calcCountTrend(idx);
+                                    let trendText = '';
+                                    if (trend.count >= 2) {
+                                        const trendIcon = trend.type === 'up' ? '↗' : '↘';
+                                        const trendColor = trend.type === 'up' ? '#10b981' : '#ef4444';
+                                        trendText = ` <span style="color:${trendColor};">${trendIcon} ${trend.count}개월 연속${trend.type === 'up' ? '↑' : '↓'}</span>`;
+                                    }
+                                    html += `<div style="margin-bottom:8px;">📈 전월 대비: <span style="color:${momColor};font-weight:bold;">${momDiff >= 0 ? '+' : ''}${momPct.toFixed(1)}%</span>${trendText}</div>`;
+                                }
+
+                                // 4. 검사목적별 건수 분포
+                                if (monthData.byPurpose) {
+                                    const purposeBreakdown = Object.entries(monthData.byPurpose)
+                                        .map(([purpose, d]) => ({
+                                            purpose,
+                                            count: d.count || 0,
+                                            share: count > 0 ? ((d.count || 0) / count * 100) : 0,
+                                            compCount: compMonthData.byPurpose?.[purpose]?.count || 0
+                                        }))
+                                        .sort((a, b) => b.count - a.count)
+                                        .slice(0, 5);
+
+                                    if (purposeBreakdown.length > 0) {
+                                        html += `<div style="color:#94a3b8;margin:12px 0 8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.2);">── 검사목적별 건수 TOP 5 ──</div>`;
+                                        purposeBreakdown.forEach((p, i) => {
+                                            const yoyChange = p.compCount > 0 ? ((p.count - p.compCount) / p.compCount * 100) : 0;
+                                            const yoyColor = yoyChange >= 0 ? '#10b981' : '#ef4444';
+                                            const rankEmoji = i === 0 ? '🥇' : (i === 1 ? '🥈' : (i === 2 ? '🥉' : '•'));
+                                            html += `<div style="margin-left:8px;margin-bottom:3px;">
+                                                ${rankEmoji} <strong>${p.purpose}</strong>: ${p.count.toLocaleString()}건
+                                                <span style="color:#94a3b8;">(${p.share.toFixed(0)}%)</span>
+                                                ${p.compCount > 0 ? `<span style="color:${yoyColor};font-size:11px;"> YoY ${yoyChange >= 0 ? '+' : ''}${yoyChange.toFixed(0)}%</span>` : ''}
+                                            </div>`;
+                                        });
+                                    }
+                                }
+
+                                // 5. 담당자별 건수 분포
+                                if (monthData.byManager) {
+                                    const managerBreakdown = Object.entries(monthData.byManager)
+                                        .map(([manager, d]) => ({
+                                            manager,
+                                            count: d.count || 0,
+                                            share: count > 0 ? ((d.count || 0) / count * 100) : 0
+                                        }))
+                                        .sort((a, b) => b.count - a.count)
+                                        .slice(0, 3);
+
+                                    if (managerBreakdown.length > 0) {
+                                        html += `<div style="color:#94a3b8;margin:12px 0 8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.2);">── 담당자별 건수 TOP 3 ──</div>`;
+                                        managerBreakdown.forEach(m => {
+                                            html += `<div style="margin-left:8px;margin-bottom:3px;">• ${m.manager}: ${m.count.toLocaleString()}건 <span style="color:#94a3b8;">(${m.share.toFixed(0)}%)</span></div>`;
+                                        });
+                                    }
+                                }
+
+                                // 6. 계절성 패턴 분석
+                                if (compareData && compCount > 0 && compAvgCount > 0) {
+                                    const currBelowAvg = count < avgCount;
+                                    const compBelowAvg = compCount < compAvgCount;
+
+                                    html += `<div style="color:#94a3b8;margin:12px 0 8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.2);">── 계절성 분석 ──</div>`;
+                                    if (currBelowAvg && compBelowAvg) {
+                                        html += `<div style="color:#f59e0b;">🔄 <strong>2년 연속 비수기</strong> - 계절적 패턴</div>`;
+                                    } else if (currBelowAvg && !compBelowAvg) {
+                                        html += `<div style="color:#ef4444;">⚠️ <strong>이례적 감소</strong> - 전년도는 정상 수준</div>`;
+                                    } else if (!currBelowAvg && compBelowAvg) {
+                                        html += `<div style="color:#10b981;">✨ <strong>비수기 극복</strong> - 전년도 대비 개선</div>`;
+                                    } else {
+                                        html += `<div style="color:#60a5fa;">✓ <strong>안정적 성수기</strong> - 2년 연속 평균 이상</div>`;
+                                    }
+                                }
+
+                                // 7. YTD 건수 누적
+                                const ytdCount = data.slice(0, idx + 1).reduce((s, c) => s + c, 0);
+                                const ytdCompCount = compData.slice(0, idx + 1).reduce((s, c) => s + c, 0);
+                                html += `<div style="color:#94a3b8;margin:12px 0 8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.2);">── YTD 누적 ──</div>`;
+                                html += `<div>📊 1~${idx + 1}월 누적: <strong>${ytdCount.toLocaleString()}건</strong>`;
+                                if (ytdCompCount > 0) {
+                                    const ytdDiff = ytdCount - ytdCompCount;
+                                    const ytdPct = (ytdDiff / ytdCompCount * 100);
+                                    const ytdColor = ytdDiff >= 0 ? '#10b981' : '#ef4444';
+                                    html += ` <span style="color:${ytdColor};">(전년 대비 ${ytdDiff >= 0 ? '+' : ''}${ytdPct.toFixed(1)}%)</span>`;
+                                }
+                                html += `</div>`;
+
+                                tooltipEl.innerHTML = html;
+                                tooltipEl.style.opacity = 1; tooltipEl.style.pointerEvents = 'auto';
+                                const pos = context.chart.canvas.getBoundingClientRect();
+                                tooltipEl.style.left = Math.min(pos.left + context.tooltip.caretX + 10, window.innerWidth - 400) + 'px';
+                                tooltipEl.style.top = Math.min(pos.top + context.tooltip.caretY, window.innerHeight - 400) + 'px';
+                            }
+                        }
+                    },
+                    scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        // 월별 성장률 추이 차트
+        function updateGrowthTrendChart() {
+            const monthly = currentData.by_month || [];
+            const monthMap = Object.fromEntries(monthly);
+            const compMonthly = compareData?.by_month || [];
+            const compMap = Object.fromEntries(compMonthly);
+            const hasCompare = compareData && compMonthly.length > 0;
+
+            const ctx = document.getElementById('growthTrendChart');
+            if (!ctx) return;
+
+            // 차트와 범례 표시 여부
+            const cardEl = document.getElementById('growthTrendCard');
+            if (!hasCompare) {
+                if (cardEl) cardEl.style.display = 'none';
+                return;
+            }
+            if (cardEl) cardEl.style.display = '';
+
+            if (charts.growthTrend) charts.growthTrend.destroy();
+
+            const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+            const metric = document.getElementById('growthMetricSelect')?.value || 'sales';
+
+            // 성장률 계산
+            const salesGrowth = [];
+            const countGrowth = [];
+
+            for (let m = 1; m <= 12; m++) {
+                const curr = monthMap[m] || { sales: 0, count: 0 };
+                const comp = compMap[m] || { sales: 0, count: 0 };
+
+                if (comp.sales > 0 && curr.sales > 0) {
+                    salesGrowth.push(((curr.sales - comp.sales) / comp.sales) * 100);
+                } else {
+                    salesGrowth.push(null);
+                }
+
+                if (comp.count > 0 && curr.count > 0) {
+                    countGrowth.push(((curr.count - comp.count) / comp.count) * 100);
+                } else {
+                    countGrowth.push(null);
+                }
+            }
+
+            // 평균 성장률 계산
+            const validSalesGrowth = salesGrowth.filter(v => v !== null);
+            const avgSalesGrowth = validSalesGrowth.length > 0 ? validSalesGrowth.reduce((s, v) => s + v, 0) / validSalesGrowth.length : 0;
+            const validCountGrowth = countGrowth.filter(v => v !== null);
+            const avgCountGrowth = validCountGrowth.length > 0 ? validCountGrowth.reduce((s, v) => s + v, 0) / validCountGrowth.length : 0;
+
+            // 막대 색상 - 양수/음수에 따라 구분
+            const salesColors = salesGrowth.map(v => v === null ? 'rgba(148,163,184,0.5)' : (v >= 0 ? 'rgba(16, 185, 129, 0.7)' : 'rgba(239, 68, 68, 0.7)'));
+            const countColors = countGrowth.map(v => v === null ? 'rgba(148,163,184,0.5)' : (v >= 0 ? 'rgba(59, 130, 246, 0.7)' : 'rgba(249, 115, 22, 0.7)'));
+
+            const datasets = [];
+
+            if (metric === 'sales' || metric === 'both') {
+                datasets.push({
+                    label: '매출 성장률 (%)',
+                    data: salesGrowth,
+                    backgroundColor: salesColors,
+                    borderRadius: 4,
+                    order: 2
+                });
+
+                // 평균 성장률 라인
+                datasets.push({
+                    label: '평균 매출 성장률',
+                    data: Array(12).fill(avgSalesGrowth),
+                    type: 'line',
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    fill: false,
+                    order: 1
+                });
+            }
+
+            if (metric === 'count' || metric === 'both') {
+                datasets.push({
+                    label: '건수 성장률 (%)',
+                    data: countGrowth,
+                    backgroundColor: countColors,
+                    borderRadius: 4,
+                    order: 2
+                });
+
+                if (metric === 'count') {
+                    datasets.push({
+                        label: '평균 건수 성장률',
+                        data: Array(12).fill(avgCountGrowth),
+                        type: 'line',
+                        borderColor: '#f59e0b',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        pointRadius: 0,
+                        fill: false,
+                        order: 1
+                    });
+                }
+            }
+
+            // 범례 업데이트
+            const legendEl = document.getElementById('growthTrendLegend');
+            if (metric === 'sales') {
+                legendEl.innerHTML = `
+                    <span style="color: #10b981;">● 매출 성장 (0% 초과)</span>
+                    <span style="color: #ef4444;">● 매출 역성장 (0% 미만)</span>
+                    <span style="color: #f59e0b;">--- 평균 ${avgSalesGrowth.toFixed(1)}%</span>
+                `;
+            } else if (metric === 'count') {
+                legendEl.innerHTML = `
+                    <span style="color: #3b82f6;">● 건수 성장 (0% 초과)</span>
+                    <span style="color: #f97316;">● 건수 역성장 (0% 미만)</span>
+                    <span style="color: #f59e0b;">--- 평균 ${avgCountGrowth.toFixed(1)}%</span>
+                `;
+            } else {
+                legendEl.innerHTML = `
+                    <span style="color: #10b981;">● 매출 성장</span>
+                    <span style="color: #ef4444;">● 매출 역성장</span>
+                    <span style="color: #3b82f6;">● 건수 성장</span>
+                    <span style="color: #f97316;">● 건수 역성장</span>
+                `;
+            }
+
+            // 외부 툴팁
+            const getOrCreateGrowthTooltip = (chart) => {
+                let el = document.getElementById('growthTrendTooltip');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'growthTrendTooltip';
+                    el.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:12px;padding:16px;pointer-events:auto;z-index:99999;font-size:13px;color:#e2e8f0;box-shadow:0 20px 40px rgba(0,0,0,0.4);min-width:260px;max-width:320px;transition:opacity 0.15s ease;line-height:1.5;';
+                    document.body.appendChild(el); setupTooltipHover(el);
+                }
+                return el;
+            };
+
+            charts.growthTrend = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: false,
+                            external: function(context) {
+                                const tooltipEl = getOrCreateGrowthTooltip(context.chart);
+                                if (context.tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) { hideTooltipWithDelay(tooltipEl); return; }
+
+                                const idx = context.tooltip.dataPoints?.[0]?.dataIndex;
+                                if (idx === undefined) return;
+
+                                const m = idx + 1;
+                                const curr = monthMap[m] || { sales: 0, count: 0 };
+                                const comp = compMap[m] || { sales: 0, count: 0 };
+
+                                let html = `<div style="font-size:16px;font-weight:bold;margin-bottom:12px;">📅 ${labels[idx]} 전년 대비</div>`;
+
+                                // 매출 성장률
+                                if (comp.sales > 0 && curr.sales > 0) {
+                                    const salesPct = ((curr.sales - comp.sales) / comp.sales) * 100;
+                                    const salesDiff = curr.sales - comp.sales;
+                                    const salesColor = salesPct >= 0 ? '#10b981' : '#ef4444';
+                                    html += `<div style="margin-bottom:8px;padding:8px;background:rgba(255,255,255,0.05);border-radius:6px;">
+                                        <div style="margin-bottom:4px;">💰 <strong>매출 성장률</strong></div>
+                                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                                            <span style="color:#94a3b8;">${compareData.year}년:</span>
+                                            <span>${formatCurrency(comp.sales)}</span>
+                                        </div>
+                                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                                            <span style="color:#94a3b8;">${currentData.year}년:</span>
+                                            <span>${formatCurrency(curr.sales)}</span>
+                                        </div>
+                                        <div style="display:flex;justify-content:space-between;">
+                                            <span style="color:#94a3b8;">성장률:</span>
+                                            <span style="color:${salesColor};font-weight:bold;">${salesPct >= 0 ? '+' : ''}${salesPct.toFixed(1)}% (${salesDiff >= 0 ? '+' : ''}${(salesDiff/10000).toFixed(0)}만)</span>
+                                        </div>
                                     </div>`;
                                 }
 
-                                // 매출 정보 추가
-                                if (monthData.sales) {
-                                    const avgPrice = count > 0 ? monthData.sales / count : 0;
-                                    html += `<div style="color:#94a3b8;font-size:11px;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.2);">
-                                        💰 매출: ${formatCurrency(monthData.sales)} · 단가: ${formatCurrency(Math.round(avgPrice))}
+                                // 건수 성장률
+                                if (comp.count > 0 && curr.count > 0) {
+                                    const countPct = ((curr.count - comp.count) / comp.count) * 100;
+                                    const countDiff = curr.count - comp.count;
+                                    const countColor = countPct >= 0 ? '#3b82f6' : '#f97316';
+                                    html += `<div style="padding:8px;background:rgba(255,255,255,0.05);border-radius:6px;">
+                                        <div style="margin-bottom:4px;">📋 <strong>건수 성장률</strong></div>
+                                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                                            <span style="color:#94a3b8;">${compareData.year}년:</span>
+                                            <span>${comp.count.toLocaleString()}건</span>
+                                        </div>
+                                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                                            <span style="color:#94a3b8;">${currentData.year}년:</span>
+                                            <span>${curr.count.toLocaleString()}건</span>
+                                        </div>
+                                        <div style="display:flex;justify-content:space-between;">
+                                            <span style="color:#94a3b8;">성장률:</span>
+                                            <span style="color:${countColor};font-weight:bold;">${countPct >= 0 ? '+' : ''}${countPct.toFixed(1)}% (${countDiff >= 0 ? '+' : ''}${countDiff.toLocaleString()}건)</span>
+                                        </div>
                                     </div>`;
                                 }
 
                                 tooltipEl.innerHTML = html;
                                 tooltipEl.style.opacity = 1; tooltipEl.style.pointerEvents = 'auto';
                                 const pos = context.chart.canvas.getBoundingClientRect();
-                                tooltipEl.style.left = Math.min(pos.left + context.tooltip.caretX + 10, window.innerWidth - 360) + 'px';
+                                tooltipEl.style.left = Math.min(pos.left + context.tooltip.caretX + 10, window.innerWidth - 340) + 'px';
                                 tooltipEl.style.top = Math.min(pos.top + context.tooltip.caretY, window.innerHeight - 300) + 'px';
                             }
                         }
                     },
-                    scales: { y: { beginAtZero: true }, x: { grid: { display: false } } }
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: { color: 'rgba(148, 163, 184, 0.1)' },
+                            ticks: {
+                                callback: function(value) { return value.toFixed(0) + '%'; }
+                            }
+                        },
+                        x: { grid: { display: false } }
+                    }
                 }
             });
         }
@@ -13044,6 +13561,26 @@ HTML_TEMPLATE = '''
             const monthMap = Object.fromEntries(monthly);
             const totalSales = currentData.total_sales || 1;
 
+            // 전년도 데이터
+            const compMonthly = compareData?.by_month || [];
+            const compMap = Object.fromEntries(compMonthly);
+            const hasCompare = compareData && compMonthly.length > 0;
+
+            // 헤더 및 범례 표시
+            const legendEl = document.getElementById('monthlyTableLegend');
+            const salesHeaderEl = document.getElementById('monthlyYoySalesHeader');
+            const countHeaderEl = document.getElementById('monthlyYoyCountHeader');
+
+            if (hasCompare) {
+                legendEl.style.display = 'flex';
+                salesHeaderEl.style.display = '';
+                countHeaderEl.style.display = '';
+            } else {
+                legendEl.style.display = 'none';
+                salesHeaderEl.style.display = 'none';
+                countHeaderEl.style.display = 'none';
+            }
+
             const tbody = document.querySelector('#monthlyDetailTable tbody');
             let rows = [];
             let activeMonths = 0;
@@ -13054,10 +13591,47 @@ HTML_TEMPLATE = '''
                     activeMonths++;
                     const avgPrice = data.count > 0 ? data.sales / data.count : 0;
                     const percent = (data.sales / totalSales * 100).toFixed(1);
+
+                    // 전년 대비 계산
+                    const compData = compMap[m];
+                    let salesYoY = '', countYoY = '';
+
+                    if (hasCompare && compData && compData.sales > 0) {
+                        const salesDiff = data.sales - compData.sales;
+                        const salesPct = (salesDiff / compData.sales * 100);
+                        const salesColor = salesDiff >= 0 ? '#10b981' : '#ef4444';
+                        const salesIcon = salesDiff >= 0 ? '▲' : '▼';
+                        const salesSign = salesDiff >= 0 ? '+' : '';
+
+                        // 성장률에 따른 강조
+                        let salesBg = '';
+                        if (salesPct >= 10) salesBg = 'background: rgba(16,185,129,0.15); padding: 4px 8px; border-radius: 4px;';
+                        else if (salesPct <= -10) salesBg = 'background: rgba(239,68,68,0.15); padding: 4px 8px; border-radius: 4px;';
+
+                        salesYoY = `<td class="text-right"><span style="color: ${salesColor}; ${salesBg}">${salesIcon} ${salesSign}${salesPct.toFixed(1)}%</span></td>`;
+
+                        const countDiff = data.count - compData.count;
+                        const countPct = (countDiff / compData.count * 100);
+                        const countColor = countDiff >= 0 ? '#10b981' : '#ef4444';
+                        const countIcon = countDiff >= 0 ? '▲' : '▼';
+                        const countSign = countDiff >= 0 ? '+' : '';
+
+                        let countBg = '';
+                        if (countPct >= 10) countBg = 'background: rgba(16,185,129,0.15); padding: 4px 8px; border-radius: 4px;';
+                        else if (countPct <= -10) countBg = 'background: rgba(239,68,68,0.15); padding: 4px 8px; border-radius: 4px;';
+
+                        countYoY = `<td class="text-right"><span style="color: ${countColor}; ${countBg}">${countIcon} ${countSign}${countPct.toFixed(1)}%</span></td>`;
+                    } else if (hasCompare) {
+                        salesYoY = `<td class="text-right" style="color: #94a3b8;">-</td>`;
+                        countYoY = `<td class="text-right" style="color: #94a3b8;">-</td>`;
+                    }
+
                     rows.push(`<tr>
                         <td>${m}월</td>
                         <td class="text-right">${formatCurrency(data.sales)}</td>
+                        ${salesYoY}
                         <td class="text-right">${data.count.toLocaleString()}건</td>
+                        ${countYoY}
                         <td class="text-right">${formatCurrency(avgPrice)}</td>
                         <td class="text-right">${percent}%</td>
                         <td class="text-center"><button class="btn btn-sm" onclick="showMonthDetail(${m})">상세</button></td>
