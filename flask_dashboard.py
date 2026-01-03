@@ -2832,7 +2832,7 @@ HTML_TEMPLATE = '''
             font-size: 11px;
             font-weight: 600;
             fill: #374151;
-            pointer-events: none;
+            pointer-events: auto;
             text-anchor: middle;
         }
         .map-label.small {
@@ -4609,6 +4609,25 @@ HTML_TEMPLATE = '''
         let currentTab = 'main';
         let managerTableSort = { column: null, direction: 'desc' };
 
+        // 툴팁 hover 상태 관리 (스크롤 가능하도록)
+        const tooltipHoverState = {};
+        function setupTooltipHover(tooltipEl) {
+            if (!tooltipEl || tooltipEl._hoverSetup) return;
+            tooltipEl._hoverSetup = true;
+            tooltipEl.addEventListener('mouseenter', () => {
+                tooltipHoverState[tooltipEl.id] = true;
+                tooltipEl.style.opacity = 1;
+                tooltipEl.style.pointerEvents = 'auto';
+            });
+            tooltipEl.addEventListener('mouseleave', () => {
+                tooltipHoverState[tooltipEl.id] = false;
+                tooltipEl.style.opacity = 0;
+            });
+        }
+        function isTooltipHovered(tooltipEl) {
+            return tooltipEl && tooltipHoverState[tooltipEl.id];
+        }
+
         // 유틸리티 함수
         function formatCurrency(value) {
             const sign = value < 0 ? '-' : '';
@@ -5139,7 +5158,7 @@ HTML_TEMPLATE = '''
                     background: rgba(30, 41, 59, 0.97);
                     border-radius: 12px;
                     padding: 16px;
-                    pointer-events: none;
+                    pointer-events: auto;
                     z-index: 99999;
                     font-size: 13px;
                     color: #e2e8f0;
@@ -5152,6 +5171,7 @@ HTML_TEMPLATE = '''
                     line-height: 1.5;
                 `;
                 document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
             }
             return tooltipEl;
         };
@@ -5271,7 +5291,7 @@ HTML_TEMPLATE = '''
                                 const tooltipEl = getOrCreateEfficiencyTooltip(context.chart);
                                 const tooltipModel = context.tooltip;
 
-                                if (tooltipModel.opacity === 0) {
+                                if (tooltipModel.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                                     tooltipEl.style.opacity = 0;
                                     return;
                                 }
@@ -5673,7 +5693,7 @@ HTML_TEMPLATE = '''
                             background: rgba(30, 41, 59, 0.98);
                             border-radius: 12px;
                             padding: 16px;
-                            pointer-events: none;
+                            pointer-events: auto;
                             z-index: 99999;
                             font-size: 13px;
                             color: #e2e8f0;
@@ -5686,6 +5706,7 @@ HTML_TEMPLATE = '''
                             line-height: 1.5;
                         `;
                         document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                     }
                     return tooltipEl;
                 };
@@ -5710,7 +5731,7 @@ HTML_TEMPLATE = '''
                     const { chart, tooltip } = context;
                     const tooltipEl = getOrCreateMgrMonthlyTooltip(chart);
 
-                    if (tooltip.opacity === 0) {
+                    if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                         tooltipEl.style.opacity = 0;
                         return;
                     }
@@ -6059,7 +6080,7 @@ HTML_TEMPLATE = '''
                             background: rgba(30, 41, 59, 0.98);
                             border-radius: 12px;
                             padding: 16px;
-                            pointer-events: none;
+                            pointer-events: auto;
                             z-index: 99999;
                             font-size: 13px;
                             color: #e2e8f0;
@@ -6072,6 +6093,7 @@ HTML_TEMPLATE = '''
                             line-height: 1.5;
                         `;
                         document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                     }
                     return tooltipEl;
                 };
@@ -6096,7 +6118,7 @@ HTML_TEMPLATE = '''
                     const { chart, tooltip } = context;
                     const tooltipEl = getOrCreateMgrMonthlyTooltipTop3(chart);
 
-                    if (tooltip.opacity === 0) {
+                    if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                         tooltipEl.style.opacity = 0;
                         return;
                     }
@@ -6452,7 +6474,7 @@ HTML_TEMPLATE = '''
                                 background: rgba(30, 41, 59, 0.98);
                                 border-radius: 12px;
                                 padding: 16px;
-                                pointer-events: none;
+                                pointer-events: auto;
                                 z-index: 99999;
                                 font-size: 13px;
                                 color: #e2e8f0;
@@ -6463,6 +6485,7 @@ HTML_TEMPLATE = '''
                                 line-height: 1.5;
                             `;
                             document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                         }
                         return tooltipEl;
                     };
@@ -6487,7 +6510,7 @@ HTML_TEMPLATE = '''
                         const { chart, tooltip } = context;
                         const tooltipEl = getOrCreateMgrMonthlyTooltipSelected(chart);
 
-                        if (tooltip.opacity === 0) {
+                        if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                             tooltipEl.style.opacity = 0;
                             return;
                         }
@@ -6940,7 +6963,7 @@ HTML_TEMPLATE = '''
                         border: 1px solid rgba(99, 102, 241, 0.5);
                         border-radius: 12px;
                         padding: 16px;
-                        pointer-events: none;
+                        pointer-events: auto;
                         z-index: 99999;
                         font-size: 12px;
                         color: #e2e8f0;
@@ -6951,6 +6974,7 @@ HTML_TEMPLATE = '''
                         transition: opacity 0.2s ease;
                     `;
                     document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                 }
                 return tooltipEl;
             };
@@ -6965,7 +6989,7 @@ HTML_TEMPLATE = '''
                 const { chart, tooltip } = context;
                 const tooltipEl = getOrCreatePerCaseTooltip(chart);
 
-                if (tooltip.opacity === 0) {
+                if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                     tooltipEl.style.opacity = 0;
                     return;
                 }
@@ -7277,7 +7301,7 @@ HTML_TEMPLATE = '''
                         background: rgba(30, 41, 59, 0.98);
                         border-radius: 12px;
                         padding: 16px;
-                        pointer-events: none;
+                        pointer-events: auto;
                         z-index: 99999;
                         font-size: 13px;
                         color: #e2e8f0;
@@ -7290,6 +7314,7 @@ HTML_TEMPLATE = '''
                         line-height: 1.5;
                     `;
                     document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                 }
                 return tooltipEl;
             };
@@ -7302,7 +7327,7 @@ HTML_TEMPLATE = '''
                 const { chart, tooltip } = context;
                 const tooltipEl = getOrCreateUrgentTooltip(chart);
 
-                if (tooltip.opacity === 0) {
+                if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                     tooltipEl.style.opacity = 0;
                     return;
                 }
@@ -7513,7 +7538,7 @@ HTML_TEMPLATE = '''
                     background: rgba(30, 41, 59, 0.97);
                     border-radius: 12px;
                     padding: 16px;
-                    pointer-events: none;
+                    pointer-events: auto;
                     z-index: 99999;
                     font-size: 13px;
                     color: #e2e8f0;
@@ -7526,6 +7551,7 @@ HTML_TEMPLATE = '''
                     line-height: 1.5;
                 `;
                 document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
             }
             return tooltipEl;
         };
@@ -7633,7 +7659,7 @@ HTML_TEMPLATE = '''
                                 const tooltipEl = getOrCreateUrgentMonthlyTooltip(context.chart);
                                 const tooltipModel = context.tooltip;
 
-                                if (tooltipModel.opacity === 0) {
+                                if (tooltipModel.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                                     tooltipEl.style.opacity = 0;
                                     return;
                                 }
@@ -8041,7 +8067,7 @@ HTML_TEMPLATE = '''
                     background: rgba(30, 41, 59, 0.97);
                     border-radius: 12px;
                     padding: 16px;
-                    pointer-events: none;
+                    pointer-events: auto;
                     z-index: 99999;
                     font-size: 13px;
                     color: #e2e8f0;
@@ -8054,6 +8080,7 @@ HTML_TEMPLATE = '''
                     line-height: 1.5;
                 `;
                 document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
             }
             return tooltipEl;
         };
@@ -8206,7 +8233,7 @@ HTML_TEMPLATE = '''
                                 const tooltipEl = getOrCreateUrgentUnitPriceTooltip(context.chart);
                                 const tooltipModel = context.tooltip;
 
-                                if (tooltipModel.opacity === 0) {
+                                if (tooltipModel.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                                     tooltipEl.style.opacity = 0;
                                     return;
                                 }
@@ -8668,7 +8695,7 @@ HTML_TEMPLATE = '''
                         border: 1px solid rgba(99, 102, 241, 0.5);
                         border-radius: 12px;
                         padding: 16px;
-                        pointer-events: none;
+                        pointer-events: auto;
                         z-index: 99999;
                         font-size: 12px;
                         color: #e2e8f0;
@@ -8679,6 +8706,7 @@ HTML_TEMPLATE = '''
                         transition: opacity 0.2s ease;
                     `;
                     document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                 }
                 return tooltipEl;
             };
@@ -8688,7 +8716,7 @@ HTML_TEMPLATE = '''
                 const { chart, tooltip } = context;
                 const tooltipEl = getOrCreateDailyClientTooltip(chart);
 
-                if (tooltip.opacity === 0) {
+                if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                     tooltipEl.style.opacity = 0;
                     return;
                 }
@@ -9140,7 +9168,7 @@ HTML_TEMPLATE = '''
                         background: rgba(30, 41, 59, 0.98);
                         border-radius: 12px;
                         padding: 16px;
-                        pointer-events: none;
+                        pointer-events: auto;
                         z-index: 99999;
                         font-size: 13px;
                         color: #e2e8f0;
@@ -9153,6 +9181,7 @@ HTML_TEMPLATE = '''
                         line-height: 1.5;
                     `;
                     document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                 }
                 return tooltipEl;
             };
@@ -9162,7 +9191,7 @@ HTML_TEMPLATE = '''
                 const { chart, tooltip } = context;
                 const tooltipEl = getOrCreateBranchPerCaseTooltip(chart);
 
-                if (tooltip.opacity === 0) {
+                if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                     tooltipEl.style.opacity = 0;
                     return;
                 }
@@ -9516,7 +9545,7 @@ HTML_TEMPLATE = '''
                         background: rgba(30, 41, 59, 0.98);
                         border-radius: 12px;
                         padding: 16px;
-                        pointer-events: none;
+                        pointer-events: auto;
                         z-index: 99999;
                         font-size: 13px;
                         color: #e2e8f0;
@@ -9529,6 +9558,7 @@ HTML_TEMPLATE = '''
                         line-height: 1.5;
                     `;
                     document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                 }
                 return tooltipEl;
             };
@@ -9538,7 +9568,7 @@ HTML_TEMPLATE = '''
                 const { chart, tooltip } = context;
                 const tooltipEl = getOrCreateEfficiencyTooltip(chart);
 
-                if (tooltip.opacity === 0) {
+                if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                     tooltipEl.style.opacity = 0;
                     return;
                 }
@@ -9891,7 +9921,7 @@ HTML_TEMPLATE = '''
                         background: rgba(30, 41, 59, 0.98);
                         border-radius: 12px;
                         padding: 16px;
-                        pointer-events: none;
+                        pointer-events: auto;
                         z-index: 99999;
                         font-size: 13px;
                         color: #e2e8f0;
@@ -9904,6 +9934,7 @@ HTML_TEMPLATE = '''
                         line-height: 1.5;
                     `;
                     document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                 }
                 return tooltipEl;
             };
@@ -9928,7 +9959,7 @@ HTML_TEMPLATE = '''
                 const { chart, tooltip } = context;
                 const tooltipEl = getOrCreateBranchMonthlyTooltip(chart);
 
-                if (tooltip.opacity === 0) {
+                if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                     tooltipEl.style.opacity = 0;
                     return;
                 }
@@ -10401,7 +10432,7 @@ HTML_TEMPLATE = '''
                         background: rgba(30, 41, 59, 0.98);
                         border-radius: 12px;
                         padding: 16px;
-                        pointer-events: none;
+                        pointer-events: auto;
                         z-index: 99999;
                         font-size: 12px;
                         color: #e2e8f0;
@@ -10412,6 +10443,7 @@ HTML_TEMPLATE = '''
                         transition: opacity 0.2s ease;
                     `;
                     document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                 }
                 return tooltipEl;
             };
@@ -10421,7 +10453,7 @@ HTML_TEMPLATE = '''
                 const { chart, tooltip } = context;
                 const tooltipEl = getOrCreateManagerTooltip(chart);
 
-                if (tooltip.opacity === 0) {
+                if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                     tooltipEl.style.opacity = 0;
                     return;
                 }
@@ -10789,7 +10821,7 @@ HTML_TEMPLATE = '''
                         background: rgba(30, 41, 59, 0.98);
                         border-radius: 12px;
                         padding: 16px;
-                        pointer-events: none;
+                        pointer-events: auto;
                         z-index: 99999;
                         font-size: 13px;
                         color: #e2e8f0;
@@ -10802,6 +10834,7 @@ HTML_TEMPLATE = '''
                         line-height: 1.5;
                     `;
                     document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                 }
                 return tooltipEl;
             };
@@ -10811,7 +10844,7 @@ HTML_TEMPLATE = '''
                 const { chart, tooltip } = context;
                 const tooltipEl = getOrCreateBranchTooltip(chart);
 
-                if (tooltip.opacity === 0) {
+                if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                     tooltipEl.style.opacity = 0;
                     return;
                 }
@@ -11241,7 +11274,7 @@ HTML_TEMPLATE = '''
                         background: rgba(30, 41, 59, 0.98);
                         border-radius: 12px;
                         padding: 16px;
-                        pointer-events: none;
+                        pointer-events: auto;
                         z-index: 99999;
                         font-size: 13px;
                         color: #e2e8f0;
@@ -11254,6 +11287,7 @@ HTML_TEMPLATE = '''
                         line-height: 1.5;
                     `;
                     document.body.appendChild(tooltipEl);
+                setupTooltipHover(tooltipEl);
                 }
                 return tooltipEl;
             };
@@ -11263,7 +11297,7 @@ HTML_TEMPLATE = '''
                 const { chart, tooltip } = context;
                 const tooltipEl = getOrCreateMonthlyTooltip(chart);
 
-                if (tooltip.opacity === 0) {
+                if (tooltip.opacity === 0 && !isTooltipHovered(tooltipEl)) {
                     tooltipEl.style.opacity = 0;
                     return;
                 }
