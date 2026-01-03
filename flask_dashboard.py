@@ -4660,8 +4660,8 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
-            <!-- 월별 업체수 / 효율 분류 차트 -->
-            <div class="content-grid" style="margin-bottom: 24px;">
+            <!-- 월별 업체수 차트 -->
+            <div style="margin-bottom: 24px;">
                 <div class="card">
                     <div class="card-header">
                         <div class="card-title">📈 월별 거래 업체 수</div>
@@ -4669,15 +4669,6 @@ HTML_TEMPLATE = '''
                     </div>
                     <div class="card-body">
                         <div class="chart-container" style="height: 300px;"><canvas id="clientMonthlyCountChart"></canvas></div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">⚖️ 효율 기준 업체 분류</div>
-                        <div class="card-badge" id="clientEfficiencyBadge">3개월↑ 지속거래</div>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-container" style="height: 300px;"><canvas id="clientEfficiencyChart"></canvas></div>
                     </div>
                 </div>
             </div>
@@ -16022,7 +16013,6 @@ HTML_TEMPLATE = '''
             updateClientSalesChart(clients, newClients, retainedClients);
             updateClientCountChart(clients, newClients, retainedClients);
             updateClientMonthlyCountChart();
-            updateClientEfficiencyChart(clients);
             updateClientEfficiencyTrendChart(clients);
 
             // 테이블 업데이트
@@ -17142,114 +17132,6 @@ HTML_TEMPLATE = '''
                     }
                 }
             });
-        }
-
-        // 효율 기준 업체 분류 차트 및 테이블
-        function updateClientEfficiencyChart(clients) {
-            const ctx = document.getElementById('clientEfficiencyChart');
-            if (!ctx) return;
-            if (charts.clientEfficiency) charts.clientEfficiency.destroy();
-
-            // 3개월 이상 지속 거래 업체만 필터링
-            const sustainedClients = clients.filter(c => (c[1].tradeMonths || 0) >= 3);
-
-            if (sustainedClients.length === 0) {
-                document.getElementById('lowEfficiencyBadge').textContent = '0개';
-                document.getElementById('midEfficiencyBadge').textContent = '0개';
-                document.getElementById('highEfficiencyBadge').textContent = '0개';
-                return;
-            }
-
-            // 평균 건당 단가 계산
-            const totalSales = sustainedClients.reduce((s, c) => s + c[1].sales, 0);
-            const totalCount = sustainedClients.reduce((s, c) => s + c[1].count, 0);
-            const avgPrice = totalCount > 0 ? totalSales / totalCount : 0;
-            const avgCount = sustainedClients.length > 0 ? totalCount / sustainedClients.length : 0;
-
-            // 효율 기준 분류 (단가 기준)
-            const lowThreshold = avgPrice * 0.7;   // 평균의 70% 미만
-            const highThreshold = avgPrice * 1.3; // 평균의 130% 초과
-
-            const lowEfficiency = [];   // 건수 많고 단가 낮음
-            const midEfficiency = [];   // 평균 수준
-            const highEfficiency = [];  // 건수 적고 단가 높음
-
-            sustainedClients.forEach(c => {
-                const clientAvgPrice = c[1].count > 0 ? c[1].sales / c[1].count : 0;
-                const clientData = {
-                    name: c[0],
-                    count: c[1].count,
-                    sales: c[1].sales,
-                    avgPrice: clientAvgPrice,
-                    manager: c[1].manager || '미지정'
-                };
-
-                if (clientAvgPrice < lowThreshold && c[1].count >= avgCount) {
-                    lowEfficiency.push(clientData);  // 건수 많고 단가 낮음
-                } else if (clientAvgPrice > highThreshold) {
-                    highEfficiency.push(clientData); // 단가 높음
-                } else {
-                    midEfficiency.push(clientData);  // 평균 수준
-                }
-            });
-
-            // 정렬
-            lowEfficiency.sort((a, b) => a.avgPrice - b.avgPrice);
-            midEfficiency.sort((a, b) => b.sales - a.sales);
-            highEfficiency.sort((a, b) => b.avgPrice - a.avgPrice);
-
-            // 배지 업데이트
-            document.getElementById('lowEfficiencyBadge').textContent = lowEfficiency.length + '개';
-            document.getElementById('midEfficiencyBadge').textContent = midEfficiency.length + '개';
-            document.getElementById('highEfficiencyBadge').textContent = highEfficiency.length + '개';
-
-            // 파이 차트
-            charts.clientEfficiency = new Chart(ctx.getContext('2d'), {
-                type: 'doughnut',
-                data: {
-                    labels: ['저효율 (단가↓)', '중효율', '고효율 (단가↑)'],
-                    datasets: [{
-                        data: [lowEfficiency.length, midEfficiency.length, highEfficiency.length],
-                        backgroundColor: ['rgba(239, 68, 68, 0.8)', 'rgba(245, 158, 11, 0.8)', 'rgba(16, 185, 129, 0.8)'],
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom', labels: { boxWidth: 12 } },
-                        tooltip: {
-                            callbacks: {
-                                label: ctx => {
-                                    const total = lowEfficiency.length + midEfficiency.length + highEfficiency.length;
-                                    const percent = total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0;
-                                    return ctx.label + ': ' + ctx.raw + '개 (' + percent + '%)';
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-
-            // 테이블 업데이트
-            const renderTable = (tableId, data) => {
-                const tbody = document.querySelector('#' + tableId + ' tbody');
-                tbody.innerHTML = data.slice(0, 15).map(d => {
-                    const priceColor = d.avgPrice < lowThreshold ? '#ef4444' :
-                                      d.avgPrice > highThreshold ? '#10b981' : '#64748b';
-                    return '<tr>' +
-                        '<td title="' + d.manager + '">' + (d.name.length > 12 ? d.name.substring(0, 12) + '..' : d.name) + '</td>' +
-                        '<td class="text-right">' + d.count.toLocaleString() + '</td>' +
-                        '<td class="text-right" style="color:' + priceColor + ';font-weight:600;">' + formatCurrency(d.avgPrice) + '</td>' +
-                        '<td class="text-right">' + formatCurrency(d.sales) + '</td>' +
-                    '</tr>';
-                }).join('');
-            };
-
-            renderTable('lowEfficiencyTable', lowEfficiency);
-            renderTable('midEfficiencyTable', midEfficiency);
-            renderTable('highEfficiencyTable', highEfficiency);
         }
 
         function updateRetainedClientTable(retainedClients) {
