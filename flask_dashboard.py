@@ -4206,6 +4206,39 @@ HTML_TEMPLATE = '''
 
         <!-- 업체별 탭 -->
         <div id="client" class="tab-content">
+            <!-- 업체 검색 및 필터 -->
+            <div class="card" style="margin-bottom: 20px;">
+                <div class="card-body" style="padding: 16px;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <input type="text" id="clientSearchInput" placeholder="🔍 업체명 검색..."
+                                style="width: 100%; padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 14px; transition: border-color 0.2s;"
+                                oninput="filterClients()" onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#e2e8f0'">
+                        </div>
+                        <select id="clientStatusFilter" onchange="filterClients()" style="padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 13px; min-width: 120px;">
+                            <option value="all">전체 업체</option>
+                            <option value="new">🆕 신규 업체</option>
+                            <option value="retained">🔄 유지 업체</option>
+                            <option value="vip">⭐ VIP 업체</option>
+                            <option value="growth">📈 성장 업체</option>
+                            <option value="decline">📉 감소 업체</option>
+                        </select>
+                        <select id="clientManagerFilter" onchange="filterClients()" style="padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 13px; min-width: 120px;">
+                            <option value="all">전체 담당자</option>
+                        </select>
+                        <select id="clientPurposeFilter" onchange="filterClients()" style="padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 13px; min-width: 140px;">
+                            <option value="all">전체 검사목적</option>
+                        </select>
+                        <button onclick="resetClientFilters()" style="padding: 10px 16px; background: #f1f5f9; border: none; border-radius: 10px; cursor: pointer; font-size: 13px;">
+                            ↺ 초기화
+                        </button>
+                    </div>
+                    <div id="clientFilterSummary" style="margin-top: 12px; padding: 10px; background: #f8fafc; border-radius: 8px; font-size: 13px; color: #64748b; display: none;">
+                        <span id="clientFilterResultText">검색 결과: 0개 업체</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- 업체 현황 KPI 카드 -->
             <section class="kpi-section client-kpi-section" style="grid-template-columns: repeat(5, 1fr);">
                 <div class="kpi-card sales" style="border-top: 4px solid var(--primary);">
@@ -4396,6 +4429,67 @@ HTML_TEMPLATE = '''
                                 <thead><tr><th>담당자</th><th class="text-right">업체수</th><th class="text-right">신규</th><th class="text-right">유지</th><th class="text-right">이탈</th><th class="text-right">총매출</th><th class="text-right">성장률</th></tr></thead>
                                 <tbody></tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 검색된 업체 목록 테이블 -->
+            <div class="card" id="clientSearchResultCard" style="display: none; margin-bottom: 24px;">
+                <div class="card-header">
+                    <div class="card-title">🔍 검색 결과</div>
+                    <div class="card-badge" id="clientSearchResultBadge">0개</div>
+                </div>
+                <div class="card-body">
+                    <div class="scroll-table" style="max-height: 400px;">
+                        <table class="data-table" id="clientSearchResultTable">
+                            <thead><tr>
+                                <th>업체명</th>
+                                <th>담당자</th>
+                                <th>상태</th>
+                                <th class="text-right">올해 매출</th>
+                                <th class="text-right">전년 매출</th>
+                                <th class="text-right">증감</th>
+                                <th class="text-right">건수</th>
+                                <th>주요 검사목적</th>
+                                <th>상세</th>
+                            </tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 업체 상세 모달 -->
+        <div id="clientModal" class="modal" style="display: none;">
+            <div class="modal-content" style="max-width: 950px;">
+                <div class="modal-header">
+                    <span class="modal-title" id="clientModalTitle">🏢 업체 상세</span>
+                    <span class="modal-close" onclick="closeClientModal()">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <!-- 업체 기본 정보 -->
+                    <div id="clientModalInfo" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;"></div>
+
+                    <!-- 전년 비교 -->
+                    <div id="clientModalCompare" style="display: none; margin-bottom: 20px;"></div>
+
+                    <!-- 월별 추이 차트 -->
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="margin-bottom: 12px; font-size: 14px; color: #475569;">📈 월별 거래 추이</h4>
+                        <div style="height: 200px;"><canvas id="clientMonthlyChart"></canvas></div>
+                    </div>
+
+                    <!-- 검사목적별 구성 -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div>
+                            <h4 style="margin-bottom: 12px; font-size: 14px; color: #475569;">🔬 검사목적별 매출</h4>
+                            <div style="height: 180px;"><canvas id="clientPurposeChart"></canvas></div>
+                        </div>
+                        <div>
+                            <h4 style="margin-bottom: 12px; font-size: 14px; color: #475569;">📊 검사목적별 상세</h4>
+                            <div id="clientPurposeTable" style="max-height: 180px; overflow-y: auto;"></div>
                         </div>
                     </div>
                 </div>
@@ -15441,7 +15535,324 @@ HTML_TEMPLATE = '''
             // 버튼 카운트
             document.getElementById('newClientsBtnCount').textContent = newClients.length;
             document.getElementById('churnedClientsBtnCount').textContent = churnedClients.length;
+
+            // 필터 초기화
+            populateClientFilters(clients);
         }
+
+        // 필터 드롭다운 초기화
+        function populateClientFilters(clients) {
+            const managers = new Set();
+            const purposes = new Set();
+
+            clients.forEach(c => {
+                if (c[1].manager) managers.add(c[1].manager);
+                if (c[1].purpose) purposes.add(c[1].purpose);
+                if (c[1].byPurpose) {
+                    Object.keys(c[1].byPurpose).forEach(p => purposes.add(p));
+                }
+            });
+
+            const managerSelect = document.getElementById('clientManagerFilter');
+            const currentManager = managerSelect.value;
+            managerSelect.innerHTML = '<option value="all">전체 담당자</option>' +
+                [...managers].sort().map(m => `<option value="${m}">${m}</option>`).join('');
+            if (currentManager !== 'all') managerSelect.value = currentManager;
+
+            const purposeSelect = document.getElementById('clientPurposeFilter');
+            const currentPurpose = purposeSelect.value;
+            purposeSelect.innerHTML = '<option value="all">전체 검사목적</option>' +
+                [...purposes].sort().map(p => `<option value="${p}">${p}</option>`).join('');
+            if (currentPurpose !== 'all') purposeSelect.value = currentPurpose;
+        }
+
+        // 업체 필터링
+        function filterClients() {
+            if (!clientAnalysisData) return;
+
+            const searchText = document.getElementById('clientSearchInput').value.toLowerCase().trim();
+            const statusFilter = document.getElementById('clientStatusFilter').value;
+            const managerFilter = document.getElementById('clientManagerFilter').value;
+            const purposeFilter = document.getElementById('clientPurposeFilter').value;
+
+            const hasFilter = searchText || statusFilter !== 'all' || managerFilter !== 'all' || purposeFilter !== 'all';
+
+            if (!hasFilter) {
+                document.getElementById('clientSearchResultCard').style.display = 'none';
+                document.getElementById('clientFilterSummary').style.display = 'none';
+                return;
+            }
+
+            const { newClients, retainedClients, churnedClients, vipClients } = clientAnalysisData;
+
+            // 모든 업체 통합
+            let allClients = [
+                ...newClients.map(c => ({ ...c, statusLabel: '🆕 신규', statusKey: 'new' })),
+                ...retainedClients.map(c => ({
+                    ...c,
+                    statusLabel: c.growthRate >= 0 ? '📈 성장' : '📉 감소',
+                    statusKey: c.growthRate >= 0 ? 'growth' : 'decline'
+                }))
+            ];
+
+            // VIP 표시 추가
+            allClients = allClients.map(c => ({
+                ...c,
+                isVip: c.sales >= 100000000,
+                statusLabel: c.sales >= 100000000 ? '⭐ VIP' : c.statusLabel
+            }));
+
+            // 필터 적용
+            let filtered = allClients.filter(c => {
+                // 검색어 필터
+                if (searchText && !c.name.toLowerCase().includes(searchText)) return false;
+
+                // 상태 필터
+                if (statusFilter === 'new' && c.status !== 'new') return false;
+                if (statusFilter === 'retained' && c.status !== 'retained') return false;
+                if (statusFilter === 'vip' && !c.isVip) return false;
+                if (statusFilter === 'growth' && !(c.status === 'retained' && c.growthRate >= 0)) return false;
+                if (statusFilter === 'decline' && !(c.status === 'retained' && c.growthRate < 0)) return false;
+
+                // 담당자 필터
+                if (managerFilter !== 'all' && c.manager !== managerFilter) return false;
+
+                // 검사목적 필터
+                if (purposeFilter !== 'all') {
+                    const hasPurpose = c.purpose === purposeFilter ||
+                        (c.byPurpose && c.byPurpose[purposeFilter]);
+                    if (!hasPurpose) return false;
+                }
+
+                return true;
+            });
+
+            // 결과 표시
+            document.getElementById('clientFilterSummary').style.display = 'block';
+            document.getElementById('clientFilterResultText').innerHTML =
+                `검색 결과: <strong>${filtered.length}개</strong> 업체` +
+                (filtered.length > 0 ? ` | 총 매출: <strong>${formatCurrency(filtered.reduce((s, c) => s + (c.sales || 0), 0))}</strong>` : '');
+
+            // 테이블 표시
+            const resultCard = document.getElementById('clientSearchResultCard');
+            const tbody = document.querySelector('#clientSearchResultTable tbody');
+
+            if (filtered.length > 0) {
+                resultCard.style.display = 'block';
+                document.getElementById('clientSearchResultBadge').textContent = filtered.length + '개';
+
+                // 매출 순 정렬
+                filtered.sort((a, b) => (b.sales || 0) - (a.sales || 0));
+
+                tbody.innerHTML = filtered.slice(0, 100).map(c => {
+                    const growthPct = c.growthRate || 0;
+                    const growthColor = growthPct >= 0 ? '#10b981' : '#ef4444';
+                    const growthIcon = growthPct >= 0 ? '▲' : '▼';
+
+                    return `<tr style="cursor: pointer;" onclick="showClientDetail('${c.name.replace(/'/g, "\\'")}')">
+                        <td style="font-weight: 600;">${c.name}</td>
+                        <td>${c.manager || '-'}</td>
+                        <td><span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; ${c.isVip ? 'background: #fef3c7; color: #b45309;' : c.status === 'new' ? 'background: #dcfce7; color: #166534;' : 'background: #f1f5f9; color: #475569;'}">${c.statusLabel}</span></td>
+                        <td class="text-right" style="font-weight: 600;">${formatCurrency(c.sales || 0)}</td>
+                        <td class="text-right" style="color: #94a3b8;">${c.lastYearSales ? formatCurrency(c.lastYearSales) : '-'}</td>
+                        <td class="text-right">${c.status === 'retained' ? `<span style="color: ${growthColor};">${growthIcon} ${growthPct >= 0 ? '+' : ''}${growthPct.toFixed(1)}%</span>` : '-'}</td>
+                        <td class="text-right">${(c.count || 0).toLocaleString()}건</td>
+                        <td style="font-size: 11px; color: #64748b;">${c.purpose || '-'}</td>
+                        <td><button class="btn btn-sm" onclick="event.stopPropagation(); showClientDetail('${c.name.replace(/'/g, "\\'")}')">상세</button></td>
+                    </tr>`;
+                }).join('');
+            } else {
+                resultCard.style.display = 'none';
+            }
+        }
+
+        // 필터 초기화
+        function resetClientFilters() {
+            document.getElementById('clientSearchInput').value = '';
+            document.getElementById('clientStatusFilter').value = 'all';
+            document.getElementById('clientManagerFilter').value = 'all';
+            document.getElementById('clientPurposeFilter').value = 'all';
+            document.getElementById('clientSearchResultCard').style.display = 'none';
+            document.getElementById('clientFilterSummary').style.display = 'none';
+        }
+
+        // 업체 상세 모달
+        let clientMonthlyChart = null;
+        let clientPurposeChart = null;
+
+        function showClientDetail(clientName) {
+            const clients = currentData.by_client || [];
+            const compareClients = compareData?.by_client || [];
+
+            const clientEntry = clients.find(c => c[0] === clientName);
+            const compareEntry = compareClients.find(c => c[0] === clientName);
+
+            if (!clientEntry) {
+                alert('업체 정보를 찾을 수 없습니다.');
+                return;
+            }
+
+            const client = clientEntry[1];
+            const compClient = compareEntry ? compareEntry[1] : null;
+
+            document.getElementById('clientModalTitle').textContent = `🏢 ${clientName}`;
+            document.getElementById('clientModal').style.display = 'flex';
+
+            // 기본 정보 카드
+            const avgPrice = client.count > 0 ? client.sales / client.count : 0;
+            const isVip = client.sales >= 100000000;
+            const isNew = !compClient;
+
+            let statusBadge = '';
+            if (isVip) statusBadge = '<span style="background: #fef3c7; color: #b45309; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;">⭐ VIP</span>';
+            else if (isNew) statusBadge = '<span style="background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;">🆕 신규</span>';
+
+            document.getElementById('clientModalInfo').innerHTML = `
+                <div style="background: linear-gradient(135deg, #eff6ff, #dbeafe); padding: 16px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 12px; color: #3b82f6; margin-bottom: 6px;">총 매출</div>
+                    <div style="font-size: 22px; font-weight: 700; color: #1e40af;">${formatCurrency(client.sales)}</div>
+                </div>
+                <div style="background: linear-gradient(135deg, #f0fdf4, #dcfce7); padding: 16px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 12px; color: #22c55e; margin-bottom: 6px;">총 건수</div>
+                    <div style="font-size: 22px; font-weight: 700; color: #166534;">${client.count.toLocaleString()}건</div>
+                </div>
+                <div style="background: linear-gradient(135deg, #fef3c7, #fde68a); padding: 16px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 12px; color: #f59e0b; margin-bottom: 6px;">건당 단가</div>
+                    <div style="font-size: 22px; font-weight: 700; color: #b45309;">${formatCurrency(avgPrice)}</div>
+                </div>
+                <div style="background: linear-gradient(135deg, #f5f3ff, #ede9fe); padding: 16px; border-radius: 12px; text-align: center;">
+                    <div style="font-size: 12px; color: #8b5cf6; margin-bottom: 6px;">담당자 ${statusBadge ? '/ 상태' : ''}</div>
+                    <div style="font-size: 18px; font-weight: 700; color: #6d28d9;">${client.manager || '미지정'}</div>
+                    ${statusBadge ? `<div style="margin-top: 6px;">${statusBadge}</div>` : ''}
+                </div>
+            `;
+
+            // 전년 비교
+            const compareDiv = document.getElementById('clientModalCompare');
+            if (compClient) {
+                const salesDiff = client.sales - compClient.sales;
+                const salesPct = compClient.sales > 0 ? (salesDiff / compClient.sales * 100) : 0;
+                const countDiff = client.count - compClient.count;
+                const countPct = compClient.count > 0 ? (countDiff / compClient.count * 100) : 0;
+                const salesColor = salesDiff >= 0 ? '#10b981' : '#ef4444';
+                const countColor = countDiff >= 0 ? '#10b981' : '#ef4444';
+
+                compareDiv.style.display = 'block';
+                compareDiv.innerHTML = `
+                    <div style="background: #f8fafc; border-radius: 12px; padding: 16px;">
+                        <h4 style="font-size: 14px; color: #475569; margin-bottom: 12px;">📊 전년 대비 비교 (${compareData?.year || '전년'})</h4>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; text-align: center;">
+                            <div>
+                                <div style="font-size: 11px; color: #94a3b8;">전년 매출</div>
+                                <div style="font-size: 16px; font-weight: 600; color: #64748b;">${formatCurrency(compClient.sales)}</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 11px; color: #94a3b8;">매출 증감</div>
+                                <div style="font-size: 16px; font-weight: 700; color: ${salesColor};">${salesDiff >= 0 ? '▲' : '▼'} ${salesPct >= 0 ? '+' : ''}${salesPct.toFixed(1)}%</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 11px; color: #94a3b8;">전년 건수</div>
+                                <div style="font-size: 16px; font-weight: 600; color: #64748b;">${compClient.count.toLocaleString()}건</div>
+                            </div>
+                            <div>
+                                <div style="font-size: 11px; color: #94a3b8;">건수 증감</div>
+                                <div style="font-size: 16px; font-weight: 700; color: ${countColor};">${countDiff >= 0 ? '▲' : '▼'} ${countPct >= 0 ? '+' : ''}${countPct.toFixed(1)}%</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                compareDiv.style.display = 'none';
+            }
+
+            // 월별 추이 차트
+            const monthlyCtx = document.getElementById('clientMonthlyChart').getContext('2d');
+            if (clientMonthlyChart) clientMonthlyChart.destroy();
+
+            const monthLabels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+            const byMonth = client.byMonth || {};
+            const compByMonth = compClient?.byMonth || {};
+
+            const datasets = [{
+                label: currentData.year + '년',
+                data: monthLabels.map((_, i) => byMonth[i + 1]?.sales || 0),
+                backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                borderColor: '#6366f1',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3
+            }];
+
+            if (compClient) {
+                datasets.push({
+                    label: compareData.year + '년',
+                    data: monthLabels.map((_, i) => compByMonth[i + 1]?.sales || 0),
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0.3
+                });
+            }
+
+            clientMonthlyChart = new Chart(monthlyCtx, {
+                type: 'line',
+                data: { labels: monthLabels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: v => formatCurrency(v) }
+                        }
+                    }
+                }
+            });
+
+            // 검사목적별 도넛 차트
+            const purposeCtx = document.getElementById('clientPurposeChart').getContext('2d');
+            if (clientPurposeChart) clientPurposeChart.destroy();
+
+            const byPurpose = client.byPurpose || {};
+            const purposeEntries = Object.entries(byPurpose).sort((a, b) => b[1].sales - a[1].sales);
+            const purposeLabels = purposeEntries.map(e => e[0]);
+            const purposeValues = purposeEntries.map(e => e[1].sales);
+
+            clientPurposeChart = new Chart(purposeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: purposeLabels,
+                    datasets: [{ data: purposeValues, backgroundColor: ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e', '#f59e0b', '#22c55e'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+
+            // 검사목적별 테이블
+            document.getElementById('clientPurposeTable').innerHTML = `
+                <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                    ${purposeEntries.map(([p, d]) => `
+                        <tr style="border-bottom: 1px solid #f1f5f9;">
+                            <td style="padding: 6px 4px;">${p}</td>
+                            <td style="padding: 6px 4px; text-align: right; font-weight: 600;">${formatCurrency(d.sales)}</td>
+                            <td style="padding: 6px 4px; text-align: right; color: #64748b;">${d.count}건</td>
+                            <td style="padding: 6px 4px; text-align: right; color: #94a3b8;">${(d.sales / client.sales * 100).toFixed(0)}%</td>
+                        </tr>
+                    `).join('')}
+                </table>
+            `;
+        }
+
+        function closeClientModal() {
+            document.getElementById('clientModal').style.display = 'none';
+        }
+
+        // 모달 외부 클릭 시 닫기
+        document.getElementById('clientModal')?.addEventListener('click', function(e) {
+            if (e.target === this) closeClientModal();
+        });
 
         function updateManagerKPIs(clients, newClients, retainedClients, churnedClients, vipClients, compareClientMap) {
             // 담당자별 집계
@@ -15578,8 +15989,10 @@ HTML_TEMPLATE = '''
             const newClientNames = new Set(newClients.map(c => c.name));
             const retainedMap = Object.fromEntries(retainedClients.map(c => [c.name, c]));
             const totalSales = clients.reduce((s, c) => s + c[1].sales, 0);
+            const hasCompare = compareData && compareData.by_client;
 
-            document.getElementById('clientSalesChartBadge').textContent = currentData.year + '년';
+            document.getElementById('clientSalesChartBadge').textContent = hasCompare ?
+                `${currentData.year} vs ${compareData.year}` : currentData.year + '년';
 
             const ctx = document.getElementById('clientSalesChart');
             if (!ctx) return;
@@ -15597,23 +16010,43 @@ HTML_TEMPLATE = '''
                 return el;
             };
 
+            // 데이터셋 구성
+            const datasets = [{
+                label: currentData.year + '년 매출',
+                data: top10.map(c => c[1].sales),
+                backgroundColor: top10.map(c => newClientNames.has(c[0]) ? 'rgba(16, 185, 129, 0.8)' : 'rgba(99, 102, 241, 0.8)'),
+                borderRadius: 6,
+                order: 1
+            }];
+
+            // 전년 비교 데이터 추가
+            if (hasCompare) {
+                datasets.push({
+                    label: compareData.year + '년 매출',
+                    data: top10.map(c => {
+                        const retained = retainedMap[c[0]];
+                        return retained ? retained.lastYearSales : 0;
+                    }),
+                    backgroundColor: 'rgba(245, 158, 11, 0.5)',
+                    borderColor: '#f59e0b',
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    order: 2
+                });
+            }
+
             charts.clientSales = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: top10.map(c => c[0].length > 8 ? c[0].substring(0, 8) + '..' : c[0]),
-                    datasets: [{
-                        label: '매출',
-                        data: top10.map(c => c[1].sales),
-                        backgroundColor: top10.map(c => newClientNames.has(c[0]) ? 'rgba(16, 185, 129, 0.8)' : 'rgba(99, 102, 241, 0.8)'),
-                        borderRadius: 6
-                    }]
+                    datasets
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { intersect: true },
                     plugins: {
-                        legend: { display: false },
+                        legend: { display: hasCompare, position: 'top', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } },
                         tooltip: {
                             enabled: false,
                             external: function(context) {
