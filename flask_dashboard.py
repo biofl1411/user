@@ -3873,13 +3873,13 @@ HTML_TEMPLATE = '''
             <!-- 거래처 중복 분석 -->
             <div class="content-grid" style="margin-bottom: 24px;">
                 <div class="card">
-                    <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
+                    <div class="card-header">
                         <div class="card-title">🔄 월별 기존/신규 거래처 현황</div>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <select id="clientChart1PurposeFilter" class="filter-select" style="min-width: 120px; padding: 4px 8px; font-size: 12px;" onchange="applyClientChartFilters()">
+                        <div class="chart-controls" style="display: flex; gap: 10px;">
+                            <select id="clientChart1PurposeFilter" class="filter-select" style="min-width: 140px;" onchange="applyClientChartFilters(1)">
                                 <option value="전체">전체 검사목적</option>
                             </select>
-                            <select id="clientChart1BranchFilter" class="filter-select" style="min-width: 100px; padding: 4px 8px; font-size: 12px;" onchange="applyClientChartFilters()">
+                            <select id="clientChart1BranchFilter" class="filter-select" style="min-width: 120px;" onchange="applyClientChartFilters(1)">
                                 <option value="전체">전체 팀</option>
                             </select>
                         </div>
@@ -3889,13 +3889,13 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
                 <div class="card">
-                    <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
+                    <div class="card-header">
                         <div class="card-title">📊 거래처 리텐션율 추이</div>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <select id="clientChart2PurposeFilter" class="filter-select" style="min-width: 120px; padding: 4px 8px; font-size: 12px;" onchange="applyClientChartFilters()">
+                        <div class="chart-controls" style="display: flex; gap: 10px;">
+                            <select id="clientChart2PurposeFilter" class="filter-select" style="min-width: 140px;" onchange="applyClientChartFilters(2)">
                                 <option value="전체">전체 검사목적</option>
                             </select>
-                            <select id="clientChart2BranchFilter" class="filter-select" style="min-width: 100px; padding: 4px 8px; font-size: 12px;" onchange="applyClientChartFilters()">
+                            <select id="clientChart2BranchFilter" class="filter-select" style="min-width: 120px;" onchange="applyClientChartFilters(2)">
                                 <option value="전체">전체 팀</option>
                             </select>
                         </div>
@@ -10611,18 +10611,20 @@ HTML_TEMPLATE = '''
         }
 
         // 필터 적용 및 차트 업데이트 (동기화)
-        function applyClientChartFilters() {
-            // 변경된 필터 값 가져오기
+        function applyClientChartFilters(source) {
             const p1 = document.getElementById('clientChart1PurposeFilter');
             const b1 = document.getElementById('clientChart1BranchFilter');
             const p2 = document.getElementById('clientChart2PurposeFilter');
             const b2 = document.getElementById('clientChart2BranchFilter');
 
-            // 두 차트 필터 동기화 (변경된 값으로)
-            if (p1 && p2) { p2.value = p1.value; }
-            if (b1 && b2) { b2.value = b1.value; }
-            if (p2 && p1 && document.activeElement === p2) { p1.value = p2.value; }
-            if (b2 && b1 && document.activeElement === b2) { b1.value = b2.value; }
+            // 소스 차트에서 다른 차트로 동기화
+            if (source === 1) {
+                if (p1 && p2) p2.value = p1.value;
+                if (b1 && b2) b2.value = b1.value;
+            } else if (source === 2) {
+                if (p2 && p1) p1.value = p2.value;
+                if (b2 && b1) b1.value = b2.value;
+            }
 
             updateClientRetentionChart();
             updateRetentionRateChart();
