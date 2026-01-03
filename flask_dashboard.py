@@ -3768,6 +3768,13 @@ HTML_TEMPLATE = '''
                     <div class="card-header">
                         <div class="card-title">📊 팀별 매출 현황</div>
                         <div style="display: flex; align-items: center; gap: 10px;">
+                            <select id="branchChartSortBy" class="filter-select" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0;" onchange="updateBranchChart()">
+                                <option value="sales">매출액순</option>
+                                <option value="efficiency">효율성 (인당매출)</option>
+                                <option value="count">건수순</option>
+                                <option value="avgPrice">건당단가순</option>
+                                <option value="growth">성장률순</option>
+                            </select>
                             <select id="branchChartPurposeFilter" class="filter-select" style="padding: 6px 12px; border-radius: 6px; border: 1px solid #e2e8f0;" onchange="updateBranchChart()">
                                 <option value="전체">전체 검사목적</option>
                             </select>
@@ -3782,7 +3789,13 @@ HTML_TEMPLATE = '''
                 <div class="card">
                     <div class="card-header">
                         <div class="card-title">💰 팀별 건당 매출 (평균단가)</div>
-                        <div class="chart-controls">
+                        <div class="chart-controls" style="display: flex; gap: 10px;">
+                            <select id="branchPerCaseSortBy" class="filter-select" style="min-width: 140px;" onchange="updateBranchPerCaseChart()">
+                                <option value="avgPrice">건당단가순</option>
+                                <option value="efficiency">효율성 (인당매출)</option>
+                                <option value="sales">매출액순</option>
+                                <option value="count">건수순</option>
+                            </select>
                             <select id="branchPerCasePurposeSelect" class="filter-select" style="min-width: 140px;" onchange="updateBranchPerCaseChart()">
                                 <option value="전체">전체 목적</option>
                             </select>
@@ -9203,6 +9216,7 @@ HTML_TEMPLATE = '''
             if (charts.branchPerCase) charts.branchPerCase.destroy();
 
             const selectedPurpose = document.getElementById('branchPerCasePurposeSelect')?.value || '전체';
+            const sortBy = document.getElementById('branchPerCaseSortBy')?.value || 'avgPrice';
             const branches = currentData.by_branch || [];
             const managers = currentData.by_manager || [];
             const managerMap = Object.fromEntries(managers);
@@ -9253,16 +9267,33 @@ HTML_TEMPLATE = '''
                     .filter(p => p.count > 0)
                     .sort((a, b) => b.avgPrice - a.avgPrice);
 
+                const memberCount = memberNames.length;
                 return {
                     name: b[0],
                     avgPrice,
                     sales,
                     count,
-                    memberCount: memberNames.length,
+                    memberCount,
+                    perPersonSales: memberCount > 0 ? sales / memberCount : 0,
                     memberPrices,
                     purposePrices
                 };
-            }).filter(d => d.avgPrice > 0).sort((a, b) => b.avgPrice - a.avgPrice);
+            }).filter(d => d.avgPrice > 0);
+
+            // 정렬 기준 적용
+            branchData.sort((a, b) => {
+                switch (sortBy) {
+                    case 'efficiency':
+                        return b.perPersonSales - a.perPersonSales;
+                    case 'sales':
+                        return b.sales - a.sales;
+                    case 'count':
+                        return b.count - a.count;
+                    case 'avgPrice':
+                    default:
+                        return b.avgPrice - a.avgPrice;
+                }
+            });
 
             // 순위 부여
             branchData.forEach((d, i) => d.rank = i + 1);
@@ -10857,6 +10888,7 @@ HTML_TEMPLATE = '''
 
         function updateBranchChart() {
             const purposeFilter = document.getElementById('branchChartPurposeFilter')?.value || '전체';
+            const sortBy = document.getElementById('branchChartSortBy')?.value || 'sales';
             const branches = currentData.by_branch || [];
             const managers = currentData.by_manager || [];
             const managerMap = Object.fromEntries(managers);
@@ -10905,17 +10937,54 @@ HTML_TEMPLATE = '''
                     .sort((a, b) => b.sales - a.sales)
                     .slice(0, 3);
 
+                const memberCount = memberNames.length;
                 return {
                     name: b[0],
                     sales,
                     count,
                     avgPrice: count > 0 ? sales / count : 0,
-                    memberCount: memberNames.length,
+                    memberCount,
+                    perPersonSales: memberCount > 0 ? sales / memberCount : 0,
                     memberStats,
                     topPurposes,
                     byPurpose
                 };
-            }).filter(d => d.sales > 0).sort((a, b) => b.sales - a.sales);
+            }).filter(d => d.sales > 0);
+
+            // 비교 데이터 먼저 준비 (성장률 정렬을 위해)
+            let compareMapForSort = {};
+            if (compareData) {
+                const compareBranches = compareData.by_branch || [];
+                compareBranches.forEach(b => {
+                    let sales = 0;
+                    if (purposeFilter === '전체') {
+                        sales = b[1].sales || 0;
+                    } else {
+                        const purposeData = b[1].by_purpose?.[purposeFilter];
+                        if (purposeData) sales = purposeData.sales || 0;
+                    }
+                    compareMapForSort[b[0]] = sales;
+                });
+            }
+
+            // 정렬 기준 적용
+            branchData.sort((a, b) => {
+                switch (sortBy) {
+                    case 'efficiency':
+                        return b.perPersonSales - a.perPersonSales;
+                    case 'count':
+                        return b.count - a.count;
+                    case 'avgPrice':
+                        return b.avgPrice - a.avgPrice;
+                    case 'growth':
+                        const aGrowth = compareMapForSort[a.name] ? ((a.sales - compareMapForSort[a.name]) / compareMapForSort[a.name]) : -999;
+                        const bGrowth = compareMapForSort[b.name] ? ((b.sales - compareMapForSort[b.name]) / compareMapForSort[b.name]) : -999;
+                        return bGrowth - aGrowth;
+                    case 'sales':
+                    default:
+                        return b.sales - a.sales;
+                }
+            });
 
             // 순위 부여
             branchData.forEach((d, i) => d.rank = i + 1);
