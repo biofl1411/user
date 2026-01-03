@@ -3748,6 +3748,7 @@ HTML_TEMPLATE = '''
                     <div class="kpi-value" id="teamTopBranch" style="font-size: 20px;">-</div>
                     <div class="kpi-compare" id="teamTopBranchSales">-</div>
                     <div class="kpi-compare" id="teamTopBranchReason" style="font-size: 10px; color: #10b981; margin-top: 2px;"></div>
+                    <div class="kpi-compare" id="teamTopBranchPurposes" style="font-size: 10px; color: #64748b; margin-top: 4px; line-height: 1.4; max-height: 36px; overflow: hidden;"></div>
                     <div class="kpi-compare-overlay" id="teamTopBranchCompare" style="display: none; position: absolute; top: 8px; right: 8px; background: rgba(99,102,241,0.1); padding: 4px 8px; border-radius: 6px; font-size: 11px; color: #6366f1;"></div>
                 </div>
                 <div class="kpi-card goal" style="position: relative;">
@@ -3759,6 +3760,7 @@ HTML_TEMPLATE = '''
                     <div class="kpi-value" id="teamTopGrowth" style="font-size: 20px;">-</div>
                     <div class="kpi-compare" id="teamTopGrowthRate">전년 대비</div>
                     <div class="kpi-compare" id="teamTopGrowthDetail" style="font-size: 10px; color: #f59e0b; margin-top: 2px;"></div>
+                    <div class="kpi-compare" id="teamTopGrowthPurposes" style="font-size: 10px; color: #64748b; margin-top: 4px; line-height: 1.4; max-height: 36px; overflow: hidden;"></div>
                 </div>
             </div>
 
@@ -9102,6 +9104,52 @@ HTML_TEMPLATE = '''
             if (priceVsAvg > 10) reasonText += ` | 단가 +${priceVsAvg}%`;
             document.getElementById('teamTopBranchReason').textContent = reasonText;
 
+            // 검사목적별 평균 이상 달성 분석
+            const topByPurpose = topBranch[1].by_purpose || {};
+            const purposeAvgMap = {}; // 전체 팀의 목적별 평균
+            branches.forEach(b => {
+                const bp = b[1].by_purpose || {};
+                Object.entries(bp).forEach(([purpose, data]) => {
+                    if (!purposeAvgMap[purpose]) purposeAvgMap[purpose] = { totalSales: 0, totalCount: 0, teamCount: 0 };
+                    purposeAvgMap[purpose].totalSales += data.sales || 0;
+                    purposeAvgMap[purpose].totalCount += data.count || 0;
+                    purposeAvgMap[purpose].teamCount += 1;
+                });
+            });
+
+            // 평균 이상 달성한 목적 찾기
+            const aboveAvgPurposes = [];
+            Object.entries(topByPurpose).forEach(([purpose, data]) => {
+                const avg = purposeAvgMap[purpose];
+                if (avg && avg.teamCount > 0) {
+                    const avgSalesPerTeam = avg.totalSales / avg.teamCount;
+                    const avgCountPerTeam = avg.totalCount / avg.teamCount;
+                    if ((data.sales || 0) > avgSalesPerTeam) {
+                        const excessPercent = ((data.sales - avgSalesPerTeam) / avgSalesPerTeam * 100).toFixed(0);
+                        aboveAvgPurposes.push({
+                            name: purpose,
+                            sales: data.sales,
+                            count: data.count,
+                            avgSales: avgSalesPerTeam,
+                            excessPercent: parseFloat(excessPercent)
+                        });
+                    }
+                }
+            });
+            aboveAvgPurposes.sort((a, b) => b.excessPercent - a.excessPercent);
+
+            // 상위 3개 목적 표시
+            if (aboveAvgPurposes.length > 0) {
+                const topPurposes = aboveAvgPurposes.slice(0, 3);
+                const purposeText = topPurposes.map(p => `${p.name}(+${p.excessPercent}%)`).join(', ');
+                document.getElementById('teamTopBranchPurposes').textContent = `평균↑: ${purposeText}`;
+                document.getElementById('teamTopBranchPurposes').title = aboveAvgPurposes.map(p =>
+                    `${p.name}: ${formatCurrency(p.sales)} (평균 대비 +${p.excessPercent}%)`
+                ).join('\n');
+            } else {
+                document.getElementById('teamTopBranchPurposes').textContent = '';
+            }
+
             // 비교년도 최고 성과 팀
             if (compareData && compareData.by_branch) {
                 const compSorted = [...compareData.by_branch].filter(b => b[0] !== '기타').sort((a, b) => (b[1].sales || 0) - (a[1].sales || 0));
@@ -9115,16 +9163,16 @@ HTML_TEMPLATE = '''
 
             // ===== 4. 최고 성장 팀 카드 =====
             if (compareData && compareData.by_branch) {
-                const compareMap = Object.fromEntries(compareData.by_branch.filter(b => b[0] !== '기타'));
+                const compareBranchMap = Object.fromEntries(compareData.by_branch.filter(b => b[0] !== '기타'));
                 const withGrowth = branches.map(b => {
-                    const compData = compareMap[b[0]];
+                    const compData = compareBranchMap[b[0]];
                     const compSales = compData?.sales || 0;
                     const compCount = compData?.count || 0;
                     const salesGrowth = compSales > 0 ? ((b[1].sales - compSales) / compSales * 100) : 0;
                     const countGrowth = compCount > 0 ? ((b[1].count - compCount) / compCount * 100) : 0;
                     const salesDiff = b[1].sales - compSales;
                     const countDiff = (b[1].count || 0) - compCount;
-                    return { name: b[0], salesGrowth, countGrowth, salesDiff, countDiff };
+                    return { name: b[0], data: b[1], compData, salesGrowth, countGrowth, salesDiff, countDiff };
                 }).sort((a, b) => b.salesGrowth - a.salesGrowth);
 
                 if (withGrowth.length > 0 && withGrowth[0].salesGrowth > 0) {
@@ -9140,17 +9188,66 @@ HTML_TEMPLATE = '''
                     if (top.countDiff > 0) detailParts.push(`건수 +${top.countDiff.toLocaleString()}건`);
                     else if (top.countDiff < 0) detailParts.push(`건수 ${top.countDiff.toLocaleString()}건`);
                     document.getElementById('teamTopGrowthDetail').textContent = detailParts.join(' | ');
+
+                    // 검사목적별 성장 분석
+                    const topByPurposeGrowth = top.data.by_purpose || {};
+                    const compByPurpose = top.compData?.by_purpose || {};
+                    const purposeGrowthList = [];
+
+                    Object.entries(topByPurposeGrowth).forEach(([purpose, data]) => {
+                        const compPurpose = compByPurpose[purpose];
+                        const compSales = compPurpose?.sales || 0;
+                        if (compSales > 0) {
+                            const growth = ((data.sales - compSales) / compSales * 100);
+                            const diff = data.sales - compSales;
+                            if (growth > 0) {
+                                purposeGrowthList.push({
+                                    name: purpose,
+                                    growth: growth,
+                                    diff: diff,
+                                    sales: data.sales,
+                                    count: data.count
+                                });
+                            }
+                        } else if (data.sales > 0) {
+                            // 신규 목적
+                            purposeGrowthList.push({
+                                name: purpose,
+                                growth: 999,
+                                diff: data.sales,
+                                sales: data.sales,
+                                count: data.count,
+                                isNew: true
+                            });
+                        }
+                    });
+                    purposeGrowthList.sort((a, b) => b.diff - a.diff);
+
+                    if (purposeGrowthList.length > 0) {
+                        const topGrowthPurposes = purposeGrowthList.slice(0, 3);
+                        const growthText = topGrowthPurposes.map(p =>
+                            p.isNew ? `${p.name}(신규)` : `${p.name}(+${p.growth.toFixed(0)}%)`
+                        ).join(', ');
+                        document.getElementById('teamTopGrowthPurposes').textContent = `성장↑: ${growthText}`;
+                        document.getElementById('teamTopGrowthPurposes').title = purposeGrowthList.map(p =>
+                            `${p.name}: +${formatCurrency(p.diff)} (${p.isNew ? '신규' : '+' + p.growth.toFixed(0) + '%'})`
+                        ).join('\n');
+                    } else {
+                        document.getElementById('teamTopGrowthPurposes').textContent = '';
+                    }
                 } else {
                     document.getElementById('teamTopGrowth').textContent = '-';
                     document.getElementById('teamTopGrowthRate').textContent = '성장팀 없음';
                     document.getElementById('teamTopGrowthTrend').style.visibility = 'hidden';
                     document.getElementById('teamTopGrowthDetail').textContent = '';
+                    document.getElementById('teamTopGrowthPurposes').textContent = '';
                 }
             } else {
                 document.getElementById('teamTopGrowth').textContent = '-';
                 document.getElementById('teamTopGrowthRate').textContent = '전년 비교 필요';
                 document.getElementById('teamTopGrowthTrend').style.visibility = 'hidden';
                 document.getElementById('teamTopGrowthDetail').textContent = '';
+                document.getElementById('teamTopGrowthPurposes').textContent = '';
             }
 
             // 드롭다운 초기화
