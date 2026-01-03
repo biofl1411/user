@@ -13103,14 +13103,59 @@ HTML_TEMPLATE = '''
             const avgCount = monthCount > 0 ? totalCount / monthCount : 0;
             const avgPrice = totalCount > 0 ? totalSales / totalCount : 0;
 
+            // 전년도 요약 계산
+            const compMonthly = compareData?.by_month || [];
+            const compMonthMapSummary = Object.fromEntries(compMonthly);
+            let compTotalCountSummary = 0, compTotalSalesSummary = 0, compMonthCountSummary = 0;
+
+            if (purposeFilter === '전체' && managerFilter === '전체') {
+                for (let m = 1; m <= 12; m++) {
+                    const cData = compMonthMapSummary[m];
+                    if (cData && cData.count > 0) {
+                        compTotalCountSummary += cData.count;
+                        compTotalSalesSummary += cData.sales || 0;
+                        compMonthCountSummary++;
+                    }
+                }
+            } else {
+                for (let m = 1; m <= 12; m++) {
+                    const cData = compMonthMapSummary[m];
+                    if (cData) {
+                        let cCount = 0, cSales = 0;
+                        if (purposeFilter !== '전체' && managerFilter === '전체') {
+                            const pd = cData.byPurpose?.[purposeFilter];
+                            if (pd) { cCount = pd.count || 0; cSales = pd.sales || 0; }
+                        } else if (purposeFilter === '전체' && managerFilter !== '전체') {
+                            const md = cData.byManager?.[managerFilter];
+                            if (md) { cCount = md.count || 0; cSales = md.sales || 0; }
+                        }
+                        if (cCount > 0) {
+                            compTotalCountSummary += cCount;
+                            compTotalSalesSummary += cSales;
+                            compMonthCountSummary++;
+                        }
+                    }
+                }
+            }
+
+            const countGrowth = compTotalCountSummary > 0 ? ((totalCount - compTotalCountSummary) / compTotalCountSummary * 100) : 0;
+            const growthColor = countGrowth >= 0 ? '#10b981' : '#ef4444';
+            const growthSign = countGrowth >= 0 ? '+' : '';
+
             // 요약 정보 표시
             const summaryEl = document.getElementById('monthlyCountSummary');
             if (summaryEl) {
-                summaryEl.innerHTML = `
-                    <span style="background: #fef08a; padding: 4px 10px; border-radius: 4px; color: #854d0e;">총건수: <strong>${totalCount.toLocaleString()}건</strong></span>
-                    <span style="background: #fef08a; padding: 4px 10px; border-radius: 4px; color: #854d0e;">평균건수: <strong>${Math.round(avgCount).toLocaleString()}건</strong></span>
-                    <span style="background: #fef08a; padding: 4px 10px; border-radius: 4px; color: #854d0e;">평균단가: <strong>${Math.round(avgPrice / 10000).toLocaleString()}만</strong></span>
+                let summaryHtml = `
+                    <span style="background: #dbeafe; padding: 4px 10px; border-radius: 4px; color: #1e40af;"><strong style="color:#60a5fa;">${currentData.year}년:</strong> ${totalCount.toLocaleString()}건</span>
                 `;
+                if (compareData && compTotalCountSummary > 0) {
+                    summaryHtml += `
+                        <span style="background: #fef3c7; padding: 4px 10px; border-radius: 4px; color: #92400e;"><strong style="color:#f59e0b;">${compareData.year}년:</strong> ${compTotalCountSummary.toLocaleString()}건</span>
+                        <span style="background: ${countGrowth >= 0 ? '#d1fae5' : '#fee2e2'}; padding: 4px 10px; border-radius: 4px; color: ${growthColor};">증감: <strong>${growthSign}${countGrowth.toFixed(1)}%</strong></span>
+                    `;
+                }
+                summaryHtml += `<span style="background: #fef08a; padding: 4px 10px; border-radius: 4px; color: #854d0e;">평균단가: <strong>${Math.round(avgPrice / 10000).toLocaleString()}만</strong></span>`;
+                summaryEl.innerHTML = summaryHtml;
             }
 
             // 차트 업데이트
@@ -13190,9 +13235,37 @@ HTML_TEMPLATE = '''
                 return el;
             };
 
+            // 데이터셋 구성
+            const datasets = [
+                {
+                    label: `${currentData.year}년 건수`,
+                    data,
+                    backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                    borderRadius: 6,
+                    order: 2
+                }
+            ];
+
+            // 비교 연도 라인 추가
+            if (compareData && compValidMonths.length > 0) {
+                datasets.push({
+                    label: `${compareData.year}년 건수`,
+                    data: compData.map(v => v > 0 ? v : null),
+                    type: 'line',
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#f59e0b',
+                    fill: false,
+                    tension: 0.3,
+                    order: 1
+                });
+            }
+
             charts.monthlyCount = new Chart(ctx, {
                 type: 'bar',
-                data: { labels, datasets: [{ label: '건수', data, backgroundColor: 'rgba(34, 197, 94, 0.7)', borderRadius: 6 }] },
+                data: { labels, datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
