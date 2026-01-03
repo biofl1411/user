@@ -3578,6 +3578,7 @@ HTML_TEMPLATE = '''
                     </div>
                     <div class="selected-tags" id="selectedManagerTags"></div>
                     <div class="card-body">
+                        <div class="chart-legend" id="mgrMonthlyLegend" style="display: none;"></div>
                         <div class="chart-container" style="height: 280px;"><canvas id="managerMonthlyChart"></canvas></div>
                     </div>
                 </div>
@@ -3627,7 +3628,7 @@ HTML_TEMPLATE = '''
                         </select>
                     </div>
                     <div class="card-body">
-                        <div style="display: flex; gap: 12px; margin-bottom: 8px; font-size: 11px;">
+                        <div class="chart-legend" id="urgentChartLegend" style="display: flex; gap: 12px; margin-bottom: 8px; font-size: 11px;">
                             <span style="color: #ef4444;">● 상위 (80%↑)</span>
                             <span style="color: #f59e0b;">● 중위 (50%↑)</span>
                             <span style="color: #6366f1;">● 하위</span>
@@ -3654,6 +3655,7 @@ HTML_TEMPLATE = '''
                         <div class="card-title">📈 긴급 월별 추이</div>
                     </div>
                     <div class="card-body">
+                        <div class="chart-legend" id="urgentMonthlyLegend" style="display: none;"></div>
                         <div class="chart-container" style="height: 280px;"><canvas id="urgentMonthlyChart"></canvas></div>
                     </div>
                 </div>
@@ -3662,6 +3664,7 @@ HTML_TEMPLATE = '''
                         <div class="card-title">💰 긴급 건당 단가</div>
                     </div>
                     <div class="card-body">
+                        <div class="chart-legend" id="urgentUnitPriceLegend" style="display: none;"></div>
                         <div class="chart-container" style="height: 280px;"><canvas id="urgentUnitPriceChart"></canvas></div>
                     </div>
                 </div>
@@ -6745,6 +6748,28 @@ HTML_TEMPLATE = '''
                     });
                 }
             }
+
+            // 요약 정보 표시 (Legend에 추가)
+            const legendEl = document.getElementById('mgrMonthlyLegend');
+            if (legendEl) {
+                const totalSales = managers.reduce((s, m) => s + (m[1].sales || 0), 0);
+                const totalCount = managers.reduce((s, m) => s + (m[1].count || 0), 0);
+                const avgPrice = totalCount > 0 ? totalSales / totalCount : 0;
+
+                let legendHtml = '';
+                if (compareData && compareData.by_manager) {
+                    legendHtml = `
+                        <div class="legend-item"><div class="legend-color" style="background: #6366f1;"></div><span>${currentData.year}년</span></div>
+                        <div class="legend-item"><div class="legend-color" style="background: rgba(156, 163, 175, 0.5);"></div><span>${compareData.year}년</span></div>`;
+                }
+                legendHtml += `<div style="margin-left: auto; display: flex; gap: 20px; font-size: 12px; color: #666;">
+                    <span>총매출: <strong>${formatCurrency(totalSales)}</strong></span>
+                    <span>총건수: <strong>${totalCount.toLocaleString()}건</strong></span>
+                    <span>평균단가: <strong>${formatCurrency(Math.round(avgPrice))}</strong></span>
+                </div>`;
+                legendEl.innerHTML = legendHtml;
+                legendEl.style.display = 'flex';
+            }
         }
 
         // 건당 매출 차트
@@ -7452,6 +7477,29 @@ HTML_TEMPLATE = '''
                     scales: { y: { beginAtZero: true } }
                 }
             });
+
+            // 요약 정보 표시 (Legend에 추가)
+            const legendEl = document.getElementById('urgentChartLegend');
+            if (legendEl) {
+                // 긴급 건수 기준 매출/건수 계산
+                const urgentTotalCount = urgentData.reduce((s, d) => s + d.urgent, 0);
+                const urgentTotalSales = managers.reduce((s, m) => s + (m[1].urgent_sales || 0), 0);
+                const avgUrgentPrice = urgentTotalCount > 0 ? urgentTotalSales / urgentTotalCount : 0;
+
+                let legendHtml = '';
+                if (compareData && compareData.by_manager) {
+                    legendHtml = `
+                        <div class="legend-item"><div class="legend-color" style="background: rgba(239, 68, 68, 0.8);"></div><span>${currentData.year}년</span></div>
+                        <div class="legend-item"><div class="legend-color" style="background: rgba(156, 163, 175, 0.5);"></div><span>${compareData.year}년</span></div>`;
+                }
+                legendHtml += `<div style="margin-left: auto; display: flex; gap: 20px; font-size: 12px; color: #666;">
+                    <span>총건수: <strong>${urgentTotalCount.toLocaleString()}건</strong></span>
+                    <span>총매출: <strong>${formatCurrency(urgentTotalSales)}</strong></span>
+                    <span>평균단가: <strong>${formatCurrency(Math.round(avgUrgentPrice))}</strong></span>
+                </div>`;
+                legendEl.innerHTML = legendHtml;
+                legendEl.style.display = 'flex';
+            }
         }
 
         // 긴급 월별 추이 차트 - 외부 HTML 툴팁 생성 함수
@@ -7958,6 +8006,28 @@ HTML_TEMPLATE = '''
                     scales: { y: { beginAtZero: true } }
                 }
             });
+
+            // 요약 정보 표시 (Legend에 추가)
+            const urgentLegendEl = document.getElementById('urgentMonthlyLegend');
+            if (urgentLegendEl) {
+                const totalUrgentCount = monthlyData.reduce((s, m) => s + m.urgentCount, 0);
+                const totalUrgentSales = monthlyData.reduce((s, m) => s + m.urgentSales, 0);
+                const avgUrgentPrice = totalUrgentCount > 0 ? totalUrgentSales / totalUrgentCount : 0;
+
+                let legendHtml = '';
+                if (compareData && compareData.by_urgent_month) {
+                    legendHtml = `
+                        <div class="legend-item"><div class="legend-color" style="background: #ef4444;"></div><span>${currentData.year}년</span></div>
+                        <div class="legend-item"><div class="legend-color" style="background: rgba(156, 163, 175, 0.5);"></div><span>${compareData.year}년</span></div>`;
+                }
+                legendHtml += `<div style="margin-left: auto; display: flex; gap: 20px; font-size: 12px; color: #666;">
+                    <span>총건수: <strong>${totalUrgentCount.toLocaleString()}건</strong></span>
+                    <span>총매출: <strong>${formatCurrency(totalUrgentSales)}</strong></span>
+                    <span>평균단가: <strong>${formatCurrency(Math.round(avgUrgentPrice))}</strong></span>
+                </div>`;
+                urgentLegendEl.innerHTML = legendHtml;
+                urgentLegendEl.style.display = 'flex';
+            }
         }
 
         // 긴급 건당 단가 차트 - 외부 HTML 툴팁 생성 함수
@@ -8484,6 +8554,28 @@ HTML_TEMPLATE = '''
                     scales: { y: { beginAtZero: true, ticks: { callback: v => formatCurrency(v) } } }
                 }
             });
+
+            // 요약 정보 표시 (Legend에 추가)
+            const unitPriceLegendEl = document.getElementById('urgentUnitPriceLegend');
+            if (unitPriceLegendEl) {
+                const totalUrgentCount = monthlyData.reduce((s, m) => s + m.urgentCount, 0);
+                const totalUrgentSales = monthlyData.reduce((s, m) => s + m.urgentSales, 0);
+                const avgUrgentUnitPriceAll = totalUrgentCount > 0 ? totalUrgentSales / totalUrgentCount : 0;
+
+                let legendHtml = '';
+                if (compareData && compareData.by_urgent_month) {
+                    legendHtml = `
+                        <div class="legend-item"><div class="legend-color" style="background: #f59e0b;"></div><span>${currentData.year}년</span></div>
+                        <div class="legend-item"><div class="legend-color" style="background: rgba(156, 163, 175, 0.5);"></div><span>${compareData.year}년</span></div>`;
+                }
+                legendHtml += `<div style="margin-left: auto; display: flex; gap: 20px; font-size: 12px; color: #666;">
+                    <span>총매출: <strong>${formatCurrency(totalUrgentSales)}</strong></span>
+                    <span>총건수: <strong>${totalUrgentCount.toLocaleString()}건</strong></span>
+                    <span>평균단가: <strong>${formatCurrency(Math.round(avgUrgentUnitPriceAll))}</strong></span>
+                </div>`;
+                unitPriceLegendEl.innerHTML = legendHtml;
+                unitPriceLegendEl.style.display = 'flex';
+            }
         }
 
         // 일 방문 거래처 수 차트
@@ -8540,6 +8632,16 @@ HTML_TEMPLATE = '''
                 borderRadius: 6,
             }];
 
+            // 요약 정보 계산
+            const totalSalesAll = chartData.reduce((s, d) => s + d.sales, 0);
+            const totalCountAll = chartData.reduce((s, d) => s + d.count, 0);
+            const avgPriceAll = totalCountAll > 0 ? totalSalesAll / totalCountAll : 0;
+            const summaryHtml = `<div style="margin-left: auto; display: flex; gap: 20px; font-size: 12px; color: #666;">
+                <span>총매출: <strong>${formatCurrency(totalSalesAll)}</strong></span>
+                <span>총건수: <strong>${totalCountAll.toLocaleString()}건</strong></span>
+                <span>평균단가: <strong>${formatCurrency(Math.round(avgPriceAll))}</strong></span>
+            </div>`;
+
             if (compareData && compareData.by_manager) {
                 datasets.push({
                     label: compareData.year + '년',
@@ -8547,10 +8649,11 @@ HTML_TEMPLATE = '''
                     backgroundColor: 'rgba(139, 92, 246, 0.5)',
                     borderRadius: 6,
                 });
-                document.getElementById('dailyClientLegend').innerHTML = `<div class="legend-item"><div class="legend-color" style="background: rgba(99, 102, 241, 0.8);"></div><span>${currentData.year}년</span></div><div class="legend-item"><div class="legend-color" style="background: rgba(139, 92, 246, 0.5);"></div><span>${compareData.year}년</span></div>`;
+                document.getElementById('dailyClientLegend').innerHTML = `<div class="legend-item"><div class="legend-color" style="background: rgba(99, 102, 241, 0.8);"></div><span>${currentData.year}년</span></div><div class="legend-item"><div class="legend-color" style="background: rgba(139, 92, 246, 0.5);"></div><span>${compareData.year}년</span></div>${summaryHtml}`;
                 document.getElementById('dailyClientLegend').style.display = 'flex';
             } else {
-                document.getElementById('dailyClientLegend').style.display = 'none';
+                document.getElementById('dailyClientLegend').innerHTML = summaryHtml;
+                document.getElementById('dailyClientLegend').style.display = 'flex';
             }
 
             // 외부 HTML 툴팁 생성 함수
