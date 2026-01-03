@@ -10610,24 +10610,14 @@ HTML_TEMPLATE = '''
             clientChartFiltersInitialized = true;
         }
 
-        // 필터 적용 및 차트 업데이트 (동기화)
+        // 필터 적용 및 차트 업데이트 (독립적)
         function applyClientChartFilters(source) {
-            const p1 = document.getElementById('clientChart1PurposeFilter');
-            const b1 = document.getElementById('clientChart1BranchFilter');
-            const p2 = document.getElementById('clientChart2PurposeFilter');
-            const b2 = document.getElementById('clientChart2BranchFilter');
-
-            // 소스 차트에서 다른 차트로 동기화
+            // 각 차트가 독립적으로 작동
             if (source === 1) {
-                if (p1 && p2) p2.value = p1.value;
-                if (b1 && b2) b2.value = b1.value;
+                updateClientRetentionChart();
             } else if (source === 2) {
-                if (p2 && p1) p1.value = p2.value;
-                if (b2 && b1) b1.value = b2.value;
+                updateRetentionRateChart();
             }
-
-            updateClientRetentionChart();
-            updateRetentionRateChart();
         }
 
         // 거래처 차트 통합 업데이트
@@ -10637,10 +10627,10 @@ HTML_TEMPLATE = '''
             updateRetentionRateChart();
         }
 
-        // 필터링된 거래처 데이터 계산
-        function getFilteredClientRetention() {
-            const purposeFilter = document.getElementById('clientChart1PurposeFilter')?.value || '전체';
-            const branchFilter = document.getElementById('clientChart1BranchFilter')?.value || '전체';
+        // 필터링된 거래처 데이터 계산 (차트 번호에 따라)
+        function getFilteredClientRetention(chartNum = 1) {
+            const purposeFilter = document.getElementById(`clientChart${chartNum}PurposeFilter`)?.value || '전체';
+            const branchFilter = document.getElementById(`clientChart${chartNum}BranchFilter`)?.value || '전체';
 
             // 필터가 전체이면 기존 데이터 사용
             if (purposeFilter === '전체' && branchFilter === '전체') {
@@ -10705,11 +10695,19 @@ HTML_TEMPLATE = '''
             if (!ctx) return;
             if (charts.clientRetention) charts.clientRetention.destroy();
 
-            const retention = getFilteredClientRetention();
+            const retention = getFilteredClientRetention(1);  // 차트1 필터 사용
             const labels = retention.map(d => d.month + '월');
             const overlap = retention.map(d => d.overlap);
             const newClients = retention.map(d => d.new);
             const totals = retention.map(d => d.total);
+
+            // 통계 계산
+            const validMonths = retention.filter(d => d.total > 0);
+            const avgTotal = validMonths.length > 0 ? validMonths.reduce((sum, d) => sum + d.total, 0) / validMonths.length : 0;
+            const avgNew = validMonths.length > 0 ? validMonths.reduce((sum, d) => sum + d.new, 0) / validMonths.length : 0;
+            const maxTotal = Math.max(...totals);
+            const minTotal = Math.min(...totals.filter(t => t > 0));
+            const totalYearClients = retention.reduce((sum, d) => sum + d.new, 0) + (retention[0]?.overlap || 0);
 
             // 외부 HTML 툴팁
             const getOrCreateTooltip = (chart) => {
@@ -10720,8 +10718,8 @@ HTML_TEMPLATE = '''
                     tooltipEl.style.cssText = `
                         position: fixed; background: rgba(30, 41, 59, 0.98); border-radius: 12px;
                         padding: 16px; pointer-events: auto; z-index: 99999; font-size: 13px;
-                        color: #e2e8f0; box-shadow: 0 20px 40px rgba(0,0,0,0.4); min-width: 280px;
-                        max-width: 360px; transition: opacity 0.15s ease; line-height: 1.6;
+                        color: #e2e8f0; box-shadow: 0 20px 40px rgba(0,0,0,0.4); min-width: 320px;
+                        max-width: 400px; transition: opacity 0.15s ease; line-height: 1.6;
                     `;
                     document.body.appendChild(tooltipEl);
                     setupTooltipHover(tooltipEl);
@@ -10744,30 +10742,88 @@ HTML_TEMPLATE = '''
                     const d = retention[dataIndex];
                     const prevD = dataIndex > 0 ? retention[dataIndex - 1] : null;
 
-                    let html = `<div style="font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #60a5fa;">📅 ${currentData.year}년 ${month}월</div>`;
+                    // 순위 계산
+                    const sortedByTotal = [...retention].filter(r => r.total > 0).sort((a, b) => b.total - a.total);
+                    const rank = sortedByTotal.findIndex(r => r.month === d.month) + 1;
+                    const isTop = rank <= 2;
+                    const isBottom = rank >= sortedByTotal.length - 1 && sortedByTotal.length > 2;
 
-                    html += `<div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; margin-bottom: 12px;">`;
-                    html += `<div style="margin-bottom: 8px;">📊 <strong>총 거래처:</strong> <span style="color: #fbbf24; font-size: 18px; font-weight: bold;">${d.total}개</span></div>`;
-                    html += `<div style="display: flex; gap: 16px;">`;
-                    html += `<div>🔵 기존: <span style="color: #6366f1; font-weight: 600;">${d.overlap}개</span></div>`;
-                    html += `<div>🟢 신규: <span style="color: #10b981; font-weight: 600;">${d.new}개</span></div>`;
-                    html += `</div></div>`;
+                    // 헤더 색상
+                    let headerBg = 'rgba(99, 102, 241, 0.2)';
+                    let borderColor = 'rgba(99, 102, 241, 0.6)';
+                    if (isTop) { headerBg = 'rgba(16, 185, 129, 0.2)'; borderColor = 'rgba(16, 185, 129, 0.6)'; }
+                    else if (isBottom) { headerBg = 'rgba(239, 68, 68, 0.2)'; borderColor = 'rgba(239, 68, 68, 0.6)'; }
+                    tooltipEl.style.border = `2px solid ${borderColor}`;
 
-                    // 비율 분석
-                    const existingRate = d.total > 0 ? (d.overlap / d.total * 100).toFixed(1) : 0;
-                    const newRate = d.total > 0 ? (d.new / d.total * 100).toFixed(1) : 0;
-                    html += `<div style="color: #94a3b8; margin-bottom: 8px;">── 구성 비율 ──</div>`;
-                    html += `<div style="margin-bottom: 4px;">기존 거래처 비율: <span style="color: #6366f1;">${existingRate}%</span></div>`;
-                    html += `<div style="margin-bottom: 8px;">신규 거래처 비율: <span style="color: #10b981;">${newRate}%</span></div>`;
+                    let html = '';
 
-                    // 전월 대비
+                    // 1. 헤더 (월 + 순위 배지)
+                    html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                        <span>📅 ${currentData.year}년 ${month}월</span>
+                        <span style="background: rgba(255,255,255,0.2); padding: 2px 10px; border-radius: 12px; font-size: 12px;">거래처 ${rank}위</span>
+                    </div>`;
+
+                    // 2. 기본 지표
+                    html += `<div style="margin-bottom: 4px;">📊 <strong>총 거래처:</strong> <span style="color: #fbbf24; font-size: 18px; font-weight: bold;">${d.total}개</span></div>`;
+                    html += `<div style="display: flex; gap: 16px; margin-bottom: 8px;">`;
+                    html += `<div>🔵 기존: <strong style="color: #6366f1;">${d.overlap}개</strong></div>`;
+                    html += `<div>🟢 신규: <strong style="color: #10b981;">${d.new}개</strong></div>`;
+                    html += `</div>`;
+
+                    // 3. 구성 비율 분석 (프로그레스 바)
+                    const existingRate = d.total > 0 ? (d.overlap / d.total * 100) : 0;
+                    const newRate = d.total > 0 ? (d.new / d.total * 100) : 0;
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 구성 비율 분석 ──</div>`;
+                    html += `<div style="display: flex; height: 16px; border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
+                        <div style="width: ${existingRate}%; background: #6366f1;" title="기존 ${existingRate.toFixed(1)}%"></div>
+                        <div style="width: ${newRate}%; background: #10b981;" title="신규 ${newRate.toFixed(1)}%"></div>
+                    </div>`;
+                    html += `<div style="display: flex; gap: 16px; font-size: 12px;">`;
+                    html += `<span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #6366f1; margin-right: 3px;"></span>기존 ${existingRate.toFixed(1)}%</span>`;
+                    html += `<span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #10b981; margin-right: 3px;"></span>신규 ${newRate.toFixed(1)}%</span>`;
+                    html += `</div>`;
+
+                    // 4. 평균 대비 분석
+                    const vsAvg = d.total - avgTotal;
+                    const vsAvgPct = avgTotal > 0 ? (vsAvg / avgTotal * 100) : 0;
+                    const avgColor = vsAvg >= 0 ? '#10b981' : '#ef4444';
+                    const avgSign = vsAvg >= 0 ? '+' : '';
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 평균 대비 분석 ──</div>`;
+                    html += `<div style="margin-bottom: 4px;">📈 월평균 거래처: <strong>${avgTotal.toFixed(0)}개</strong></div>`;
+                    html += `<div style="margin-bottom: 4px;">📊 평균 대비: <span style="color: ${avgColor}; font-weight: 600;">${avgSign}${vsAvg.toFixed(0)}개 (${avgSign}${vsAvgPct.toFixed(1)}%)</span></div>`;
+
+                    // 5. 전월 대비
                     if (prevD && prevD.total > 0) {
                         const totalDiff = d.total - prevD.total;
-                        const totalDiffPct = (totalDiff / prevD.total * 100).toFixed(1);
+                        const totalDiffPct = (totalDiff / prevD.total * 100);
+                        const newDiff = d.new - prevD.new;
                         const diffColor = totalDiff >= 0 ? '#10b981' : '#ef4444';
                         const diffSign = totalDiff >= 0 ? '+' : '';
-                        html += `<div style="color: #94a3b8; margin: 8px 0;">── 전월 대비 ──</div>`;
-                        html += `<div>거래처 수 변화: <span style="color: ${diffColor}; font-weight: 600;">${diffSign}${totalDiff}개 (${diffSign}${totalDiffPct}%)</span></div>`;
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 전월 대비 ──</div>`;
+                        html += `<div style="margin-bottom: 4px;">📋 거래처 변화: <span style="color: ${diffColor}; font-weight: 600;">${diffSign}${totalDiff}개 (${diffSign}${totalDiffPct.toFixed(1)}%)</span></div>`;
+                        const newDiffColor = newDiff >= 0 ? '#10b981' : '#ef4444';
+                        const newDiffSign = newDiff >= 0 ? '+' : '';
+                        html += `<div style="margin-bottom: 4px;">🆕 신규 유입 변화: <span style="color: ${newDiffColor};">${newDiffSign}${newDiff}개</span></div>`;
+                    }
+
+                    // 6. 연간 누적 분석
+                    const cumulative = retention.slice(0, dataIndex + 1).reduce((sum, r) => sum + r.new, 0) + (retention[0]?.overlap || 0);
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 연간 누적 현황 ──</div>`;
+                    html += `<div style="margin-bottom: 4px;">📈 ${month}월까지 총 거래처: <strong style="color: #fbbf24;">${cumulative}개</strong></div>`;
+                    html += `<div style="margin-bottom: 4px;">🆕 신규 유입 누적: <strong style="color: #10b981;">${retention.slice(0, dataIndex + 1).reduce((sum, r) => sum + r.new, 0)}개</strong></div>`;
+
+                    // 7. 인사이트
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 인사이트 ──</div>`;
+                    if (newRate > 40) {
+                        html += `<div style="color: #10b981; font-size: 12px;">💡 신규 거래처 유입이 활발한 달입니다</div>`;
+                    } else if (existingRate > 80) {
+                        html += `<div style="color: #6366f1; font-size: 12px;">💡 기존 고객 유지율이 높은 안정적인 달입니다</div>`;
+                    } else if (d.total === maxTotal) {
+                        html += `<div style="color: #fbbf24; font-size: 12px;">🏆 연간 최다 거래처 달성!</div>`;
+                    } else if (d.total === minTotal && d.total > 0) {
+                        html += `<div style="color: #ef4444; font-size: 12px;">⚠️ 거래처 확보 강화 필요</div>`;
+                    } else {
+                        html += `<div style="color: #94a3b8; font-size: 12px;">📊 평균적인 거래처 현황입니다</div>`;
                     }
 
                     tooltipEl.innerHTML = html;
@@ -10776,8 +10832,11 @@ HTML_TEMPLATE = '''
                 const canvasRect = chart.canvas.getBoundingClientRect();
                 let left = canvasRect.left + tooltip.caretX + 15;
                 let top = canvasRect.top + tooltip.caretY - 10;
-                if (left + 300 > window.innerWidth) left = canvasRect.left + tooltip.caretX - 300 - 15;
-                if (top + 200 > window.innerHeight) top = window.innerHeight - 220;
+                const tooltipWidth = tooltipEl.offsetWidth || 360;
+                if (left + tooltipWidth > window.innerWidth - 20) left = canvasRect.left + tooltip.caretX - tooltipWidth - 15;
+                const tooltipHeight = tooltipEl.offsetHeight || 450;
+                if (top + tooltipHeight > window.innerHeight - 20) top = window.innerHeight - tooltipHeight - 20;
+                if (top < 10) top = 10;
                 tooltipEl.style.opacity = 1;
                 tooltipEl.style.left = left + 'px';
                 tooltipEl.style.top = top + 'px';
@@ -10814,10 +10873,17 @@ HTML_TEMPLATE = '''
             if (!ctx) return;
             if (charts.retentionRate) charts.retentionRate.destroy();
 
-            const retention = getFilteredClientRetention();
+            const retention = getFilteredClientRetention(2);  // 차트2 필터 사용
             const labels = retention.map(d => d.month + '월');
             const rates = retention.map(d => d.retention);
             const totals = retention.map(d => d.total);
+
+            // 통계 계산
+            const validRates = rates.filter(r => r > 0);
+            const avgRetention = validRates.length > 0 ? validRates.reduce((a, b) => a + b, 0) / validRates.length : 0;
+            const maxRetention = Math.max(...validRates);
+            const minRetention = Math.min(...validRates);
+            const avgTotal = totals.filter(t => t > 0).reduce((a, b) => a + b, 0) / (totals.filter(t => t > 0).length || 1);
 
             // 외부 HTML 툴팁
             const getOrCreateTooltip = (chart) => {
@@ -10828,8 +10894,8 @@ HTML_TEMPLATE = '''
                     tooltipEl.style.cssText = `
                         position: fixed; background: rgba(30, 41, 59, 0.98); border-radius: 12px;
                         padding: 16px; pointer-events: auto; z-index: 99999; font-size: 13px;
-                        color: #e2e8f0; box-shadow: 0 20px 40px rgba(0,0,0,0.4); min-width: 300px;
-                        max-width: 380px; transition: opacity 0.15s ease; line-height: 1.6;
+                        color: #e2e8f0; box-shadow: 0 20px 40px rgba(0,0,0,0.4); min-width: 340px;
+                        max-width: 420px; transition: opacity 0.15s ease; line-height: 1.6;
                     `;
                     document.body.appendChild(tooltipEl);
                     setupTooltipHover(tooltipEl);
@@ -10852,36 +10918,91 @@ HTML_TEMPLATE = '''
                     const d = retention[dataIndex];
                     const prevD = dataIndex > 0 ? retention[dataIndex - 1] : null;
 
-                    // 평균 리텐션율 계산
-                    const avgRetention = rates.filter(r => r > 0).reduce((a, b) => a + b, 0) / (rates.filter(r => r > 0).length || 1);
+                    // 순위 계산
+                    const sortedByRate = [...retention].filter(r => r.retention > 0).sort((a, b) => b.retention - a.retention);
+                    const rank = sortedByRate.findIndex(r => r.month === d.month) + 1;
+                    const isTop = rank <= 2;
+                    const isBottom = rank >= sortedByRate.length - 1 && sortedByRate.length > 2;
 
-                    let html = `<div style="font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #60a5fa;">📅 ${currentData.year}년 ${month}월</div>`;
+                    // 헤더 색상
+                    let headerBg = 'rgba(99, 102, 241, 0.2)';
+                    let borderColor = 'rgba(99, 102, 241, 0.6)';
+                    if (isTop) { headerBg = 'rgba(16, 185, 129, 0.2)'; borderColor = 'rgba(16, 185, 129, 0.6)'; }
+                    else if (isBottom) { headerBg = 'rgba(239, 68, 68, 0.2)'; borderColor = 'rgba(239, 68, 68, 0.6)'; }
+                    tooltipEl.style.border = `2px solid ${borderColor}`;
 
-                    html += `<div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; margin-bottom: 12px;">`;
+                    let html = '';
+
+                    // 1. 헤더 (월 + 순위 배지)
+                    html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0; display: flex; justify-content: space-between; align-items: center;">
+                        <span>📅 ${currentData.year}년 ${month}월</span>
+                        <span style="background: rgba(255,255,255,0.2); padding: 2px 10px; border-radius: 12px; font-size: 12px;">리텐션 ${rank}위</span>
+                    </div>`;
+
+                    // 2. 기본 지표
                     const retentionColor = d.retention >= avgRetention ? '#10b981' : '#ef4444';
-                    html += `<div style="margin-bottom: 8px;">📈 <strong>리텐션율:</strong> <span style="color: ${retentionColor}; font-size: 20px; font-weight: bold;">${d.retention.toFixed(1)}%</span></div>`;
-                    html += `<div>📊 월별 거래처 수: <span style="color: #fbbf24; font-weight: 600;">${d.total}개</span></div>`;
-                    html += `</div>`;
+                    html += `<div style="margin-bottom: 4px;">📈 <strong>리텐션율:</strong> <span style="color: ${retentionColor}; font-size: 20px; font-weight: bold;">${d.retention.toFixed(1)}%</span></div>`;
+                    html += `<div style="margin-bottom: 8px;">📊 월별 거래처: <strong style="color: #fbbf24;">${d.total}개</strong> | 기존: <strong style="color: #6366f1;">${d.overlap}개</strong> | 신규: <strong style="color: #10b981;">${d.new}개</strong></div>`;
 
-                    // 비교 분석
-                    html += `<div style="color: #94a3b8; margin-bottom: 8px;">── 비교 분석 ──</div>`;
+                    // 3. 리텐션 게이지
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 리텐션 수준 ──</div>`;
+                    const gaugeColor = d.retention >= 50 ? '#10b981' : (d.retention >= 30 ? '#fbbf24' : '#ef4444');
+                    html += `<div style="background: rgba(255,255,255,0.1); height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 8px;">
+                        <div style="width: ${Math.min(d.retention, 100)}%; height: 100%; background: ${gaugeColor}; border-radius: 6px;"></div>
+                    </div>`;
+                    const levelText = d.retention >= 50 ? '우수' : (d.retention >= 30 ? '보통' : '개선필요');
+                    const levelIcon = d.retention >= 50 ? '🟢' : (d.retention >= 30 ? '🟡' : '🔴');
+                    html += `<div style="margin-bottom: 4px;">${levelIcon} 수준: <strong>${levelText}</strong> (${d.retention >= 50 ? '상위' : (d.retention >= 30 ? '중위' : '하위')} 그룹)</div>`;
+
+                    // 4. 평균 대비 분석
                     const avgDiff = d.retention - avgRetention;
                     const avgDiffColor = avgDiff >= 0 ? '#10b981' : '#ef4444';
                     const avgDiffSign = avgDiff >= 0 ? '+' : '';
-                    html += `<div style="margin-bottom: 4px;">평균 대비: <span style="color: ${avgDiffColor}; font-weight: 600;">${avgDiffSign}${avgDiff.toFixed(1)}%p</span> <span style="color: #64748b;">(평균 ${avgRetention.toFixed(1)}%)</span></div>`;
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 평균 대비 분석 ──</div>`;
+                    html += `<div style="margin-bottom: 4px;">📊 연간 평균 리텐션: <strong>${avgRetention.toFixed(1)}%</strong></div>`;
+                    html += `<div style="margin-bottom: 4px;">📈 평균 대비: <span style="color: ${avgDiffColor}; font-weight: 600;">${avgDiffSign}${avgDiff.toFixed(1)}%p</span></div>`;
 
+                    // 5. 전월 대비
                     if (prevD && prevD.retention > 0) {
                         const momDiff = d.retention - prevD.retention;
                         const momColor = momDiff >= 0 ? '#10b981' : '#ef4444';
                         const momSign = momDiff >= 0 ? '+' : '';
-                        html += `<div style="margin-bottom: 8px;">전월 대비: <span style="color: ${momColor}; font-weight: 600;">${momSign}${momDiff.toFixed(1)}%p</span></div>`;
+                        html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 전월 대비 ──</div>`;
+                        html += `<div style="margin-bottom: 4px;">📉 리텐션 변화: <span style="color: ${momColor}; font-weight: 600;">${momSign}${momDiff.toFixed(1)}%p</span></div>`;
+
+                        const totalDiff = d.total - prevD.total;
+                        const totalDiffColor = totalDiff >= 0 ? '#10b981' : '#ef4444';
+                        const totalDiffSign = totalDiff >= 0 ? '+' : '';
+                        html += `<div style="margin-bottom: 4px;">📋 거래처 변화: <span style="color: ${totalDiffColor};">${totalDiffSign}${totalDiff}개</span></div>`;
                     }
 
-                    // 리텐션 의미 해석
-                    html += `<div style="color: #94a3b8; margin: 8px 0;">── 해석 ──</div>`;
+                    // 6. 해석 (상세)
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 해석 ──</div>`;
                     if (prevD && prevD.total > 0) {
                         const retained = Math.round(prevD.total * d.retention / 100);
-                        html += `<div style="font-size: 12px; color: #94a3b8;">전월 ${prevD.total}개 거래처 중 <span style="color: #6366f1;">${retained}개</span>가 이번 달에도 거래</div>`;
+                        const churned = prevD.total - retained;
+                        html += `<div style="margin-bottom: 4px;">전월 <strong>${prevD.total}개</strong> 거래처 중 <span style="color: #6366f1; font-weight: 600;">${retained}개</span>가 이번 달에도 거래</div>`;
+                        html += `<div style="margin-bottom: 4px; color: #94a3b8;">이탈 거래처: <span style="color: #ef4444;">${churned}개</span> (이탈률: ${(100 - d.retention).toFixed(1)}%)</div>`;
+                    }
+
+                    // 7. 인사이트
+                    html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 인사이트 ──</div>`;
+                    if (d.retention === maxRetention) {
+                        html += `<div style="color: #fbbf24; font-size: 12px;">🏆 연간 최고 리텐션율 달성!</div>`;
+                    } else if (d.retention === minRetention && d.retention > 0) {
+                        html += `<div style="color: #ef4444; font-size: 12px;">⚠️ 연간 최저 리텐션율 - 고객 유지 전략 점검 필요</div>`;
+                    } else if (d.retention >= avgRetention) {
+                        html += `<div style="color: #10b981; font-size: 12px;">💡 평균 이상의 고객 유지율을 보이고 있습니다</div>`;
+                    } else {
+                        const gapToAvg = avgRetention - d.retention;
+                        html += `<div style="color: #f59e0b; font-size: 12px;">💡 평균까지 ${gapToAvg.toFixed(1)}%p 개선 필요</div>`;
+                    }
+
+                    // 추가 팁
+                    if (d.new > d.overlap) {
+                        html += `<div style="color: #60a5fa; font-size: 12px; margin-top: 4px;">→ 신규 유입 > 기존 유지: 신규 영업 활발</div>`;
+                    } else if (d.overlap > d.total * 0.7) {
+                        html += `<div style="color: #60a5fa; font-size: 12px; margin-top: 4px;">→ 기존 거래처 비중 높음: 안정적 거래 기반</div>`;
                     }
 
                     tooltipEl.innerHTML = html;
@@ -10890,8 +11011,11 @@ HTML_TEMPLATE = '''
                 const canvasRect = chart.canvas.getBoundingClientRect();
                 let left = canvasRect.left + tooltip.caretX + 15;
                 let top = canvasRect.top + tooltip.caretY - 10;
-                if (left + 320 > window.innerWidth) left = canvasRect.left + tooltip.caretX - 320 - 15;
-                if (top + 250 > window.innerHeight) top = window.innerHeight - 270;
+                const tooltipWidth = tooltipEl.offsetWidth || 380;
+                if (left + tooltipWidth > window.innerWidth - 20) left = canvasRect.left + tooltip.caretX - tooltipWidth - 15;
+                const tooltipHeight = tooltipEl.offsetHeight || 500;
+                if (top + tooltipHeight > window.innerHeight - 20) top = window.innerHeight - tooltipHeight - 20;
+                if (top < 10) top = 10;
                 tooltipEl.style.opacity = 1;
                 tooltipEl.style.left = left + 'px';
                 tooltipEl.style.top = top + 'px';
