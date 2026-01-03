@@ -11118,7 +11118,11 @@ HTML_TEMPLATE = '''
             if (!tbody) return;
 
             const branchRetention = currentData.branch_client_retention || {};
-            const branches = Object.keys(branchRetention).sort();
+            // "기타" 제외
+            const branches = Object.keys(branchRetention).filter(b => b !== '기타').sort();
+
+            // 비교 데이터
+            const compareBranchRetention = compareData?.branch_client_retention || {};
 
             document.getElementById('branchRetentionBadge').textContent = branches.length + '개';
 
@@ -11127,18 +11131,47 @@ HTML_TEMPLATE = '''
                 const data = branchRetention[branch] || [];
                 const monthMap = Object.fromEntries(data.map(d => [d.month, d]));
 
+                // 비교 데이터
+                const compData = compareBranchRetention[branch] || [];
+                const compMonthMap = Object.fromEntries(compData.map(d => [d.month, d]));
+
                 // 누적 거래처 수 계산
                 let cumulative = 0;
                 for (const d of data) {
                     cumulative += d.new;
                 }
 
-                html += `<tr><td><strong>${branch}</strong></td><td class="text-right">${cumulative}</td>`;
+                // 전년 누적
+                let compCumulative = 0;
+                for (const d of compData) {
+                    compCumulative += d.new;
+                }
+
+                // 누적 증감
+                const cumulativeDiff = cumulative - compCumulative;
+                const cumulativeColor = cumulativeDiff >= 0 ? '#10b981' : '#ef4444';
+                const cumulativeSign = cumulativeDiff >= 0 ? '+' : '';
+
+                html += `<tr><td><strong>${branch}</strong></td>`;
+                if (compareData) {
+                    html += `<td class="text-right">${cumulative}<br><small style="color:${cumulativeColor}">(${cumulativeSign}${cumulativeDiff})</small></td>`;
+                } else {
+                    html += `<td class="text-right">${cumulative}</td>`;
+                }
+
                 for (let m = 1; m <= 12; m++) {
                     const d = monthMap[m];
+                    const cd = compMonthMap[m];
                     if (d) {
                         const color = d.retention > 50 ? '#10b981' : d.retention > 30 ? '#f59e0b' : '#ef4444';
-                        html += `<td class="text-right"><span style="color:${color}">${d.total}</span><br><small style="color:#888">(+${d.new})</small></td>`;
+                        if (compareData && cd) {
+                            const diff = d.total - cd.total;
+                            const diffColor = diff >= 0 ? '#10b981' : '#ef4444';
+                            const diffSign = diff >= 0 ? '+' : '';
+                            html += `<td class="text-right"><span style="color:${color}">${d.total}</span><br><small style="color:${diffColor}">(${diffSign}${diff})</small></td>`;
+                        } else {
+                            html += `<td class="text-right"><span style="color:${color}">${d.total}</span><br><small style="color:#888">(+${d.new})</small></td>`;
+                        }
                     } else {
                         html += '<td class="text-right">-</td>';
                     }
