@@ -3832,11 +3832,16 @@ HTML_TEMPLATE = '''
                     <div class="card-header">
                         <div class="card-title">📆 팀별 월별 추이</div>
                         <div class="chart-controls" style="display: flex; gap: 8px; align-items: center;">
-                            <button class="filter-btn active" onclick="setBranchMonthlyFilter('all')" id="branchMonthlyAll">전체</button>
-                            <button class="filter-btn" onclick="setBranchMonthlyFilter('top3')" id="branchMonthlyTop3">TOP 3</button>
+                            <button class="filter-btn" onclick="setBranchMonthlyFilter('all')" id="branchMonthlyAll">전체</button>
+                            <button class="filter-btn active" onclick="setBranchMonthlyFilter('top3')" id="branchMonthlyTop3">TOP 3</button>
+                            <button class="filter-btn" onclick="setBranchMonthlyFilter('top5')" id="branchMonthlyTop5">TOP 5</button>
                             <select id="branchMonthlySelect" class="filter-select" style="min-width: 120px;" onchange="setBranchMonthlyFilter('select')">
                                 <option value="">팀 선택</option>
                             </select>
+                            <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; color: #64748b; cursor: pointer;">
+                                <input type="checkbox" id="branchMonthlyCompareToggle" onchange="updateBranchMonthlyChart()" checked style="cursor: pointer;">
+                                전년비교
+                            </label>
                         </div>
                     </div>
                     <div class="card-body">
@@ -10056,11 +10061,12 @@ HTML_TEMPLATE = '''
         }
 
         // 지사별 월별 추이
-        let branchMonthlyFilter = 'all';
+        let branchMonthlyFilter = 'top3';  // 기본값을 TOP 3으로 변경
         let branchMonthlySelected = '';
 
         function initBranchMonthlySelect() {
-            const branches = currentData.by_branch || [];
+            // "기타" 팀 제외
+            const branches = (currentData.by_branch || []).filter(b => b[0] !== '기타');
             const select = document.getElementById('branchMonthlySelect');
             if (select) {
                 select.innerHTML = '<option value="">팀 선택</option>' +
@@ -10072,6 +10078,7 @@ HTML_TEMPLATE = '''
             branchMonthlyFilter = type;
             document.getElementById('branchMonthlyAll').classList.toggle('active', type === 'all');
             document.getElementById('branchMonthlyTop3').classList.toggle('active', type === 'top3');
+            document.getElementById('branchMonthlyTop5')?.classList.toggle('active', type === 'top5');
             if (type === 'select') {
                 branchMonthlySelected = document.getElementById('branchMonthlySelect').value;
             } else {
@@ -10090,13 +10097,18 @@ HTML_TEMPLATE = '''
             initBranchMonthlySelect();
 
             const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+            // 더 구분하기 쉬운 색상 배열
             const colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#ef4444', '#14b8a6'];
-            let branches = [...(currentData.by_branch || [])];
+            // "기타" 팀 제외
+            let branches = [...(currentData.by_branch || [])].filter(b => b[0] !== '기타');
             const monthMap = Object.fromEntries(currentData.by_month || []);
+            const showComparison = document.getElementById('branchMonthlyCompareToggle')?.checked ?? true;
 
             // 필터 적용
             if (branchMonthlyFilter === 'top3') {
                 branches = branches.slice(0, 3);
+            } else if (branchMonthlyFilter === 'top5') {
+                branches = branches.slice(0, 5);
             } else if (branchMonthlyFilter === 'select' && branchMonthlySelected) {
                 branches = branches.filter(b => b[0] === branchMonthlySelected);
             }
@@ -10144,7 +10156,7 @@ HTML_TEMPLATE = '''
                 return branchSales.length > 0 ? branchSales.reduce((a,b) => a+b, 0) / branchSales.length : 0;
             });
 
-            // 데이터셋 생성 (자체 월평균 포함)
+            // 데이터셋 생성 (자체 월평균 포함) - 더 굵고 명확한 라인
             const datasets = branchMonthlyData.map((b, i) => ({
                 label: b.name,
                 data: b.data,
@@ -10153,13 +10165,14 @@ HTML_TEMPLATE = '''
                 borderColor: colors[i % colors.length],
                 backgroundColor: colors[i % colors.length],
                 fill: false,
-                tension: 0.4,
-                pointRadius: 8,
-                pointHoverRadius: 12,
+                tension: 0.3,
+                pointRadius: 6,
+                pointHoverRadius: 10,
                 pointStyle: b.data.map(v => v < b.ownAvg ? 'triangle' : 'circle'),
                 pointBackgroundColor: b.data.map(v => v < b.ownAvg ? '#ef4444' : colors[i % colors.length]),
-                pointBorderColor: b.data.map(v => v < b.ownAvg ? '#ef4444' : colors[i % colors.length]),
-                borderWidth: 2,
+                pointBorderColor: b.data.map(v => v < b.ownAvg ? '#fff' : '#fff'),
+                pointBorderWidth: 2,
+                borderWidth: 3,
             }));
 
             // 평균선 추가
@@ -10173,8 +10186,8 @@ HTML_TEMPLATE = '''
                 fill: false,
             });
 
-            // 전년도 비교 데이터 추가
-            if (compareData && compareData.by_month) {
+            // 전년도 비교 데이터 추가 (토글이 켜져 있을 때만)
+            if (showComparison && compareData && compareData.by_month) {
                 const compMonthMap = Object.fromEntries(compareData.by_month || []);
                 branchMonthlyData.forEach((b, i) => {
                     const monthlyInfo = labels.map((_, mi) => {
@@ -10187,13 +10200,13 @@ HTML_TEMPLATE = '''
                         label: b.name + ' (' + compareData.year + ')',
                         data: monthlyInfo.map(d => d.sales),
                         monthlyInfo,
-                        borderColor: colors[i % colors.length] + '50',
+                        borderColor: colors[i % colors.length] + '40',
                         backgroundColor: 'transparent',
                         fill: false,
                         tension: 0.4,
-                        pointRadius: 3,
-                        borderDash: [3, 3],
-                        borderWidth: 1.5,
+                        pointRadius: 2,
+                        borderDash: [4, 4],
+                        borderWidth: 1,
                         isComparison: true,
                     });
                 });
