@@ -9146,7 +9146,7 @@ HTML_TEMPLATE = '''
                 document.getElementById('teamTopBranchPurposes').textContent = `평균↑: ${purposeText}`;
                 document.getElementById('teamTopBranchPurposes').title = aboveAvgPurposes.map(p =>
                     `${p.name}: ${formatCurrency(p.sales)} (평균 대비 +${p.excessPercent}%)`
-                ).join('\n');
+                ).join('\\n');
             } else {
                 document.getElementById('teamTopBranchPurposes').textContent = '';
             }
@@ -9233,7 +9233,7 @@ HTML_TEMPLATE = '''
                         document.getElementById('teamTopGrowthPurposes').textContent = `성장↑: ${growthText}`;
                         document.getElementById('teamTopGrowthPurposes').title = purposeGrowthList.map(p =>
                             `${p.name}: +${formatCurrency(p.diff)} (${p.isNew ? '신규' : '+' + p.growth.toFixed(0) + '%'})`
-                        ).join('\n');
+                        ).join('\\n');
                     } else {
                         document.getElementById('teamTopGrowthPurposes').textContent = '';
                     }
