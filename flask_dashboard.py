@@ -12311,13 +12311,44 @@ HTML_TEMPLATE = '''
                 }
             }
 
+            // 검사목적별 분석 (평균 대비)
+            const purposes = currentData.by_purpose || [];
+            const purposeData = purposes.map(p => ({ name: p[0], sales: p[1].sales, count: p[1].count }))
+                .filter(p => p.name !== '접수취소' && p.sales > 0);
+            const purposeTotalSales = purposeData.reduce((s, p) => s + p.sales, 0);
+            const purposeAvg = purposeData.length > 0 ? purposeTotalSales / purposeData.length : 0;
+
+            // 평균 대비 상위/하위 분류
+            const aboveAvgPurposes = purposeData.filter(p => p.sales >= purposeAvg).sort((a, b) => b.sales - a.sales);
+            const belowAvgPurposes = purposeData.filter(p => p.sales < purposeAvg).sort((a, b) => a.sales - b.sales);
+
+            // 최고 매출 검사목적 (평균 이상 중 1위)
+            const topPurpose = aboveAvgPurposes.length > 0 ? aboveAvgPurposes[0] : null;
+            // 최저 매출 검사목적 (평균 미만 중 최하위)
+            const bottomPurpose = belowAvgPurposes.length > 0 ? belowAvgPurposes[0] : null;
+
             // 기본 KPI 표시
             document.getElementById('monthlyMaxMonth').textContent = maxMonth > 0 ? monthNames[maxMonth] : '-';
-            document.getElementById('monthlyMaxValue').textContent = maxMonth > 0 ? formatCurrency(maxSales) : '-';
+            document.getElementById('monthlyMaxValue').innerHTML = maxMonth > 0 ?
+                `${formatCurrency(maxSales)}${topPurpose ? `<div style="font-size:11px;color:#10b981;margin-top:4px;">🏆 ${topPurpose.name}</div>` : ''}` : '-';
             document.getElementById('monthlyMinMonth').textContent = minMonth > 0 && minMonth < 13 ? monthNames[minMonth] : '-';
-            document.getElementById('monthlyMinValue').textContent = minMonth < Infinity ? formatCurrency(minSales) : '-';
+            document.getElementById('monthlyMinValue').innerHTML = minMonth < Infinity ?
+                `${formatCurrency(minSales)}${bottomPurpose ? `<div style="font-size:11px;color:#ef4444;margin-top:4px;">📉 ${bottomPurpose.name}</div>` : ''}` : '-';
             document.getElementById('monthlyAvgSales').textContent = monthCount > 0 ? formatCurrency(totalSales / monthCount) : '-';
-            document.getElementById('monthlyAvgCount').textContent = monthCount > 0 ? `월평균 ${Math.round(totalCount / monthCount).toLocaleString()}건` : '-';
+
+            // 월평균에 상/중/하 검사목적 표시
+            let avgPurposeHtml = monthCount > 0 ? `월평균 ${Math.round(totalCount / monthCount).toLocaleString()}건` : '-';
+            if (purposeData.length >= 3) {
+                const midIdx = Math.floor(purposeData.length / 2);
+                const sortedByDiff = [...purposeData].sort((a, b) => Math.abs(a.sales - purposeAvg) - Math.abs(b.sales - purposeAvg));
+                const midPurpose = sortedByDiff[0]; // 평균에 가장 가까운 목적
+                avgPurposeHtml += `<div style="font-size:10px;color:#94a3b8;margin-top:4px;line-height:1.3;">
+                    <span style="color:#10b981;">▲${topPurpose?.name?.substring(0,4) || '-'}</span>
+                    <span style="color:#f59e0b;">■${midPurpose?.name?.substring(0,4) || '-'}</span>
+                    <span style="color:#ef4444;">▼${bottomPurpose?.name?.substring(0,4) || '-'}</span>
+                </div>`;
+            }
+            document.getElementById('monthlyAvgCount').innerHTML = avgPurposeHtml;
             document.getElementById('monthlyYtdSales').textContent = formatCurrency(totalSales);
             document.getElementById('monthlyYtdCount').textContent = `총 ${totalCount.toLocaleString()}건`;
 
