@@ -4088,6 +4088,11 @@ HTML_TEMPLATE = '''
                 <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
                     <div class="card-title">🔥 검사목적별 월별 히트맵</div>
                     <div class="chart-controls" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <select id="heatmapYear" onchange="updateHeatmap()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px;">
+                            <option value="current">현재 연도</option>
+                            <option value="compare">비교 연도</option>
+                            <option value="both">양쪽 비교</option>
+                        </select>
                         <select id="heatmapMetric" onchange="updateHeatmap()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 12px;">
                             <option value="sales">매출</option>
                             <option value="count">건수</option>
@@ -4102,7 +4107,7 @@ HTML_TEMPLATE = '''
                 </div>
                 <div class="card-body">
                     <div class="heatmap-legend" id="heatmapLegend" style="display: flex; gap: 16px; margin-bottom: 12px; font-size: 11px; color: #64748b; flex-wrap: wrap;"></div>
-                    <div class="scroll-table">
+                    <div class="scroll-table" style="position: relative;">
                         <table class="data-table heatmap-table" id="purposeHeatmapTable">
                             <thead><tr id="heatmapHeader"><th>검사목적</th></tr></thead>
                             <tbody id="heatmapBody"></tbody>
@@ -14272,6 +14277,79 @@ HTML_TEMPLATE = '''
             updateHeatmap();
         }
 
+        // 히트맵 셀 호버 오버레이
+        let heatmapTooltipEl = null;
+        function showHeatmapTooltip(e, purpose, month, currData, compData) {
+            if (!heatmapTooltipEl) {
+                heatmapTooltipEl = document.createElement('div');
+                heatmapTooltipEl.id = 'heatmapTooltip';
+                heatmapTooltipEl.style.cssText = 'position:fixed;background:rgba(30,41,59,0.98);border-radius:10px;padding:14px;z-index:99999;font-size:12px;color:#e2e8f0;box-shadow:0 10px 30px rgba(0,0,0,0.4);min-width:220px;max-width:280px;pointer-events:none;';
+                document.body.appendChild(heatmapTooltipEl);
+            }
+
+            const monthNames = ['', '1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+            const currYear = currentData.year || '2025';
+            const compYear = compareData?.year || '2024';
+
+            let html = `<div style="font-weight:bold;margin-bottom:10px;font-size:14px;border-bottom:1px solid rgba(255,255,255,0.2);padding-bottom:8px;">📊 ${purpose} - ${monthNames[month]}</div>`;
+
+            // 현재 연도
+            html += `<div style="background:rgba(96,165,250,0.15);padding:8px;border-radius:6px;margin-bottom:8px;">`;
+            html += `<div style="color:#60a5fa;font-weight:600;margin-bottom:4px;">${currYear}년</div>`;
+            html += `<div style="display:flex;justify-content:space-between;"><span>매출</span><strong>${formatCurrency(currData.sales || 0)}</strong></div>`;
+            html += `<div style="display:flex;justify-content:space-between;"><span>건수</span><strong>${(currData.count || 0).toLocaleString()}건</strong></div>`;
+            if (currData.count > 0) {
+                html += `<div style="display:flex;justify-content:space-between;"><span>건당</span><strong>${formatCurrency(Math.round((currData.sales || 0) / currData.count))}</strong></div>`;
+            }
+            html += `</div>`;
+
+            // 비교 연도
+            if (compData && (compData.sales > 0 || compData.count > 0)) {
+                html += `<div style="background:rgba(245,158,11,0.15);padding:8px;border-radius:6px;margin-bottom:8px;">`;
+                html += `<div style="color:#f59e0b;font-weight:600;margin-bottom:4px;">${compYear}년</div>`;
+                html += `<div style="display:flex;justify-content:space-between;"><span>매출</span><strong>${formatCurrency(compData.sales || 0)}</strong></div>`;
+                html += `<div style="display:flex;justify-content:space-between;"><span>건수</span><strong>${(compData.count || 0).toLocaleString()}건</strong></div>`;
+                if (compData.count > 0) {
+                    html += `<div style="display:flex;justify-content:space-between;"><span>건당</span><strong>${formatCurrency(Math.round((compData.sales || 0) / compData.count))}</strong></div>`;
+                }
+                html += `</div>`;
+
+                // 증감
+                if (compData.sales > 0) {
+                    const salesDiff = (currData.sales || 0) - compData.sales;
+                    const salesPct = (salesDiff / compData.sales * 100);
+                    const color = salesDiff >= 0 ? '#10b981' : '#ef4444';
+                    const sign = salesDiff >= 0 ? '+' : '';
+                    html += `<div style="background:rgba(99,102,241,0.15);padding:6px 8px;border-radius:4px;text-align:center;">`;
+                    html += `<span style="color:#94a3b8;">전년 대비</span> <strong style="color:${color};">${sign}${salesPct.toFixed(1)}%</strong>`;
+                    html += `</div>`;
+                }
+            }
+
+            heatmapTooltipEl.innerHTML = html;
+            heatmapTooltipEl.style.display = 'block';
+
+            // 위치 계산
+            let left = e.clientX + 15;
+            let top = e.clientY - 10;
+            if (left + 280 > window.innerWidth) left = e.clientX - 290;
+            if (top + 200 > window.innerHeight) top = e.clientY - 200;
+            heatmapTooltipEl.style.left = left + 'px';
+            heatmapTooltipEl.style.top = top + 'px';
+        }
+
+        function hideHeatmapTooltip() {
+            if (heatmapTooltipEl) heatmapTooltipEl.style.display = 'none';
+        }
+
+        function showHeatmapCellTooltip(e, el) {
+            const purpose = el.dataset.purpose;
+            const month = parseInt(el.dataset.month);
+            const currData = JSON.parse(el.dataset.curr || '{}');
+            const compData = JSON.parse(el.dataset.comp || '{}');
+            showHeatmapTooltip(e, purpose, month, currData, compData);
+        }
+
         // 히트맵 업데이트
         function updateHeatmap() {
             const monthly = currentData.by_month || [];
@@ -14280,6 +14358,7 @@ HTML_TEMPLATE = '''
             const compMap = Object.fromEntries(compMonthly);
             const hasCompare = compareData && compMonthly.length > 0;
 
+            const yearView = document.getElementById('heatmapYear')?.value || 'current';
             const metric = document.getElementById('heatmapMetric')?.value || 'sales';
             const colorScheme = document.getElementById('heatmapColorScheme')?.value || 'blue';
 
@@ -14303,20 +14382,24 @@ HTML_TEMPLATE = '''
                 }
             }
 
-            // 값 추출 함수
+            // 값 추출 함수 (연도 선택 반영)
             const getValue = (purposeData, m) => {
                 const curr = purposeData.months[m] || { sales: 0, count: 0 };
                 const comp = purposeData.compMonths[m] || { sales: 0, count: 0 };
-                if (metric === 'sales') return curr.sales;
-                if (metric === 'count') return curr.count;
+
+                // 연도 선택에 따른 데이터 소스
+                const useData = yearView === 'compare' ? comp : curr;
+
+                if (metric === 'sales') return useData.sales;
+                if (metric === 'count') return useData.count;
                 if (metric === 'growth') {
                     if (!hasCompare || comp.sales <= 0) return null;
                     return ((curr.sales - comp.sales) / comp.sales * 100);
                 }
-                return curr.sales;
+                return useData.sales;
             };
 
-            // 합계 계산 함수
+            // 합계 계산 함수 (연도 선택 반영)
             const getTotal = (purposeData) => {
                 let total = 0, compTotal = 0;
                 for (let m = 1; m <= 12; m++) {
@@ -14328,7 +14411,7 @@ HTML_TEMPLATE = '''
                 if (metric === 'growth' && hasCompare && compTotal > 0) {
                     return ((total - compTotal) / compTotal * 100);
                 }
-                return total;
+                return yearView === 'compare' ? compTotal : total;
             };
 
             // 최대/최소값 계산
@@ -14430,6 +14513,7 @@ HTML_TEMPLATE = '''
             const tbody = document.getElementById('heatmapBody');
             tbody.innerHTML = purposeEntries.map(([purpose, pData]) => {
                 const cells = [];
+                const escapedPurpose = purpose.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                 for (let m = 1; m <= 12; m++) {
                     const val = getValue(pData, m);
                     const range = maxVal - minVal;
@@ -14442,7 +14526,14 @@ HTML_TEMPLATE = '''
                         else if (metric === 'count') displayVal = val.toLocaleString() + '건';
                         else if (metric === 'growth') displayVal = (val >= 0 ? '+' : '') + val.toFixed(1) + '%';
                     }
-                    cells.push(`<td class="text-center" style="background:${bg};color:${text};font-size:12px;">${displayVal}</td>`);
+
+                    // 호버 툴팁용 데이터
+                    const currData = pData.months[m] || { sales: 0, count: 0 };
+                    const compData = pData.compMonths[m] || { sales: 0, count: 0 };
+                    const currStr = JSON.stringify(currData).replace(/"/g, '&quot;');
+                    const compStr = JSON.stringify(compData).replace(/"/g, '&quot;');
+
+                    cells.push(`<td class="text-center" style="background:${bg};color:${text};font-size:12px;cursor:pointer;transition:transform 0.1s;" data-purpose="${escapedPurpose}" data-month="${m}" data-curr="${currStr}" data-comp="${compStr}" onmouseenter="showHeatmapCellTooltip(event,this);this.style.transform='scale(1.1)';this.style.zIndex='10';" onmouseleave="hideHeatmapTooltip();this.style.transform='';this.style.zIndex='';">${displayVal}</td>`);
                 }
                 const total = getTotal(pData);
                 let totalDisplay = metric === 'sales' ? formatCurrency(total) :
