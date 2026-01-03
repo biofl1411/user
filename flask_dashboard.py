@@ -4620,24 +4620,6 @@ HTML_TEMPLATE = '''
                 </section>
             </section>
 
-            <!-- 효율 분류 월별 추세 차트 -->
-            <section class="efficiency-trend-section" style="margin-bottom: 24px;">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">📈 효율 분류별 월별 추세</div>
-                        <div class="card-badge" id="efficiencyTrendBadge">업체 분류</div>
-                    </div>
-                    <div class="card-body">
-                        <div class="quadrant-legend" style="margin-bottom: 12px;">
-                            <span class="q-item" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: #10b981;">🌟 고효율 (평균 이상)</span>
-                            <span class="q-item" style="background: rgba(234, 179, 8, 0.15); color: #eab308; border-color: #eab308;">📊 중간 (평균 ±30%)</span>
-                            <span class="q-item" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border-color: #ef4444;">⚠️ 저효율 (평균 미만)</span>
-                        </div>
-                        <div class="chart-container" style="height: 320px;"><canvas id="clientEfficiencyTrendChart"></canvas></div>
-                    </div>
-                </div>
-            </section>
-
             <!-- 매출/건수 TOP 10 차트 -->
             <div class="content-grid" style="margin-bottom: 24px;">
                 <div class="card">
@@ -4660,8 +4642,8 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
-            <!-- 월별 업체수 차트 -->
-            <div style="margin-bottom: 24px;">
+            <!-- 월별 업체수 / 효율 분류 추세 차트 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
                 <div class="card">
                     <div class="card-header">
                         <div class="card-title">📈 월별 거래 업체 수</div>
@@ -4669,6 +4651,15 @@ HTML_TEMPLATE = '''
                     </div>
                     <div class="card-body">
                         <div class="chart-container" style="height: 300px;"><canvas id="clientMonthlyCountChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📊 효율 분류별 월별 추세</div>
+                        <div class="card-badge" id="efficiencyTrendBadge">업체 분류</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 300px;"><canvas id="clientEfficiencyTrendChart"></canvas></div>
                     </div>
                 </div>
             </div>
@@ -16553,7 +16544,7 @@ HTML_TEMPLATE = '''
             if (!ctx) return;
             if (charts.clientEfficiencyTrend) charts.clientEfficiencyTrend.destroy();
 
-            // 월별 데이터에서 업체별 효율 계산
+            // 월별 데이터 (by_month는 [월번호, 데이터객체] 배열)
             var monthlyData = currentData.by_month || [];
             if (monthlyData.length === 0) return;
 
@@ -16563,56 +16554,50 @@ HTML_TEMPLATE = '''
             var avgPerCase = totalCount > 0 ? totalSales / totalCount : 0;
 
             // 업체별 건당 단가 계산 및 효율 분류
-            var clientEfficiency = {};
+            var highClients = 0, midClients = 0, lowClients = 0;
             clients.forEach(function(c) {
                 var perCase = c[1].count > 0 ? c[1].sales / c[1].count : 0;
-                var efficiency;
                 if (perCase >= avgPerCase) {
-                    efficiency = 'high';  // 고효율: 평균 이상
+                    highClients++;  // 고효율: 평균 이상
                 } else if (perCase >= avgPerCase * 0.7) {
-                    efficiency = 'mid';   // 중간: 평균의 70% 이상
+                    midClients++;   // 중간: 평균의 70% 이상
                 } else {
-                    efficiency = 'low';   // 저효율: 평균의 70% 미만
+                    lowClients++;   // 저효율: 평균의 70% 미만
                 }
-                clientEfficiency[c[0]] = efficiency;
             });
 
-            // 월별로 효율 분류별 업체 수 집계
+            // 전체 비율 계산
+            var totalClientCount = clients.length || 1;
+            var highRatio = highClients / totalClientCount;
+            var midRatio = midClients / totalClientCount;
+            var lowRatio = lowClients / totalClientCount;
+
+            // 월별로 효율 분류별 업체 수 집계 (비율 기반 추정)
             var labels = [];
             var highData = [];
             var midData = [];
             var lowData = [];
 
             monthlyData.forEach(function(m) {
-                labels.push(m.month + '월');
-                var highCount = 0, midCount = 0, lowCount = 0;
+                var month = m[0];  // 월 번호
+                var data = m[1];   // 데이터 객체
+                labels.push(month + '월');
 
-                // 해당 월에 거래한 업체들의 효율 분류 집계
-                if (m.clients) {
-                    Object.keys(m.clients).forEach(function(name) {
-                        var eff = clientEfficiency[name];
-                        if (eff === 'high') highCount++;
-                        else if (eff === 'mid') midCount++;
-                        else if (eff === 'low') lowCount++;
-                    });
-                } else {
-                    // clients 데이터가 없으면 비율로 추정
-                    var totalClients = m.clientCount || 0;
-                    highCount = Math.round(totalClients * 0.3);
-                    midCount = Math.round(totalClients * 0.4);
-                    lowCount = totalClients - highCount - midCount;
-                }
+                // 해당 월의 총 업체 수
+                var monthlyClientCount = data.clientCount || 0;
+
+                // 비율에 따라 분배
+                var highCount = Math.round(monthlyClientCount * highRatio);
+                var midCount = Math.round(monthlyClientCount * midRatio);
+                var lowCount = monthlyClientCount - highCount - midCount;
 
                 highData.push(highCount);
                 midData.push(midCount);
-                lowData.push(lowCount);
+                lowData.push(Math.max(0, lowCount));
             });
 
             // 배지 업데이트
-            var highTotal = clients.filter(function(c) { return clientEfficiency[c[0]] === 'high'; }).length;
-            var midTotal = clients.filter(function(c) { return clientEfficiency[c[0]] === 'mid'; }).length;
-            var lowTotal = clients.filter(function(c) { return clientEfficiency[c[0]] === 'low'; }).length;
-            document.getElementById('efficiencyTrendBadge').textContent = '고' + highTotal + ' / 중' + midTotal + ' / 저' + lowTotal;
+            document.getElementById('efficiencyTrendBadge').textContent = '고' + highClients + ' / 중' + midClients + ' / 저' + lowClients;
 
             // 외부 툴팁 생성 함수
             var getOrCreateEffTrendTooltip = function() {
