@@ -10647,20 +10647,32 @@ HTML_TEMPLATE = '''
                 return currentData.total_client_retention || [];
             }
 
+            // 팀만 필터링 (검사목적은 전체)
+            if (purposeFilter === '전체' && branchFilter !== '전체') {
+                const branchRetention = currentData.branch_client_retention?.[branchFilter];
+                if (branchRetention && branchRetention.length > 0) {
+                    return branchRetention;
+                }
+            }
+
             // month_client_details 데이터에서 필터링된 거래처 계산
             const monthDetails = currentData.month_client_details || {};
             const seenClients = new Set();
             const result = [];
 
             for (let month = 1; month <= 12; month++) {
-                const monthClients = monthDetails[month] || {};
+                // JSON 키는 문자열이므로 명시적 변환
+                const monthKey = String(month);
+                const monthClients = monthDetails[monthKey] || monthDetails[month] || {};
 
                 // 필터 적용
                 const filteredClients = [];
                 Object.entries(monthClients).forEach(([clientName, clientData]) => {
                     // 팀 필터
-                    if (branchFilter !== '전체' && clientData.branch !== branchFilter) {
-                        return;
+                    if (branchFilter !== '전체') {
+                        if (clientData.branch !== branchFilter) {
+                            return;
+                        }
                     }
                     // 검사목적 필터
                     if (purposeFilter !== '전체') {
