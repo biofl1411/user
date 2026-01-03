@@ -13711,15 +13711,17 @@ HTML_TEMPLATE = '''
             const summaryEl = document.getElementById('monthlyCountSummary');
             if (summaryEl) {
                 let summaryHtml = `
-                    <span style="background: #dbeafe; padding: 4px 10px; border-radius: 4px; color: #1e40af;"><strong style="color:#60a5fa;">${currentData.year}년:</strong> ${totalCount.toLocaleString()}건</span>
+                    <span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;"><strong style="color:#60a5fa;">${currentData.year}년:</strong> ${totalCount.toLocaleString()}건</span>
                 `;
                 if (compareData && compTotalCountSummary > 0) {
                     summaryHtml += `
-                        <span style="background: #fef3c7; padding: 4px 10px; border-radius: 4px; color: #92400e;"><strong style="color:#f59e0b;">${compareData.year}년:</strong> ${compTotalCountSummary.toLocaleString()}건</span>
-                        <span style="background: ${countGrowth >= 0 ? '#d1fae5' : '#fee2e2'}; padding: 4px 10px; border-radius: 4px; color: ${growthColor};">증감: <strong>${growthSign}${countGrowth.toFixed(1)}%</strong></span>
+                        <span style="white-space:nowrap;background:#fef3c7;padding:4px 10px;border-radius:4px;color:#92400e;"><strong style="color:#f59e0b;">${compareData.year}년:</strong> ${compTotalCountSummary.toLocaleString()}건</span>
+                        <span style="white-space:nowrap;background:${countGrowth >= 0 ? '#d1fae5' : '#fee2e2'};padding:4px 10px;border-radius:4px;color:${growthColor};">증감: <strong>${growthSign}${countGrowth.toFixed(1)}%</strong></span>
                     `;
                 }
-                summaryHtml += `<span style="background: #fef08a; padding: 4px 10px; border-radius: 4px; color: #854d0e;">평균단가: <strong>${Math.round(avgPrice / 10000).toLocaleString()}만</strong></span>`;
+                summaryHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">매출: <strong>${formatCurrency(totalSales)}</strong></span>`;
+                summaryHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">평균: <strong>${Math.round(avgCount).toLocaleString()}건</strong></span>`;
+                summaryHtml += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">평균단가: <strong>${Math.round(avgPrice / 10000).toLocaleString()}만</strong></span>`;
                 summaryEl.innerHTML = summaryHtml;
             }
 
