@@ -3898,6 +3898,7 @@ HTML_TEMPLATE = '''
                     </div>
                     <div class="selected-tags" id="selectedManagerTags"></div>
                     <div class="card-body">
+                        <div id="mgrMonthlySummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-legend" id="mgrMonthlyLegend" style="display: none;"></div>
                         <div class="chart-container" style="height: 280px;"><canvas id="managerMonthlyChart"></canvas></div>
                     </div>
@@ -3917,6 +3918,7 @@ HTML_TEMPLATE = '''
                         </div>
                     </div>
                     <div class="card-body">
+                        <div id="managerChartSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-legend" id="managerLegend" style="display: none;"></div>
                         <div class="chart-container"><canvas id="managerChart"></canvas></div>
                     </div>
@@ -3932,6 +3934,7 @@ HTML_TEMPLATE = '''
                         </div>
                     </div>
                     <div class="card-body">
+                        <div id="perCaseSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-legend" id="perCaseLegend" style="display: none;"></div>
                         <div class="chart-container"><canvas id="perCaseChart"></canvas></div>
                     </div>
@@ -3948,6 +3951,7 @@ HTML_TEMPLATE = '''
                         </select>
                     </div>
                     <div class="card-body">
+                        <div id="urgentChartSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; font-size: 13px;"></div>
                         <div class="chart-legend" id="urgentChartLegend" style="display: flex; gap: 12px; margin-bottom: 8px; font-size: 11px;">
                             <span style="color: #ef4444;">● 상위 (80%↑)</span>
                             <span style="color: #f59e0b;">● 중위 (50%↑)</span>
@@ -3962,6 +3966,7 @@ HTML_TEMPLATE = '''
                         <div class="card-badge">접수일 기준</div>
                     </div>
                     <div class="card-body">
+                        <div id="dailyClientSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-legend" id="dailyClientLegend" style="display: none;"></div>
                         <div class="chart-container" style="height: 280px;"><canvas id="dailyClientChart"></canvas></div>
                     </div>
@@ -3975,6 +3980,7 @@ HTML_TEMPLATE = '''
                         <div class="card-title">📈 긴급 월별 추이</div>
                     </div>
                     <div class="card-body">
+                        <div id="urgentMonthlySummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-legend" id="urgentMonthlyLegend" style="display: none;"></div>
                         <div class="chart-container" style="height: 280px;"><canvas id="urgentMonthlyChart"></canvas></div>
                     </div>
@@ -3984,6 +3990,7 @@ HTML_TEMPLATE = '''
                         <div class="card-title">💰 긴급 건당 단가</div>
                     </div>
                     <div class="card-body">
+                        <div id="urgentUnitPriceSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-legend" id="urgentUnitPriceLegend" style="display: none;"></div>
                         <div class="chart-container" style="height: 280px;"><canvas id="urgentUnitPriceChart"></canvas></div>
                     </div>
@@ -4205,6 +4212,7 @@ HTML_TEMPLATE = '''
                         </div>
                     </div>
                     <div class="card-body">
+                        <div id="clientRetentionSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-container" style="height: 300px;"><canvas id="clientRetentionChart"></canvas></div>
                     </div>
                 </div>
@@ -4628,6 +4636,7 @@ HTML_TEMPLATE = '''
                         <div class="card-badge" id="clientSalesChartBadge">-</div>
                     </div>
                     <div class="card-body">
+                        <div id="clientSalesChartSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-container" style="height: 350px;"><canvas id="clientSalesChart"></canvas></div>
                     </div>
                 </div>
@@ -4637,6 +4646,7 @@ HTML_TEMPLATE = '''
                         <div class="card-badge" id="clientCountChartBadge">-</div>
                     </div>
                     <div class="card-body">
+                        <div id="clientCountChartSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-container" style="height: 350px;"><canvas id="clientCountChart"></canvas></div>
                     </div>
                 </div>
@@ -4650,6 +4660,7 @@ HTML_TEMPLATE = '''
                         <div class="card-badge" id="clientMonthlyCountBadge">-</div>
                     </div>
                     <div class="card-body">
+                        <div id="clientMonthlyCountSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-container" style="height: 300px;"><canvas id="clientMonthlyCountChart"></canvas></div>
                     </div>
                 </div>
@@ -4659,6 +4670,7 @@ HTML_TEMPLATE = '''
                         <div class="card-badge" id="efficiencyTrendBadge">업체 분류</div>
                     </div>
                     <div class="card-body">
+                        <div id="clientEfficiencyTrendSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-container" style="height: 300px;"><canvas id="clientEfficiencyTrendChart"></canvas></div>
                     </div>
                 </div>
@@ -5003,6 +5015,7 @@ HTML_TEMPLATE = '''
                         <div class="card-badge" id="regionSalesChartBadge">-</div>
                     </div>
                     <div class="card-body">
+                        <div id="regionSalesChartSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-container" style="height: 350px;"><canvas id="regionSalesChart"></canvas></div>
                     </div>
                 </div>
@@ -5012,6 +5025,7 @@ HTML_TEMPLATE = '''
                         <div class="card-badge" id="regionGrowthChartBadge">전년 대비</div>
                     </div>
                     <div class="card-body">
+                        <div id="regionGrowthChartSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-container" style="height: 350px;"><canvas id="regionGrowthChart"></canvas></div>
                     </div>
                 </div>
@@ -5117,6 +5131,7 @@ HTML_TEMPLATE = '''
                         <div class="card-badge" id="purposeMonthlyBadge">-</div>
                     </div>
                     <div class="card-body">
+                        <div id="purposeMonthlySummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-container" style="height: 320px;"><canvas id="purposeMonthlyChart"></canvas></div>
                     </div>
                 </div>
@@ -5126,6 +5141,7 @@ HTML_TEMPLATE = '''
                         <div class="card-badge" id="purposeGrowthBadge">전년 대비</div>
                     </div>
                     <div class="card-body">
+                        <div id="purposeGrowthSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
                         <div class="chart-container" style="height: 320px;"><canvas id="purposeGrowthChart"></canvas></div>
                     </div>
                 </div>
@@ -6379,6 +6395,43 @@ HTML_TEMPLATE = '''
             const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
             const colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#ef4444', '#14b8a6', '#f97316', '#84cc16'];
             const managers = currentData.by_manager || [];
+
+            // 요약 정보 계산 및 표시
+            const summaryEl = document.getElementById('mgrMonthlySummary');
+            if (summaryEl) {
+                const monthMap = Object.fromEntries(currentData.by_month || []);
+                let totalSales = 0, totalCount = 0, monthsWithData = 0;
+                Object.values(monthMap).forEach(m => {
+                    totalSales += m.sales || 0;
+                    totalCount += m.count || 0;
+                    if ((m.sales || 0) > 0) monthsWithData++;
+                });
+                const avgSales = monthsWithData > 0 ? totalSales / monthsWithData : 0;
+                const avgPrice = totalCount > 0 ? totalSales / totalCount : 0;
+
+                // 전년도 비교
+                let compTotalSales = 0, compTotalCount = 0;
+                if (compareData && compareData.by_month) {
+                    const compMonthMap = Object.fromEntries(compareData.by_month || []);
+                    Object.values(compMonthMap).forEach(m => {
+                        compTotalSales += m.sales || 0;
+                        compTotalCount += m.count || 0;
+                    });
+                }
+
+                let html = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;"><strong style="color:#3b82f6;">${currentData.year}년:</strong> ${(totalSales / 100000000).toFixed(1)}억</span>`;
+                if (compareData && compTotalSales > 0) {
+                    const salesGrowth = ((totalSales - compTotalSales) / compTotalSales * 100);
+                    const growthSign = salesGrowth >= 0 ? '+' : '';
+                    const growthColor = salesGrowth >= 0 ? '#059669' : '#dc2626';
+                    html += `<span style="white-space:nowrap;background:#fef3c7;padding:4px 10px;border-radius:4px;color:#92400e;"><strong style="color:#f59e0b;">${compareData.year}년:</strong> ${(compTotalSales / 100000000).toFixed(1)}억</span>`;
+                    html += `<span style="white-space:nowrap;background:${salesGrowth >= 0 ? '#d1fae5' : '#fee2e2'};padding:4px 10px;border-radius:4px;color:${growthColor};">증감: <strong>${growthSign}${salesGrowth.toFixed(1)}%</strong></span>`;
+                }
+                html += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">건수: <strong>${totalCount.toLocaleString()}건</strong></span>`;
+                html += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">월평균: <strong>${(avgSales / 100000000).toFixed(2)}억</strong></span>`;
+                html += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">단가: <strong>${Math.round(avgPrice / 10000).toLocaleString()}만</strong></span>`;
+                summaryEl.innerHTML = html;
+            }
 
             if (monthlyPreset === 'all') {
                 // 전체 합계 - 월별 데이터 사용 (매출, 건수, 검사목적 포함)
@@ -7647,6 +7700,17 @@ HTML_TEMPLATE = '''
             const avgAll = chartData.reduce((s, d) => s + d.avgPrice, 0) / (chartData.length || 1);
             const totalSalesAll = chartData.reduce((s, d) => s + d.sales, 0);
             const totalCountAll = chartData.reduce((s, d) => s + d.count, 0);
+            const avgPriceAll = totalCountAll > 0 ? totalSalesAll / totalCountAll : 0;
+
+            // perCaseSummary 요약 정보 표시
+            const perCaseSummaryEl = document.getElementById('perCaseSummary');
+            if (perCaseSummaryEl) {
+                let pcHtml = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">매출: <strong style="color:#3b82f6;">${(totalSalesAll / 100000000).toFixed(1)}억</strong></span>`;
+                pcHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">건수: <strong>${totalCountAll.toLocaleString()}건</strong></span>`;
+                pcHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">평균단가: <strong>${Math.round(avgPriceAll / 10000).toLocaleString()}만</strong></span>`;
+                pcHtml += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">담당자수: <strong>${chartData.length}명</strong></span>`;
+                perCaseSummaryEl.innerHTML = pcHtml;
+            }
 
             // 전체 담당자 검사목적별 평균 건당 매출 계산
             const purposeGlobalAvg = {};
@@ -8057,6 +8121,17 @@ HTML_TEMPLATE = '''
             }).sort((a, b) => b.urgent - a.urgent);
 
             const maxUrgent = Math.max(...urgentData.map(d => d.urgent)) || 1;
+            const urgentTotalCount = urgentData.reduce((s, d) => s + d.urgent, 0);
+            const avgUrgentPerManager = managerWithUrgent > 0 ? urgentTotalCount / managerWithUrgent : 0;
+
+            // urgentChartSummary 요약 정보 표시
+            const urgentSummaryEl = document.getElementById('urgentChartSummary');
+            if (urgentSummaryEl) {
+                let uHtml = `<span style="white-space:nowrap;background:#fee2e2;padding:4px 10px;border-radius:4px;color:#dc2626;">긴급: <strong>${urgentTotalCount.toLocaleString()}건</strong></span>`;
+                uHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">담당자별 평균: <strong>${avgUrgentPerManager.toFixed(1)}건</strong></span>`;
+                uHtml += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">담당자수: <strong>${managerWithUrgent}명</strong></span>`;
+                urgentSummaryEl.innerHTML = uHtml;
+            }
 
             // 데이터셋 구성
             const datasets = [{
@@ -8389,6 +8464,18 @@ HTML_TEMPLATE = '''
             const nonZeroMonths = monthlyData.filter(m => m.urgentCount > 0);
             const avgUrgentCount = nonZeroMonths.length > 0 ? nonZeroMonths.reduce((sum, m) => sum + m.urgentCount, 0) / nonZeroMonths.length : 0;
             const avgUrgentRatio = nonZeroMonths.length > 0 ? nonZeroMonths.reduce((sum, m) => sum + (m.totalCount > 0 ? m.urgentCount / m.totalCount : 0), 0) / nonZeroMonths.length : 0;
+
+            // urgentMonthlySummary 요약 정보 표시
+            const totalUrgent = monthlyData.reduce((s, m) => s + m.urgentCount, 0);
+            const totalUrgentSales = monthlyData.reduce((s, m) => s + m.urgentSales, 0);
+            const urgentMonthlySummaryEl = document.getElementById('urgentMonthlySummary');
+            if (urgentMonthlySummaryEl) {
+                let umHtml = `<span style="white-space:nowrap;background:#fee2e2;padding:4px 10px;border-radius:4px;color:#dc2626;">긴급: <strong>${totalUrgent.toLocaleString()}건</strong></span>`;
+                umHtml += `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">매출: <strong style="color:#3b82f6;">${(totalUrgentSales / 100000000).toFixed(1)}억</strong></span>`;
+                umHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">월평균: <strong>${avgUrgentCount.toFixed(0)}건</strong></span>`;
+                umHtml += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">긴급비율: <strong>${(avgUrgentRatio * 100).toFixed(1)}%</strong></span>`;
+                urgentMonthlySummaryEl.innerHTML = umHtml;
+            }
 
             // 전년도 비교 데이터
             const compUrgentMonthMap = compareData ? Object.fromEntries(compareData.by_urgent_month || []) : {};
@@ -8947,6 +9034,18 @@ HTML_TEMPLATE = '''
             // 월평균 계산 (0이 아닌 월만)
             const nonZeroMonths = monthlyData.filter(m => m.urgentUnitPrice > 0);
             const avgUrgentUnitPrice = nonZeroMonths.length > 0 ? nonZeroMonths.reduce((sum, m) => sum + m.urgentUnitPrice, 0) / nonZeroMonths.length : 0;
+
+            // urgentUnitPriceSummary 요약 정보 표시
+            const totalUrgentCount = monthlyData.reduce((s, m) => s + m.urgentCount, 0);
+            const totalUrgentSalesForSummary = monthlyData.reduce((s, m) => s + m.urgentSales, 0);
+            const overallAvgUnitPrice = totalUrgentCount > 0 ? totalUrgentSalesForSummary / totalUrgentCount : 0;
+            const urgentUnitPriceSummaryEl = document.getElementById('urgentUnitPriceSummary');
+            if (urgentUnitPriceSummaryEl) {
+                let upHtml = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">매출: <strong style="color:#3b82f6;">${(totalUrgentSalesForSummary / 100000000).toFixed(1)}억</strong></span>`;
+                upHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">건수: <strong>${totalUrgentCount.toLocaleString()}건</strong></span>`;
+                upHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">평균단가: <strong>${Math.round(overallAvgUnitPrice / 10000).toLocaleString()}만</strong></span>`;
+                urgentUnitPriceSummaryEl.innerHTML = upHtml;
+            }
             const avgNormalUnitPrice = nonZeroMonths.length > 0 ? nonZeroMonths.reduce((sum, m) => sum + m.normalUnitPrice, 0) / nonZeroMonths.length : 0;
             const avgPremium = avgNormalUnitPrice > 0 ? ((avgUrgentUnitPrice - avgNormalUnitPrice) / avgNormalUnitPrice * 100) : 0;
 
@@ -9467,6 +9566,17 @@ HTML_TEMPLATE = '''
             const totalSalesAll = chartData.reduce((s, d) => s + d.sales, 0);
             const totalCountAll = chartData.reduce((s, d) => s + d.count, 0);
             const avgPriceAll = totalCountAll > 0 ? totalSalesAll / totalCountAll : 0;
+
+            // dailyClientSummary 요약 정보 표시
+            const dailyClientSummaryEl = document.getElementById('dailyClientSummary');
+            if (dailyClientSummaryEl) {
+                let dcHtml = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">매출: <strong style="color:#3b82f6;">${(totalSalesAll / 100000000).toFixed(1)}억</strong></span>`;
+                dcHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">건수: <strong>${totalCountAll.toLocaleString()}건</strong></span>`;
+                dcHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">평균단가: <strong>${Math.round(avgPriceAll / 10000).toLocaleString()}만</strong></span>`;
+                dcHtml += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">일평균: <strong>${avgAll.toFixed(1)}건</strong></span>`;
+                dailyClientSummaryEl.innerHTML = dcHtml;
+            }
+
             const summaryHtml = `<div style="margin-left: auto; display: flex; gap: 20px; font-size: 12px; color: #666;">
                 <span>총매출: <strong>${formatCurrency(totalSalesAll)}</strong></span>
                 <span>총건수: <strong>${totalCountAll.toLocaleString()}건</strong></span>
@@ -11412,6 +11522,17 @@ HTML_TEMPLATE = '''
             const minTotal = Math.min(...totals.filter(t => t > 0));
             const totalYearClients = retention.reduce((sum, d) => sum + d.new, 0) + (retention[0]?.overlap || 0);
 
+            // clientRetentionSummary 요약 정보 표시
+            const retentionSummaryEl = document.getElementById('clientRetentionSummary');
+            if (retentionSummaryEl) {
+                const totalNew = retention.reduce((sum, d) => sum + d.new, 0);
+                const totalOverlap = retention.reduce((sum, d) => sum + d.overlap, 0);
+                let crHtml = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">총거래처: <strong style="color:#3b82f6;">${totalYearClients.toLocaleString()}개</strong></span>`;
+                crHtml += `<span style="white-space:nowrap;background:#d1fae5;padding:4px 10px;border-radius:4px;color:#059669;">신규: <strong>${totalNew.toLocaleString()}개</strong></span>`;
+                crHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">월평균: <strong>${Math.round(avgTotal)}개</strong></span>`;
+                retentionSummaryEl.innerHTML = crHtml;
+            }
+
             // 외부 HTML 툴팁
             const getOrCreateTooltip = (chart) => {
                 let tooltipEl = document.getElementById('clientRetentionTooltip');
@@ -11976,10 +12097,30 @@ HTML_TEMPLATE = '''
 
             const datasets = [{ label: currentData.year + '년', data: chartData.map(d => d.sales), backgroundColor: 'rgba(99, 102, 241, 0.8)', borderRadius: 6 }];
 
-            // 요약 정보 계산
+            // 요약 정보 계산 및 표시
             const summaryTotalSales = chartData.reduce((s, d) => s + d.sales, 0);
             const summaryTotalCount = chartData.reduce((s, d) => s + d.count, 0);
             const summaryAvgPrice = summaryTotalCount > 0 ? summaryTotalSales / summaryTotalCount : 0;
+
+            // 전년도 비교
+            const compSummaryTotalSales = chartData.reduce((s, d) => s + d.compSales, 0);
+            const compSummaryTotalCount = chartData.reduce((s, d) => s + d.compCount, 0);
+
+            // managerChartSummary 업데이트
+            const mgrSummaryEl = document.getElementById('managerChartSummary');
+            if (mgrSummaryEl) {
+                let mgrHtml = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">매출: <strong style="color:#3b82f6;">${(summaryTotalSales / 100000000).toFixed(1)}억</strong></span>`;
+                if (compareData && compSummaryTotalSales > 0) {
+                    const salesGrowth = ((summaryTotalSales - compSummaryTotalSales) / compSummaryTotalSales * 100);
+                    const growthSign = salesGrowth >= 0 ? '+' : '';
+                    const growthColor = salesGrowth >= 0 ? '#059669' : '#dc2626';
+                    mgrHtml += `<span style="white-space:nowrap;background:${salesGrowth >= 0 ? '#d1fae5' : '#fee2e2'};padding:4px 10px;border-radius:4px;color:${growthColor};">전년비: <strong>${growthSign}${salesGrowth.toFixed(1)}%</strong></span>`;
+                }
+                mgrHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">건수: <strong>${summaryTotalCount.toLocaleString()}건</strong></span>`;
+                mgrHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">평균단가: <strong>${Math.round(summaryAvgPrice / 10000).toLocaleString()}만</strong></span>`;
+                mgrSummaryEl.innerHTML = mgrHtml;
+            }
+
             const summaryHtml = `<div style="margin-left: auto; display: flex; gap: 20px; font-size: 12px; color: #666;">
                 <span>총매출: <strong>${formatCurrency(summaryTotalSales)}</strong></span>
                 <span>총건수: <strong>${summaryTotalCount.toLocaleString()}건</strong></span>
@@ -13087,15 +13228,39 @@ HTML_TEMPLATE = '''
             }
 
             const avgPrice = totalCount > 0 ? totalSales / totalCount : 0;
+            const avgSales = monthCount > 0 ? totalSales / monthCount : 0;
+
+            // 전년도 요약 계산
+            const compMonthly = compareData?.by_month || [];
+            const compMonthMapSum = Object.fromEntries(compMonthly);
+            let compTotalSales = 0, compTotalCount = 0;
+
+            if (purposeFilter === '전체' && managerFilter === '전체') {
+                for (let m = 1; m <= 12; m++) {
+                    const cData = compMonthMapSum[m];
+                    if (cData && cData.sales > 0) {
+                        compTotalSales += cData.sales;
+                        compTotalCount += cData.count || 0;
+                    }
+                }
+            }
+
+            const salesGrowth = compTotalSales > 0 ? ((totalSales - compTotalSales) / compTotalSales * 100) : 0;
+            const growthColor = salesGrowth >= 0 ? '#10b981' : '#ef4444';
+            const growthSign = salesGrowth >= 0 ? '+' : '';
 
             // 요약 정보 표시
             const summaryEl = document.getElementById('monthlySalesSummary');
             if (summaryEl) {
-                summaryEl.innerHTML = `
-                    <span style="background: #fef08a; padding: 4px 10px; border-radius: 4px; color: #854d0e;">총매출: <strong>${(totalSales / 100000000).toFixed(1)}억</strong></span>
-                    <span style="background: #fef08a; padding: 4px 10px; border-radius: 4px; color: #854d0e;">총건수: <strong>${totalCount.toLocaleString()}건</strong></span>
-                    <span style="background: #fef08a; padding: 4px 10px; border-radius: 4px; color: #854d0e;">평균단가: <strong>${Math.round(avgPrice / 10000).toLocaleString()}만</strong></span>
-                `;
+                let html = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;"><strong style="color:#3b82f6;">${currentData.year}년:</strong> ${(totalSales / 100000000).toFixed(1)}억</span>`;
+                if (compareData && compTotalSales > 0) {
+                    html += `<span style="white-space:nowrap;background:#fef3c7;padding:4px 10px;border-radius:4px;color:#92400e;"><strong style="color:#f59e0b;">${compareData.year}년:</strong> ${(compTotalSales / 100000000).toFixed(1)}억</span>`;
+                    html += `<span style="white-space:nowrap;background:${salesGrowth >= 0 ? '#d1fae5' : '#fee2e2'};padding:4px 10px;border-radius:4px;color:${growthColor};">증감: <strong>${growthSign}${salesGrowth.toFixed(1)}%</strong></span>`;
+                }
+                html += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">건수: <strong>${totalCount.toLocaleString()}건</strong></span>`;
+                html += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">평균: <strong>${(avgSales / 100000000).toFixed(2)}억</strong></span>`;
+                html += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">단가: <strong>${Math.round(avgPrice / 10000).toLocaleString()}만</strong></span>`;
+                summaryEl.innerHTML = html;
             }
 
             // 차트 업데이트
@@ -14146,18 +14311,13 @@ HTML_TEMPLATE = '''
                 const totalComp = validComp.reduce((s, v) => s + v, 0);
                 const totalGrowth = totalComp > 0 ? ((totalCurr - totalComp) / totalComp * 100) : 0;
                 const growthColor = totalGrowth >= 0 ? '#10b981' : '#ef4444';
+                const avgCurr = validCurr.length > 0 ? totalCurr / validCurr.length : 0;
 
-                summaryEl.innerHTML = `
-                    <span style="background:#f1f5f9;padding:4px 10px;border-radius:6px;">
-                        <strong style="color:#60a5fa;">${currentData.year}년:</strong> ${formatCurrency(totalCurr)}
-                    </span>
-                    <span style="background:#f1f5f9;padding:4px 10px;border-radius:6px;">
-                        <strong style="color:#f59e0b;">${compareData.year}년:</strong> ${formatCurrency(totalComp)}
-                    </span>
-                    <span style="background:#f1f5f9;padding:4px 10px;border-radius:6px;">
-                        <strong>총 성장률:</strong> <span style="color:${growthColor};font-weight:bold;">${totalGrowth >= 0 ? '+' : ''}${totalGrowth.toFixed(1)}%</span>
-                    </span>
-                `;
+                let html = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;"><strong style="color:#3b82f6;">${currentData.year}년:</strong> ${(totalCurr / 100000000).toFixed(1)}억</span>`;
+                html += `<span style="white-space:nowrap;background:#fef3c7;padding:4px 10px;border-radius:4px;color:#92400e;"><strong style="color:#f59e0b;">${compareData.year}년:</strong> ${(totalComp / 100000000).toFixed(1)}억</span>`;
+                html += `<span style="white-space:nowrap;background:${totalGrowth >= 0 ? '#d1fae5' : '#fee2e2'};padding:4px 10px;border-radius:4px;color:${growthColor};">성장률: <strong>${totalGrowth >= 0 ? '+' : ''}${totalGrowth.toFixed(1)}%</strong></span>`;
+                html += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">평균: <strong>${(avgCurr / 100000000).toFixed(2)}억</strong></span>`;
+                summaryEl.innerHTML = html;
             }
 
             // 평균 성장률 계산
@@ -16577,6 +16737,17 @@ HTML_TEMPLATE = '''
                 }
             });
 
+            // clientEfficiencyTrendSummary 요약 정보 표시
+            var effTrendSummaryEl = document.getElementById('clientEfficiencyTrendSummary');
+            if (effTrendSummaryEl) {
+                var totalClientsEff = clients.length;
+                var effHtml = '<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">총업체: <strong style="color:#3b82f6;">' + totalClientsEff + '개</strong></span>';
+                effHtml += '<span style="white-space:nowrap;background:#d1fae5;padding:4px 10px;border-radius:4px;color:#059669;">고효율: <strong>' + highClients + '개</strong></span>';
+                effHtml += '<span style="white-space:nowrap;background:#fef3c7;padding:4px 10px;border-radius:4px;color:#92400e;">중효율: <strong>' + midClients + '개</strong></span>';
+                effHtml += '<span style="white-space:nowrap;background:#fee2e2;padding:4px 10px;border-radius:4px;color:#dc2626;">저효율: <strong>' + lowClients + '개</strong></span>';
+                effTrendSummaryEl.innerHTML = effHtml;
+            }
+
             // 3개월 이상 지속 거래 업체 효율 분류 (테이블용)
             sustainedClients.forEach(function(c) {
                 var clientAvgPrice = c[1].count > 0 ? c[1].sales / c[1].count : 0;
@@ -16845,6 +17016,23 @@ HTML_TEMPLATE = '''
             document.getElementById('clientSalesChartBadge').textContent = hasCompare ?
                 `${currentData.year} vs ${compareData.year}` : currentData.year + '년';
 
+            // clientSalesChartSummary 요약 정보 표시
+            const salesSummaryEl = document.getElementById('clientSalesChartSummary');
+            if (salesSummaryEl) {
+                const avgPrice = totalCount > 0 ? totalSales / totalCount : 0;
+                const top10Sales = top10.reduce((s, c) => s + c[1].sales, 0);
+                const top10Ratio = totalSales > 0 ? (top10Sales / totalSales * 100) : 0;
+                let csHtml = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">총매출: <strong style="color:#3b82f6;">${(totalSales / 100000000).toFixed(1)}억</strong></span>`;
+                if (hasCompare && compTotalSales > 0) {
+                    const salesGrowth = ((totalSales - compTotalSales) / compTotalSales * 100);
+                    const growthColor = salesGrowth >= 0 ? '#059669' : '#dc2626';
+                    csHtml += `<span style="white-space:nowrap;background:${salesGrowth >= 0 ? '#d1fae5' : '#fee2e2'};padding:4px 10px;border-radius:4px;color:${growthColor};">전년비: <strong>${salesGrowth >= 0 ? '+' : ''}${salesGrowth.toFixed(1)}%</strong></span>`;
+                }
+                csHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">업체수: <strong>${clients.length.toLocaleString()}개</strong></span>`;
+                csHtml += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">TOP10비중: <strong>${top10Ratio.toFixed(1)}%</strong></span>`;
+                salesSummaryEl.innerHTML = csHtml;
+            }
+
             const ctx = document.getElementById('clientSalesChart');
             if (!ctx) return;
             if (charts.clientSales) charts.clientSales.destroy();
@@ -17090,6 +17278,23 @@ HTML_TEMPLATE = '''
             document.getElementById('clientCountChartBadge').textContent = hasCompare ?
                 currentData.year + ' vs ' + compareData.year : currentData.year + '년';
 
+            // clientCountChartSummary 요약 정보 표시
+            const countSummaryEl = document.getElementById('clientCountChartSummary');
+            if (countSummaryEl) {
+                const avgPrice = totalCount > 0 ? totalSales / totalCount : 0;
+                const top10Count = top10.reduce((s, c) => s + c[1].count, 0);
+                const top10Ratio = totalCount > 0 ? (top10Count / totalCount * 100) : 0;
+                let ccHtml = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">총건수: <strong style="color:#3b82f6;">${totalCount.toLocaleString()}건</strong></span>`;
+                if (hasCompare && compTotalCount > 0) {
+                    const countGrowth = ((totalCount - compTotalCount) / compTotalCount * 100);
+                    const growthColor = countGrowth >= 0 ? '#059669' : '#dc2626';
+                    ccHtml += `<span style="white-space:nowrap;background:${countGrowth >= 0 ? '#d1fae5' : '#fee2e2'};padding:4px 10px;border-radius:4px;color:${growthColor};">전년비: <strong>${countGrowth >= 0 ? '+' : ''}${countGrowth.toFixed(1)}%</strong></span>`;
+                }
+                ccHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">업체수: <strong>${clients.length.toLocaleString()}개</strong></span>`;
+                ccHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">평균단가: <strong>${Math.round(avgPrice / 10000).toLocaleString()}만</strong></span>`;
+                countSummaryEl.innerHTML = ccHtml;
+            }
+
             const ctx = document.getElementById('clientCountChart');
             if (!ctx) return;
             if (charts.clientCount) charts.clientCount.destroy();
@@ -17262,6 +17467,25 @@ HTML_TEMPLATE = '''
 
             document.getElementById('clientMonthlyCountBadge').textContent = hasCompare ?
                 currentData.year + ' vs ' + compareData.year : currentData.year + '년';
+
+            // clientMonthlyCountSummary 요약 정보 표시
+            const monthlyCountSummaryEl = document.getElementById('clientMonthlyCountSummary');
+            if (monthlyCountSummaryEl) {
+                const totalClients = currentCounts.reduce((s, c) => s + c, 0);
+                const avgClients = currentCounts.filter(c => c > 0).length > 0 ? totalClients / currentCounts.filter(c => c > 0).length : 0;
+                const totalSalesSum = currentSales.reduce((s, c) => s + c, 0);
+                const totalCountSum = currentCountsData.reduce((s, c) => s + c, 0);
+                let mcHtml = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">월평균: <strong style="color:#3b82f6;">${Math.round(avgClients)}개</strong></span>`;
+                if (hasCompare) {
+                    const compAvg = compareCounts.filter(c => c > 0).length > 0 ? compareCounts.reduce((s, c) => s + c, 0) / compareCounts.filter(c => c > 0).length : 0;
+                    const growthPct = compAvg > 0 ? ((avgClients - compAvg) / compAvg * 100) : 0;
+                    const growthColor = growthPct >= 0 ? '#059669' : '#dc2626';
+                    mcHtml += `<span style="white-space:nowrap;background:${growthPct >= 0 ? '#d1fae5' : '#fee2e2'};padding:4px 10px;border-radius:4px;color:${growthColor};">전년비: <strong>${growthPct >= 0 ? '+' : ''}${growthPct.toFixed(1)}%</strong></span>`;
+                }
+                mcHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">총건수: <strong>${totalCountSum.toLocaleString()}건</strong></span>`;
+                mcHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">매출: <strong>${(totalSalesSum / 100000000).toFixed(1)}억</strong></span>`;
+                monthlyCountSummaryEl.innerHTML = mcHtml;
+            }
 
             // 외부 툴팁 생성
             const getOrCreateMonthlyTooltip = () => {
@@ -17909,8 +18133,24 @@ HTML_TEMPLATE = '''
         function updateRegionSalesChart(regionData) {
             const sorted = [...regionData].sort((a, b) => b.sales - a.sales).slice(0, 15);
             const totalSales = sorted.reduce((s, r) => s + r.sales, 0);
+            const totalCount = sorted.reduce((s, r) => s + r.count, 0);
+            const allTotalSales = regionData.reduce((s, r) => s + r.sales, 0);
+            const allTotalCount = regionData.reduce((s, r) => s + r.count, 0);
 
             document.getElementById('regionSalesChartBadge').textContent = currentData.year + '년';
+
+            // regionSalesChartSummary 요약 정보 표시
+            const regionSalesSummaryEl = document.getElementById('regionSalesChartSummary');
+            if (regionSalesSummaryEl) {
+                const avgPrice = allTotalCount > 0 ? allTotalSales / allTotalCount : 0;
+                const top5Sales = sorted.slice(0, 5).reduce((s, r) => s + r.sales, 0);
+                const top5Ratio = allTotalSales > 0 ? (top5Sales / allTotalSales * 100) : 0;
+                let rsHtml = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">총매출: <strong style="color:#3b82f6;">${(allTotalSales / 100000000).toFixed(1)}억</strong></span>`;
+                rsHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">건수: <strong>${allTotalCount.toLocaleString()}건</strong></span>`;
+                rsHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">평균단가: <strong>${Math.round(avgPrice / 10000).toLocaleString()}만</strong></span>`;
+                rsHtml += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">TOP5비중: <strong>${top5Ratio.toFixed(1)}%</strong></span>`;
+                regionSalesSummaryEl.innerHTML = rsHtml;
+            }
 
             const ctx = document.getElementById('regionSalesChart');
             if (!ctx) return;
@@ -18003,6 +18243,19 @@ HTML_TEMPLATE = '''
             const sorted = [...regionData].filter(r => r.lastYearSales > 0)
                 .sort((a, b) => b.growthRate - a.growthRate);
             const avgGrowth = sorted.reduce((s, r) => s + r.growthRate, 0) / (sorted.length || 1);
+
+            // regionGrowthChartSummary 요약 정보 표시
+            const regionGrowthSummaryEl = document.getElementById('regionGrowthChartSummary');
+            if (regionGrowthSummaryEl) {
+                const positiveCount = sorted.filter(r => r.growthRate >= 0).length;
+                const negativeCount = sorted.filter(r => r.growthRate < 0).length;
+                const avgGrowthColor = avgGrowth >= 0 ? '#059669' : '#dc2626';
+                let rgHtml = `<span style="white-space:nowrap;background:${avgGrowth >= 0 ? '#d1fae5' : '#fee2e2'};padding:4px 10px;border-radius:4px;color:${avgGrowthColor};">평균성장률: <strong>${avgGrowth >= 0 ? '+' : ''}${avgGrowth.toFixed(1)}%</strong></span>`;
+                rgHtml += `<span style="white-space:nowrap;background:#d1fae5;padding:4px 10px;border-radius:4px;color:#059669;">성장: <strong>${positiveCount}개</strong></span>`;
+                rgHtml += `<span style="white-space:nowrap;background:#fee2e2;padding:4px 10px;border-radius:4px;color:#dc2626;">하락: <strong>${negativeCount}개</strong></span>`;
+                rgHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">지역수: <strong>${sorted.length}개</strong></span>`;
+                regionGrowthSummaryEl.innerHTML = rgHtml;
+            }
 
             const ctx = document.getElementById('regionGrowthChart');
             if (!ctx) return;
@@ -18544,6 +18797,21 @@ HTML_TEMPLATE = '''
                 };
             });
 
+            // purposeMonthlySummary 요약 정보 표시
+            const purposeMonthlySummaryEl = document.getElementById('purposeMonthlySummary');
+            if (purposeMonthlySummaryEl) {
+                const totalSales = purposeAnalysisData.reduce((s, p) => s + p.sales, 0);
+                const totalCount = purposeAnalysisData.reduce((s, p) => s + p.count, 0);
+                const avgPrice = totalCount > 0 ? totalSales / totalCount : 0;
+                const top5Sales = top5.reduce((s, p) => s + p.sales, 0);
+                const top5Ratio = totalSales > 0 ? (top5Sales / totalSales * 100) : 0;
+                let pmHtml = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">전체매출: <strong style="color:#3b82f6;">${(totalSales / 100000000).toFixed(1)}억</strong></span>`;
+                pmHtml += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">건수: <strong>${totalCount.toLocaleString()}건</strong></span>`;
+                pmHtml += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">평균단가: <strong>${Math.round(avgPrice / 10000).toLocaleString()}만</strong></span>`;
+                pmHtml += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">TOP5비중: <strong>${top5Ratio.toFixed(1)}%</strong></span>`;
+                purposeMonthlySummaryEl.innerHTML = pmHtml;
+            }
+
             document.getElementById('purposeMonthlyBadge').textContent = `TOP 5 · ${currentData.year}년`;
 
             charts.purposeMonthly = new Chart(ctx.getContext('2d'), {
@@ -18584,6 +18852,18 @@ HTML_TEMPLATE = '''
                 .filter(p => p.growth !== null)
                 .sort((a, b) => b.growth - a.growth)
                 .slice(0, 12);
+
+            // purposeGrowthSummary 요약 정보 표시
+            const purposeGrowthSummaryEl = document.getElementById('purposeGrowthSummary');
+            if (purposeGrowthSummaryEl) {
+                const positiveGrowth = growthData.filter(p => p.growth >= 0);
+                const negativeGrowth = growthData.filter(p => p.growth < 0);
+                const avgGrowth = growthData.length > 0 ? growthData.reduce((s, p) => s + p.growth, 0) / growthData.length : 0;
+                let pgHtml = `<span style="white-space:nowrap;background:${avgGrowth >= 0 ? '#d1fae5' : '#fee2e2'};padding:4px 10px;border-radius:4px;color:${avgGrowth >= 0 ? '#059669' : '#dc2626'};">평균성장률: <strong>${avgGrowth >= 0 ? '+' : ''}${avgGrowth.toFixed(1)}%</strong></span>`;
+                pgHtml += `<span style="white-space:nowrap;background:#d1fae5;padding:4px 10px;border-radius:4px;color:#059669;">성장: <strong>${positiveGrowth.length}개</strong></span>`;
+                pgHtml += `<span style="white-space:nowrap;background:#fee2e2;padding:4px 10px;border-radius:4px;color:#dc2626;">하락: <strong>${negativeGrowth.length}개</strong></span>`;
+                purposeGrowthSummaryEl.innerHTML = pgHtml;
+            }
 
             charts.purposeGrowth = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
