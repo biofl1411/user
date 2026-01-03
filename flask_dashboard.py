@@ -16546,25 +16546,87 @@ HTML_TEMPLATE = '''
 
             // 월별 데이터 (by_month는 [월번호, 데이터객체] 배열)
             var monthlyData = currentData.by_month || [];
-            if (monthlyData.length === 0) return;
+
+            // 3개월 이상 지속 거래 업체만 필터링 (테이블용)
+            var sustainedClients = clients.filter(function(c) { return (c[1].tradeMonths || 0) >= 3; });
 
             // 전체 평균 건당 단가 계산
             var totalSales = clients.reduce(function(s, c) { return s + c[1].sales; }, 0);
             var totalCount = clients.reduce(function(s, c) { return s + c[1].count; }, 0);
             var avgPerCase = totalCount > 0 ? totalSales / totalCount : 0;
 
+            // 효율 분류 기준
+            var lowThreshold = avgPerCase * 0.7;
+            var highThreshold = avgPerCase * 1.3;
+            var avgCount = sustainedClients.length > 0 ? totalCount / sustainedClients.length : 0;
+
             // 업체별 건당 단가 계산 및 효율 분류
+            var highList = [], midList = [], lowList = [];
             var highClients = 0, midClients = 0, lowClients = 0;
+
             clients.forEach(function(c) {
                 var perCase = c[1].count > 0 ? c[1].sales / c[1].count : 0;
                 if (perCase >= avgPerCase) {
-                    highClients++;  // 고효율: 평균 이상
+                    highClients++;
                 } else if (perCase >= avgPerCase * 0.7) {
-                    midClients++;   // 중간: 평균의 70% 이상
+                    midClients++;
                 } else {
-                    lowClients++;   // 저효율: 평균의 70% 미만
+                    lowClients++;
                 }
             });
+
+            // 3개월 이상 지속 거래 업체 효율 분류 (테이블용)
+            sustainedClients.forEach(function(c) {
+                var clientAvgPrice = c[1].count > 0 ? c[1].sales / c[1].count : 0;
+                var clientData = {
+                    name: c[0],
+                    count: c[1].count,
+                    sales: c[1].sales,
+                    avgPrice: clientAvgPrice,
+                    manager: c[1].manager || '미지정'
+                };
+
+                if (clientAvgPrice < lowThreshold && c[1].count >= avgCount) {
+                    lowList.push(clientData);
+                } else if (clientAvgPrice > highThreshold) {
+                    highList.push(clientData);
+                } else {
+                    midList.push(clientData);
+                }
+            });
+
+            // 정렬
+            lowList.sort(function(a, b) { return a.avgPrice - b.avgPrice; });
+            midList.sort(function(a, b) { return b.sales - a.sales; });
+            highList.sort(function(a, b) { return b.avgPrice - a.avgPrice; });
+
+            // 배지 업데이트
+            document.getElementById('lowEfficiencyBadge').textContent = lowList.length + '개';
+            document.getElementById('midEfficiencyBadge').textContent = midList.length + '개';
+            document.getElementById('highEfficiencyBadge').textContent = highList.length + '개';
+
+            // 테이블 렌더링 함수
+            var renderTable = function(tableId, data) {
+                var tbody = document.querySelector('#' + tableId + ' tbody');
+                if (!tbody) return;
+                tbody.innerHTML = data.slice(0, 15).map(function(d) {
+                    var priceColor = d.avgPrice < lowThreshold ? '#ef4444' :
+                                    d.avgPrice > highThreshold ? '#10b981' : '#64748b';
+                    return '<tr>' +
+                        '<td title="' + d.manager + '">' + (d.name.length > 12 ? d.name.substring(0, 12) + '..' : d.name) + '</td>' +
+                        '<td class="text-right">' + d.count.toLocaleString() + '</td>' +
+                        '<td class="text-right" style="color:' + priceColor + ';font-weight:600;">' + formatCurrency(d.avgPrice) + '</td>' +
+                        '<td class="text-right">' + formatCurrency(d.sales) + '</td>' +
+                    '</tr>';
+                }).join('');
+            };
+
+            renderTable('lowEfficiencyTable', lowList);
+            renderTable('midEfficiencyTable', midList);
+            renderTable('highEfficiencyTable', highList);
+
+            // 월별 차트 데이터가 없으면 차트 생성 스킵
+            if (monthlyData.length === 0) return;
 
             // 전체 비율 계산
             var totalClientCount = clients.length || 1;
