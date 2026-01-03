@@ -4723,7 +4723,7 @@ HTML_TEMPLATE = '''
                     <div class="card-body">
                         <div class="scroll-table" style="max-height: 300px;">
                             <table class="data-table" id="retainedClientTable">
-                                <thead><tr><th>업체명</th><th>담당자</th><th class="text-right">올해</th><th class="text-right">전년</th><th class="text-right">증감</th></tr></thead>
+                                <thead><tr><th style="min-width:150px;">업체명</th><th style="white-space:nowrap;">담당자</th><th class="text-right" style="white-space:nowrap;">올해</th><th class="text-right" style="white-space:nowrap;">전년</th><th class="text-right" style="white-space:nowrap;">증감</th></tr></thead>
                                 <tbody></tbody>
                             </table>
                         </div>
@@ -17431,10 +17431,10 @@ HTML_TEMPLATE = '''
                 const growthSign = c.growthRate >= 0 ? '+' : '';
                 return `<tr>
                     <td><strong>${c.name}</strong></td>
-                    <td>${c.manager || '-'}</td>
-                    <td class="text-right">${formatCurrency(c.sales)}</td>
-                    <td class="text-right">${formatCurrency(c.lastYearSales)}</td>
-                    <td class="text-right"><span style="${growthClass}; font-weight: 600;">${growthSign}${c.growthRate.toFixed(1)}%</span></td>
+                    <td style="white-space:nowrap;">${c.manager || '-'}</td>
+                    <td class="text-right" style="white-space:nowrap;">${formatCurrency(c.sales)}</td>
+                    <td class="text-right" style="white-space:nowrap;">${formatCurrency(c.lastYearSales)}</td>
+                    <td class="text-right" style="white-space:nowrap;"><span style="${growthClass}; font-weight: 600;">${growthSign}${c.growthRate.toFixed(1)}%</span></td>
                 </tr>`;
             }).join('');
         }
