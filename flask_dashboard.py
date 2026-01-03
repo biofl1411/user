@@ -12918,21 +12918,28 @@ HTML_TEMPLATE = '''
                     tooltipEl.innerHTML = html;
                 }
 
-                // 위치 계산
+                // 위치 계산 - 데이터 포인트 위쪽에 표시
                 const canvasRect = chart.canvas.getBoundingClientRect();
-                let left = canvasRect.left + tooltip.caretX + 15;
-                let top = canvasRect.top + tooltip.caretY - 10;
-
+                const tooltipHeight = tooltipEl.offsetHeight || 500;
                 const tooltipWidth = tooltipEl.offsetWidth || 360;
+
+                let left = canvasRect.left + tooltip.caretX + 15;
+                let top = canvasRect.top + tooltip.caretY - tooltipHeight - 20;
+
+                // 오른쪽 화면 벗어나면 왼쪽에 표시
                 if (left + tooltipWidth > window.innerWidth - 20) {
                     left = canvasRect.left + tooltip.caretX - tooltipWidth - 15;
                 }
 
-                const tooltipHeight = tooltipEl.offsetHeight || 500;
+                // 위쪽 화면 벗어나면 아래쪽에 표시
+                if (top < 10) {
+                    top = canvasRect.top + tooltip.caretY + 20;
+                }
+
+                // 아래쪽 화면 벗어나면 조정
                 if (top + tooltipHeight > window.innerHeight - 20) {
                     top = window.innerHeight - tooltipHeight - 20;
                 }
-                if (top < 10) top = 10;
 
                 tooltipEl.style.opacity = 1; tooltipEl.style.pointerEvents = 'auto';
                 tooltipEl.style.left = left + 'px';
@@ -13262,9 +13269,26 @@ HTML_TEMPLATE = '''
 
                                 tooltipEl.innerHTML = html;
                                 tooltipEl.style.opacity = 1; tooltipEl.style.pointerEvents = 'auto';
+
+                                // 위치 계산 - 데이터 포인트 위쪽에 표시
                                 const pos = context.chart.canvas.getBoundingClientRect();
-                                tooltipEl.style.left = Math.min(pos.left + context.tooltip.caretX + 10, window.innerWidth - 400) + 'px';
-                                tooltipEl.style.top = Math.min(pos.top + context.tooltip.caretY, window.innerHeight - 400) + 'px';
+                                const tooltipHeight = tooltipEl.offsetHeight || 500;
+                                const tooltipWidth = tooltipEl.offsetWidth || 400;
+
+                                let left = pos.left + context.tooltip.caretX + 15;
+                                let top = pos.top + context.tooltip.caretY - tooltipHeight - 20;
+
+                                // 오른쪽 화면 벗어나면 왼쪽에 표시
+                                if (left + tooltipWidth > window.innerWidth - 20) {
+                                    left = pos.left + context.tooltip.caretX - tooltipWidth - 15;
+                                }
+                                // 위쪽 화면 벗어나면 아래쪽에 표시
+                                if (top < 10) {
+                                    top = pos.top + context.tooltip.caretY + 20;
+                                }
+
+                                tooltipEl.style.left = left + 'px';
+                                tooltipEl.style.top = top + 'px';
                             }
                         }
                     },
