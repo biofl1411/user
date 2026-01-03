@@ -5955,9 +5955,19 @@ HTML_TEMPLATE = '''
                         const yearLabel = isComparison ? compareData.year : currentData.year;
                         html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">📅 ${yearLabel}년 ${monthIdx + 1}월 ${isComparison ? '(비교)' : ''}</div>`;
 
-                        // 2. 기본 지표
-                        html += `<div style="margin-bottom: 4px;">💰 매출: <strong>${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
-                        html += `<div style="margin-bottom: 8px;">📋 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                        // 2. 기본 지표 - 양쪽 연도 표시
+                        const compMonthMapForBasic = compareData ? Object.fromEntries(compareData.by_month || []) : {};
+                        const compInfoForBasic = compMonthMapForBasic[monthIdx + 1];
+
+                        html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
+                        if (compareData && compInfoForBasic && compInfoForBasic.sales > 0) {
+                            html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(compInfoForBasic.sales / 100000000).toFixed(2)}억</strong></div>`;
+                        }
+                        html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                        if (compareData && compInfoForBasic && compInfoForBasic.count > 0) {
+                            const compPerCase = compInfoForBasic.sales / compInfoForBasic.count;
+                            html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${compInfoForBasic.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCase))}</strong></div>`;
+                        }
 
                         if (!isComparison && ds.ownAvg) {
                             // 3. 비교 분석
@@ -5971,16 +5981,12 @@ HTML_TEMPLATE = '''
                             html += `<div style="margin-bottom: 4px;">📊 월평균 대비: <span style="color: ${avgColor}; font-weight: bold;">${avgSign}${avgDiffPct.toFixed(1)}% (${avgSign}${(avgDiff / 10000).toFixed(0)}만)</span></div>`;
 
                             // 전년 동월 대비
-                            if (compareData) {
-                                const compMonthMap = Object.fromEntries(compareData.by_month || []);
-                                const compInfo = compMonthMap[monthIdx + 1];
-                                if (compInfo && compInfo.sales > 0) {
-                                    const yoyDiff = info.sales - compInfo.sales;
-                                    const yoyPct = (yoyDiff / compInfo.sales * 100);
-                                    const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
-                                    const yoySign = yoyDiff >= 0 ? '+' : '';
-                                    html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
-                                }
+                            if (compareData && compInfoForBasic && compInfoForBasic.sales > 0) {
+                                const yoyDiff = info.sales - compInfoForBasic.sales;
+                                const yoyPct = (yoyDiff / compInfoForBasic.sales * 100);
+                                const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
+                                const yoySign = yoyDiff >= 0 ? '+' : '';
+                                html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
                             }
 
                             // 전월 대비
@@ -6344,9 +6350,23 @@ HTML_TEMPLATE = '''
                         const yearLabel = isComparison ? compareData.year : currentData.year;
                         html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">👤 ${managerName} - ${yearLabel}년 ${monthIdx + 1}월</div>`;
 
-                        // 2. 기본 지표
-                        html += `<div style="margin-bottom: 4px;">💰 매출: <strong>${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
-                        html += `<div style="margin-bottom: 8px;">📋 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                        // 2. 기본 지표 - 양쪽 연도 표시
+                        let compInfoForManager = null;
+                        if (compareData && compareData.by_month) {
+                            const compMonthMapBasic = Object.fromEntries(compareData.by_month || []);
+                            const compMonthDataBasic = compMonthMapBasic[monthIdx + 1];
+                            compInfoForManager = compMonthDataBasic?.byManager?.[managerName];
+                        }
+
+                        html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
+                        if (compInfoForManager && compInfoForManager.sales > 0) {
+                            html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(compInfoForManager.sales / 100000000).toFixed(2)}억</strong></div>`;
+                        }
+                        html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                        if (compInfoForManager && compInfoForManager.count > 0) {
+                            const compPerCase = compInfoForManager.sales / compInfoForManager.count;
+                            html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${compInfoForManager.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCase))}</strong></div>`;
+                        }
 
                         if (!isComparison && ds.ownAvg) {
                             // 3. 비교 분석
@@ -6360,17 +6380,12 @@ HTML_TEMPLATE = '''
                             html += `<div style="margin-bottom: 4px;">📊 자체 월평균 대비: <span style="color: ${avgColor}; font-weight: bold;">${avgSign}${avgDiffPct.toFixed(1)}% (${avgSign}${(avgDiff / 10000).toFixed(0)}만)</span></div>`;
 
                             // 전년 동월 대비 (해당 담당자)
-                            if (compareData && compareData.by_month) {
-                                const compMonthMap = Object.fromEntries(compareData.by_month || []);
-                                const compMonthData = compMonthMap[monthIdx + 1];
-                                const compInfo = compMonthData?.byManager?.[managerName];
-                                if (compInfo && compInfo.sales > 0) {
-                                    const yoyDiff = info.sales - compInfo.sales;
-                                    const yoyPct = (yoyDiff / compInfo.sales * 100);
-                                    const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
-                                    const yoySign = yoyDiff >= 0 ? '+' : '';
-                                    html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
-                                }
+                            if (compInfoForManager && compInfoForManager.sales > 0) {
+                                const yoyDiff = info.sales - compInfoForManager.sales;
+                                const yoyPct = (yoyDiff / compInfoForManager.sales * 100);
+                                const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
+                                const yoySign = yoyDiff >= 0 ? '+' : '';
+                                html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
                             }
 
                             // 전월 대비
@@ -6738,9 +6753,23 @@ HTML_TEMPLATE = '''
                             const yearLabel = isComparison ? compareData.year : currentData.year;
                             html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">👤 ${managerName} - ${yearLabel}년 ${monthIdx + 1}월</div>`;
 
-                            // 2. 기본 지표
-                            html += `<div style="margin-bottom: 4px;">💰 매출: <strong>${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
-                            html += `<div style="margin-bottom: 8px;">📋 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                            // 2. 기본 지표 - 양쪽 연도 표시
+                            let compInfoForMgr = null;
+                            if (compareData && compareData.by_month) {
+                                const compMonthMapB = Object.fromEntries(compareData.by_month || []);
+                                const compMonthDataB = compMonthMapB[monthIdx + 1];
+                                compInfoForMgr = compMonthDataB?.byManager?.[managerName];
+                            }
+
+                            html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
+                            if (compInfoForMgr && compInfoForMgr.sales > 0) {
+                                html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(compInfoForMgr.sales / 100000000).toFixed(2)}억</strong></div>`;
+                            }
+                            html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                            if (compInfoForMgr && compInfoForMgr.count > 0) {
+                                const compPerCaseM = compInfoForMgr.sales / compInfoForMgr.count;
+                                html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${compInfoForMgr.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCaseM))}</strong></div>`;
+                            }
 
                             if (!isComparison && ds.ownAvg) {
                                 // 3. 비교 분석
@@ -6754,17 +6783,12 @@ HTML_TEMPLATE = '''
                                 html += `<div style="margin-bottom: 4px;">📊 자체 월평균 대비: <span style="color: ${avgColor}; font-weight: bold;">${avgSign}${avgDiffPct.toFixed(1)}% (${avgSign}${(avgDiff / 10000).toFixed(0)}만)</span></div>`;
 
                                 // 전년 동월 대비 (해당 담당자)
-                                if (compareData && compareData.by_month) {
-                                    const compMonthMap = Object.fromEntries(compareData.by_month || []);
-                                    const compMonthData = compMonthMap[monthIdx + 1];
-                                    const compInfo = compMonthData?.byManager?.[managerName];
-                                    if (compInfo && compInfo.sales > 0) {
-                                        const yoyDiff = info.sales - compInfo.sales;
-                                        const yoyPct = (yoyDiff / compInfo.sales * 100);
-                                        const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
-                                        const yoySign = yoyDiff >= 0 ? '+' : '';
-                                        html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
-                                    }
+                                if (compInfoForMgr && compInfoForMgr.sales > 0) {
+                                    const yoyDiff = info.sales - compInfoForMgr.sales;
+                                    const yoyPct = (yoyDiff / compInfoForMgr.sales * 100);
+                                    const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
+                                    const yoySign = yoyDiff >= 0 ? '+' : '';
+                                    html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
                                 }
 
                                 // 전월 대비
@@ -11467,9 +11491,16 @@ HTML_TEMPLATE = '''
                     html += `<span style="background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 12px; font-size: 12px;">${rankIcon} ${rankBadge}</span>`;
                     html += `</div>`;
 
-                    // 2. 기본 지표
-                    html += `<div style="margin-bottom: 4px;">💰 매출: <strong>${(d.sales / 100000000).toFixed(2)}억</strong></div>`;
-                    html += `<div style="margin-bottom: 8px;">📋 건수: <strong>${d.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+                    // 2. 기본 지표 - 양쪽 연도 표시
+                    html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(d.sales / 100000000).toFixed(2)}억</strong></div>`;
+                    if (compareData && d.compSales > 0) {
+                        html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(d.compSales / 100000000).toFixed(2)}억</strong></div>`;
+                    }
+                    html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${d.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+                    if (compareData && d.compCount > 0) {
+                        const compAvgP = d.compSales / d.compCount;
+                        html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${d.compCount.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compAvgP))}</strong></div>`;
+                    }
 
                     // 3. 비교 분석
                     html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 비교 분석 ──</div>`;
@@ -11902,9 +11933,17 @@ HTML_TEMPLATE = '''
                         <span style="background: rgba(255,255,255,0.2); padding: 2px 10px; border-radius: 12px; font-size: 12px;">${d.rank}위</span>
                     </div>`;
 
-                    // 2. 기본 지표
-                    html += `<div style="margin-bottom: 4px;">💰 매출: <strong>${(d.sales / 100000000).toFixed(2)}억</strong></div>`;
-                    html += `<div style="margin-bottom: 8px;">📋 건수: <strong>${d.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+                    // 2. 기본 지표 - 양쪽 연도 표시
+                    const compTeamData = compareData ? compareMap[d.name] : null;
+                    html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(d.sales / 100000000).toFixed(2)}억</strong></div>`;
+                    if (compTeamData && compTeamData.sales > 0) {
+                        html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(compTeamData.sales / 100000000).toFixed(2)}억</strong></div>`;
+                    }
+                    html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${d.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+                    if (compTeamData && compTeamData.count > 0) {
+                        const compTeamAvgP = compTeamData.sales / compTeamData.count;
+                        html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${compTeamData.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compTeamAvgP))}</strong></div>`;
+                    }
 
                     // 3. 팀 구성 & 생산성
                     const perPersonSales = d.memberCount > 0 ? d.sales / d.memberCount : 0;
@@ -13568,10 +13607,13 @@ HTML_TEMPLATE = '''
             const compMonthly = compareData?.by_month || [];
             const compMap = Object.fromEntries(compMonthly);
             const compQuarters = [0, 0, 0, 0];
+            const compQuarterCounts = [0, 0, 0, 0];
             for (let m = 1; m <= 12; m++) {
                 const q = Math.floor((m - 1) / 3);
                 compQuarters[q] += compMap[m]?.sales || 0;
+                compQuarterCounts[q] += compMap[m]?.count || 0;
             }
+            const compTotalSales = compQuarters.reduce((s, v) => s + v, 0);
 
             // 외부 툴팁
             const getOrCreateQuarterlyTooltip = (chart) => {
@@ -13619,19 +13661,34 @@ HTML_TEMPLATE = '''
                                     <span style="background:rgba(255,255,255,0.2);padding:4px 10px;border-radius:6px;font-size:12px;">매출 ${rank}위</span>
                                 </div>`;
 
-                                html += `<div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;margin-bottom:10px;">`;
+                                // 현재 연도 데이터
+                                html += `<div style="background:rgba(96,165,250,0.1);padding:10px;border-radius:8px;margin-bottom:10px;">`;
+                                html += `<div style="color:#60a5fa;font-weight:600;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px;">📅 ${currentData.year}년</div>`;
                                 html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>💰 매출</span><strong>${formatCurrency(sales)}</strong></div>`;
                                 html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>📋 건수</span><strong>${count.toLocaleString()}건</strong></div>`;
                                 html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>📊 단가</span><strong>${formatCurrency(Math.round(avgPrice))}</strong></div>`;
                                 html += `<div style="display:flex;justify-content:space-between;"><span>📈 비중</span><strong>${percent.toFixed(1)}%</strong></div>`;
                                 html += `</div>`;
 
+                                // 전년도 데이터
                                 if (compareData && compSales > 0) {
+                                    const compCount = compQuarterCounts ? compQuarterCounts[idx] : 0;
+                                    const compAvgPrice = compCount > 0 ? compSales / compCount : 0;
+                                    const compPercent = compTotalSales > 0 ? (compSales / compTotalSales * 100) : 0;
+                                    html += `<div style="background:rgba(249,115,22,0.1);padding:10px;border-radius:8px;margin-bottom:10px;">`;
+                                    html += `<div style="color:#f59e0b;font-weight:600;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px;">📅 ${compareData.year}년</div>`;
+                                    html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>💰 매출</span><strong>${formatCurrency(compSales)}</strong></div>`;
+                                    if (compCount > 0) {
+                                        html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>📋 건수</span><strong>${compCount.toLocaleString()}건</strong></div>`;
+                                        html += `<div style="display:flex;justify-content:space-between;"><span>📊 단가</span><strong>${formatCurrency(Math.round(compAvgPrice))}</strong></div>`;
+                                    }
+                                    html += `</div>`;
+
+                                    // 증감 비교
                                     const yoyDiff = ((sales - compSales) / compSales * 100);
                                     const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
                                     html += `<div style="padding:8px;border-radius:6px;background:rgba(99,102,241,0.1);">
-                                        📅 ${compareData.year}년 대비: <span style="color:${yoyColor};font-weight:bold;">${yoyDiff >= 0 ? '+' : ''}${yoyDiff.toFixed(1)}%</span>
-                                        <span style="color:#94a3b8;font-size:11px;">(${formatCurrency(compSales)} → ${formatCurrency(sales)})</span>
+                                        📆 전년 대비: <span style="color:${yoyColor};font-weight:bold;">${yoyDiff >= 0 ? '+' : ''}${yoyDiff.toFixed(1)}%</span>
                                     </div>`;
                                 }
 
