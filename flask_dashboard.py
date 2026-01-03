@@ -683,6 +683,9 @@ BRANCH_MEMBERS = {"장동욱", "박은태", "지병훈", "엄은정", "정유경
 # 개인별 분석에서 제외할 영업담당 (외부 기관 등)
 EXCLUDED_MANAGERS = {"IBK", "미지정"}
 
+# 업체별 분석에서 제외할 거래처
+EXCLUDED_CLIENTS = {"IBK", "IGC"}
+
 def load_excel_data(year, use_cache=True):
     """데이터 로드 (SQLite 우선, 없으면 Excel)"""
     import time
@@ -1249,9 +1252,12 @@ def process_data(data, purpose_filter=None):
 
         if month > 0:
             if month not in by_month:
-                by_month[month] = {'sales': 0, 'count': 0, 'byPurpose': {}, 'byManager': {}, 'byBranch': {}}
+                by_month[month] = {'sales': 0, 'count': 0, 'byPurpose': {}, 'byManager': {}, 'byBranch': {}, 'clients': set()}
             by_month[month]['sales'] += sales
             by_month[month]['count'] += 1
+            # 월별 거래 업체 추적 (제외 대상 제외)
+            if client and client not in EXCLUDED_CLIENTS:
+                by_month[month]['clients'].add(client)
 
             # 월별 검사목적별 데이터
             if purpose:
@@ -1502,7 +1508,10 @@ def process_data(data, purpose_filter=None):
         key=lambda x: x[1]['sales'], reverse=True
     )
     sorted_branches = sorted(by_branch.items(), key=lambda x: x[1]['sales'], reverse=True)
-    sorted_clients = sorted(by_client.items(), key=lambda x: x[1]['sales'], reverse=True)
+    sorted_clients = sorted(
+        [(c, d) for c, d in by_client.items() if c not in EXCLUDED_CLIENTS],
+        key=lambda x: x[1]['sales'], reverse=True
+    )
     sorted_purposes = sorted(by_purpose.items(), key=lambda x: x[1]['sales'], reverse=True)
     sorted_defects = sorted(by_defect.items(), key=lambda x: x[1]['count'], reverse=True)
 
@@ -1660,7 +1669,14 @@ def process_data(data, purpose_filter=None):
         'by_manager': [(m, {'sales': d['sales'], 'count': d['count'], 'urgent': d.get('urgent', 0), 'urgent_by_purpose': d.get('urgent_by_purpose', {}), 'by_purpose': d.get('by_purpose', {})}) for m, d in sorted_managers],
         'by_branch': [(k, {'sales': v['sales'], 'count': v['count'], 'managers': list(v['managers']), 'by_purpose': v.get('by_purpose', {})})
                       for k, v in sorted_branches],
-        'by_month': sorted(by_month.items()),
+        'by_month': sorted([(m, {
+            'sales': d['sales'],
+            'count': d['count'],
+            'clientCount': len(d.get('clients', set())),
+            'byPurpose': d.get('byPurpose', {}),
+            'byManager': d.get('byManager', {}),
+            'byBranch': d.get('byBranch', {})
+        }) for m, d in by_month.items()]),
         'by_urgent_month': sorted(by_urgent_month.items()),
         'by_client': [(c, {
             'sales': d['sales'],
@@ -4622,6 +4638,77 @@ HTML_TEMPLATE = '''
                     </div>
                     <div class="card-body">
                         <div class="chart-container" style="height: 350px;"><canvas id="clientCountChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 월별 업체수 / 효율 분류 차트 -->
+            <div class="content-grid" style="margin-bottom: 24px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📈 월별 거래 업체 수</div>
+                        <div class="card-badge" id="clientMonthlyCountBadge">-</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 300px;"><canvas id="clientMonthlyCountChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">⚖️ 효율 기준 업체 분류</div>
+                        <div class="card-badge" id="clientEfficiencyBadge">3개월↑ 지속거래</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container" style="height: 300px;"><canvas id="clientEfficiencyChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 효율별 업체 상세 테이블 -->
+            <div class="content-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
+                <div class="card" style="border-top: 3px solid #ef4444;">
+                    <div class="card-header">
+                        <div class="card-title">🔻 저효율 업체</div>
+                        <div class="card-badge" id="lowEfficiencyBadge" style="background: #fee2e2; color: #ef4444;">0개</div>
+                    </div>
+                    <div class="card-body" style="font-size: 12px; color: #64748b; margin-bottom: 8px;">
+                        건수 많음 + 단가 낮음 (평균의 70% 미만)
+                    </div>
+                    <div class="scroll-table" style="max-height: 250px;">
+                        <table class="data-table" id="lowEfficiencyTable">
+                            <thead><tr><th>업체명</th><th class="text-right">건수</th><th class="text-right">단가</th><th class="text-right">매출</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card" style="border-top: 3px solid #f59e0b;">
+                    <div class="card-header">
+                        <div class="card-title">➖ 중효율 업체</div>
+                        <div class="card-badge" id="midEfficiencyBadge" style="background: #fef3c7; color: #f59e0b;">0개</div>
+                    </div>
+                    <div class="card-body" style="font-size: 12px; color: #64748b; margin-bottom: 8px;">
+                        건수/단가 평균 수준 (70%~130%)
+                    </div>
+                    <div class="scroll-table" style="max-height: 250px;">
+                        <table class="data-table" id="midEfficiencyTable">
+                            <thead><tr><th>업체명</th><th class="text-right">건수</th><th class="text-right">단가</th><th class="text-right">매출</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card" style="border-top: 3px solid #10b981;">
+                    <div class="card-header">
+                        <div class="card-title">🔺 고효율 업체</div>
+                        <div class="card-badge" id="highEfficiencyBadge" style="background: #d1fae5; color: #10b981;">0개</div>
+                    </div>
+                    <div class="card-body" style="font-size: 12px; color: #64748b; margin-bottom: 8px;">
+                        건수 적음 + 단가 높음 (평균의 130% 초과)
+                    </div>
+                    <div class="scroll-table" style="max-height: 250px;">
+                        <table class="data-table" id="highEfficiencyTable">
+                            <thead><tr><th>업체명</th><th class="text-right">건수</th><th class="text-right">단가</th><th class="text-right">매출</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -15895,6 +15982,8 @@ HTML_TEMPLATE = '''
             // 차트 업데이트
             updateClientSalesChart(clients, newClients, retainedClients);
             updateClientCountChart(clients, newClients, retainedClients);
+            updateClientMonthlyCountChart();
+            updateClientEfficiencyChart(clients);
 
             // 테이블 업데이트
             updateRetainedClientTable(retainedClients);
@@ -16701,6 +16790,176 @@ HTML_TEMPLATE = '''
                     }
                 }
             });
+        }
+
+        // 월별 거래 업체 수 차트
+        function updateClientMonthlyCountChart() {
+            const ctx = document.getElementById('clientMonthlyCountChart');
+            if (!ctx) return;
+            if (charts.clientMonthlyCount) charts.clientMonthlyCount.destroy();
+
+            const monthData = currentData.by_month || [];
+            const labels = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+            const monthMap = Object.fromEntries(monthData.map(m => [m[0], m[1]]));
+
+            const currentCounts = labels.map((_, i) => monthMap[i + 1]?.clientCount || 0);
+            const hasCompare = compareData && compareData.by_month;
+            const compMonthMap = hasCompare ? Object.fromEntries(compareData.by_month.map(m => [m[0], m[1]])) : {};
+            const compareCounts = hasCompare ? labels.map((_, i) => compMonthMap[i + 1]?.clientCount || 0) : [];
+
+            document.getElementById('clientMonthlyCountBadge').textContent = hasCompare ?
+                currentData.year + ' vs ' + compareData.year : currentData.year + '년';
+
+            const datasets = [{
+                label: currentData.year + '년',
+                data: currentCounts,
+                borderColor: '#6366f1',
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                tension: 0.4,
+                fill: true,
+                borderWidth: 3
+            }];
+
+            if (hasCompare) {
+                datasets.push({
+                    label: compareData.year + '년',
+                    data: compareCounts,
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    tension: 0.4,
+                    fill: true,
+                    borderWidth: 2,
+                    borderDash: [5, 5]
+                });
+            }
+
+            charts.clientMonthlyCount = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: hasCompare, position: 'top', labels: { boxWidth: 12 } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ctx.dataset.label + ': ' + ctx.raw.toLocaleString() + '개 업체'
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() + '개' } }
+                    }
+                }
+            });
+        }
+
+        // 효율 기준 업체 분류 차트 및 테이블
+        function updateClientEfficiencyChart(clients) {
+            const ctx = document.getElementById('clientEfficiencyChart');
+            if (!ctx) return;
+            if (charts.clientEfficiency) charts.clientEfficiency.destroy();
+
+            // 3개월 이상 지속 거래 업체만 필터링
+            const sustainedClients = clients.filter(c => (c[1].tradeMonths || 0) >= 3);
+
+            if (sustainedClients.length === 0) {
+                document.getElementById('lowEfficiencyBadge').textContent = '0개';
+                document.getElementById('midEfficiencyBadge').textContent = '0개';
+                document.getElementById('highEfficiencyBadge').textContent = '0개';
+                return;
+            }
+
+            // 평균 건당 단가 계산
+            const totalSales = sustainedClients.reduce((s, c) => s + c[1].sales, 0);
+            const totalCount = sustainedClients.reduce((s, c) => s + c[1].count, 0);
+            const avgPrice = totalCount > 0 ? totalSales / totalCount : 0;
+            const avgCount = sustainedClients.length > 0 ? totalCount / sustainedClients.length : 0;
+
+            // 효율 기준 분류 (단가 기준)
+            const lowThreshold = avgPrice * 0.7;   // 평균의 70% 미만
+            const highThreshold = avgPrice * 1.3; // 평균의 130% 초과
+
+            const lowEfficiency = [];   // 건수 많고 단가 낮음
+            const midEfficiency = [];   // 평균 수준
+            const highEfficiency = [];  // 건수 적고 단가 높음
+
+            sustainedClients.forEach(c => {
+                const clientAvgPrice = c[1].count > 0 ? c[1].sales / c[1].count : 0;
+                const clientData = {
+                    name: c[0],
+                    count: c[1].count,
+                    sales: c[1].sales,
+                    avgPrice: clientAvgPrice,
+                    manager: c[1].manager || '미지정'
+                };
+
+                if (clientAvgPrice < lowThreshold && c[1].count >= avgCount) {
+                    lowEfficiency.push(clientData);  // 건수 많고 단가 낮음
+                } else if (clientAvgPrice > highThreshold) {
+                    highEfficiency.push(clientData); // 단가 높음
+                } else {
+                    midEfficiency.push(clientData);  // 평균 수준
+                }
+            });
+
+            // 정렬
+            lowEfficiency.sort((a, b) => a.avgPrice - b.avgPrice);
+            midEfficiency.sort((a, b) => b.sales - a.sales);
+            highEfficiency.sort((a, b) => b.avgPrice - a.avgPrice);
+
+            // 배지 업데이트
+            document.getElementById('lowEfficiencyBadge').textContent = lowEfficiency.length + '개';
+            document.getElementById('midEfficiencyBadge').textContent = midEfficiency.length + '개';
+            document.getElementById('highEfficiencyBadge').textContent = highEfficiency.length + '개';
+
+            // 파이 차트
+            charts.clientEfficiency = new Chart(ctx.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['저효율 (단가↓)', '중효율', '고효율 (단가↑)'],
+                    datasets: [{
+                        data: [lowEfficiency.length, midEfficiency.length, highEfficiency.length],
+                        backgroundColor: ['rgba(239, 68, 68, 0.8)', 'rgba(245, 158, 11, 0.8)', 'rgba(16, 185, 129, 0.8)'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12 } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    const total = lowEfficiency.length + midEfficiency.length + highEfficiency.length;
+                                    const percent = total > 0 ? (ctx.raw / total * 100).toFixed(1) : 0;
+                                    return ctx.label + ': ' + ctx.raw + '개 (' + percent + '%)';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 테이블 업데이트
+            const renderTable = (tableId, data) => {
+                const tbody = document.querySelector('#' + tableId + ' tbody');
+                tbody.innerHTML = data.slice(0, 15).map(d => {
+                    const priceColor = d.avgPrice < lowThreshold ? '#ef4444' :
+                                      d.avgPrice > highThreshold ? '#10b981' : '#64748b';
+                    return '<tr>' +
+                        '<td title="' + d.manager + '">' + (d.name.length > 12 ? d.name.substring(0, 12) + '..' : d.name) + '</td>' +
+                        '<td class="text-right">' + d.count.toLocaleString() + '</td>' +
+                        '<td class="text-right" style="color:' + priceColor + ';font-weight:600;">' + formatCurrency(d.avgPrice) + '</td>' +
+                        '<td class="text-right">' + formatCurrency(d.sales) + '</td>' +
+                    '</tr>';
+                }).join('');
+            };
+
+            renderTable('lowEfficiencyTable', lowEfficiency);
+            renderTable('midEfficiencyTable', midEfficiency);
+            renderTable('highEfficiencyTable', highEfficiency);
         }
 
         function updateRetainedClientTable(retainedClients) {
