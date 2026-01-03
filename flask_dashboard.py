@@ -12665,9 +12665,16 @@ HTML_TEMPLATE = '''
                     const headerBg = isIncrease ? 'rgba(99, 102, 241, 0.3)' : 'rgba(239, 68, 68, 0.3)';
                     html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">📅 ${d.label}</div>`;
 
-                    // 2. 기본 지표
-                    html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong>${(d.sales / 100000000).toFixed(2)}억</strong></div>`;
-                    html += `<div style="margin-bottom: 8px;">📋 건수: <strong>${d.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+                    // 2. 기본 지표 - 양쪽 연도 표시
+                    html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(d.sales / 100000000).toFixed(2)}억</strong></div>`;
+                    if (d.compSales > 0) {
+                        html += `<div style="margin-bottom: 4px;">💰 ${compareData?.year || '전년'}년 매출: <strong style="color:#f59e0b;">${(d.compSales / 100000000).toFixed(2)}억</strong></div>`;
+                    }
+                    html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${d.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(d.avgPrice))}</strong></div>`;
+                    if (d.compCount > 0) {
+                        const compAvgPrice = d.compSales / d.compCount;
+                        html += `<div style="margin-bottom: 8px;">📋 ${compareData?.year || '전년'}년 건수: <strong>${d.compCount.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compAvgPrice))}</strong></div>`;
+                    }
 
                     // 3. 비교 분석
                     html += `<div style="color: #94a3b8; margin: 12px 0 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 비교 분석 ──</div>`;
@@ -13149,8 +13156,9 @@ HTML_TEMPLATE = '''
                                     <span style="background:${seasonColor}22;color:${seasonColor};padding:4px 10px;border-radius:6px;font-size:12px;">${seasonIcon} ${seasonTag}</span>
                                 </div>`;
 
-                                // 2. 기본 지표
+                                // 2. 기본 지표 - 양쪽 연도 표시
                                 html += `<div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:8px;margin-bottom:10px;">`;
+                                html += `<div style="color:#60a5fa;font-weight:600;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px;">📅 ${currentData.year}년</div>`;
                                 html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>📋 건수</span><strong style="font-size:15px;">${count.toLocaleString()}건</strong></div>`;
                                 if (monthData.sales) {
                                     const avgPrice = count > 0 ? monthData.sales / count : 0;
@@ -13158,6 +13166,19 @@ HTML_TEMPLATE = '''
                                     html += `<div style="display:flex;justify-content:space-between;"><span>💵 건당 단가</span><strong>${formatCurrency(Math.round(avgPrice))}</strong></div>`;
                                 }
                                 html += `</div>`;
+
+                                // 전년도 기본 지표
+                                if (compareData && compCount > 0) {
+                                    html += `<div style="background:rgba(249,115,22,0.1);padding:10px;border-radius:8px;margin-bottom:10px;">`;
+                                    html += `<div style="color:#f59e0b;font-weight:600;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px;">📅 ${compareData.year}년</div>`;
+                                    html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>📋 건수</span><strong style="font-size:15px;">${compCount.toLocaleString()}건</strong></div>`;
+                                    if (compMonthData.sales) {
+                                        const compAvgPrice = compCount > 0 ? compMonthData.sales / compCount : 0;
+                                        html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>💰 매출액</span><strong>${formatCurrency(compMonthData.sales)}</strong></div>`;
+                                        html += `<div style="display:flex;justify-content:space-between;"><span>💵 건당 단가</span><strong>${formatCurrency(Math.round(compAvgPrice))}</strong></div>`;
+                                    }
+                                    html += `</div>`;
+                                }
 
                                 // 3. 비교 분석
                                 html += `<div style="color:#94a3b8;margin:12px 0 8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,0.2);">── 비교 분석 ──</div>`;
