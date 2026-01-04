@@ -1783,6 +1783,7 @@ HTML_TEMPLATE = '''
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=2bf5373da96dea4fc3849546d72807d0"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -4953,17 +4954,14 @@ HTML_TEMPLATE = '''
                     </div>
                     <div class="card-body" style="padding: 16px;">
                         <div id="mapSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
-                        <div id="d3MapContainer" style="width: 100%; height: 420px; position: relative;">
-                            <svg id="d3KoreaMap" style="width: 100%; height: 100%;"></svg>
-                            <!-- 툴팁 -->
-                            <div id="mapTooltip" style="position: absolute; display: none; background: rgba(30,41,59,0.95); color: #e2e8f0; padding: 12px 16px; border-radius: 8px; font-size: 12px; pointer-events: none; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-width: 250px;"></div>
-                        </div>
+                        <!-- 카카오맵 컨테이너 -->
+                        <div id="kakaoMapContainer" style="width: 100%; height: 420px; border-radius: 8px; overflow: hidden;"></div>
                         <!-- 범례 -->
                         <div id="mapLegend" style="display: flex; gap: 16px; margin-top: 12px; font-size: 11px; flex-wrap: wrap; justify-content: center;">
-                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #1e3a8a; border-radius: 3px;"></div><span>100건+</span></div>
-                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #3b82f6; border-radius: 3px;"></div><span>50~100건</span></div>
-                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #93c5fd; border-radius: 3px;"></div><span>10~50건</span></div>
-                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #dbeafe; border-radius: 3px;"></div><span>10건 미만</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #ef4444; border-radius: 50%;"></div><span>10억+</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #f97316; border-radius: 50%;"></div><span>5~10억</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #eab308; border-radius: 50%;"></div><span>1~5억</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #22c55e; border-radius: 50%;"></div><span>1억 미만</span></div>
                         </div>
                     </div>
                 </div>
@@ -17776,6 +17774,183 @@ HTML_TEMPLATE = '''
         // 지역별 탭 전역 변수
         let regionAnalysisData = null;
         let selectedRegion = null;
+        let kakaoMap = null;
+        let kakaoMarkers = [];
+        let kakaoInfoWindow = null;
+
+        // 시/도 중심 좌표
+        const SIDO_COORDS = {
+            '서울': { lat: 37.5665, lng: 126.9780 },
+            '부산': { lat: 35.1796, lng: 129.0756 },
+            '대구': { lat: 35.8714, lng: 128.6014 },
+            '인천': { lat: 37.4563, lng: 126.7052 },
+            '광주': { lat: 35.1595, lng: 126.8526 },
+            '대전': { lat: 36.3504, lng: 127.3845 },
+            '울산': { lat: 35.5384, lng: 129.3114 },
+            '세종': { lat: 36.4800, lng: 127.2890 },
+            '경기': { lat: 37.4138, lng: 127.5183 },
+            '강원': { lat: 37.8228, lng: 128.1555 },
+            '충북': { lat: 36.6357, lng: 127.4914 },
+            '충남': { lat: 36.5184, lng: 126.8000 },
+            '전북': { lat: 35.7175, lng: 127.1530 },
+            '전남': { lat: 34.8679, lng: 126.9910 },
+            '경북': { lat: 36.4919, lng: 128.8889 },
+            '경남': { lat: 35.4606, lng: 128.2132 },
+            '제주': { lat: 33.4996, lng: 126.5312 }
+        };
+
+        // 카카오맵 초기화
+        function initKakaoMap() {
+            if (kakaoMap) return;
+
+            const container = document.getElementById('kakaoMapContainer');
+            if (!container) return;
+
+            try {
+                const options = {
+                    center: new kakao.maps.LatLng(36.5, 127.5),
+                    level: 13
+                };
+                kakaoMap = new kakao.maps.Map(container, options);
+                kakaoInfoWindow = new kakao.maps.InfoWindow({ zIndex: 1 });
+                console.log('[KAKAO MAP] 초기화 완료');
+            } catch (e) {
+                console.error('[KAKAO MAP] 초기화 실패:', e);
+            }
+        }
+
+        // 카카오맵 마커 업데이트
+        function updateKakaoMapMarkers() {
+            if (!kakaoMap) {
+                initKakaoMap();
+                if (!kakaoMap) return;
+            }
+
+            // 기존 마커 제거
+            kakaoMarkers.forEach(marker => marker.setMap(null));
+            kakaoMarkers = [];
+
+            if (!regionAnalysisData || !regionAnalysisData.regionData) return;
+
+            // 시/도별 매출 집계
+            const sidoSales = {};
+            regionAnalysisData.regionData.forEach(r => {
+                const sido = r.sido || r.name.split(' ')[0];
+                if (!sidoSales[sido]) {
+                    sidoSales[sido] = { sales: 0, count: 0, regions: [] };
+                }
+                sidoSales[sido].sales += r.sales;
+                sidoSales[sido].count += r.count;
+                sidoSales[sido].regions.push(r);
+            });
+
+            const maxSales = Math.max(...Object.values(sidoSales).map(d => d.sales));
+            if (maxSales === 0) return;
+
+            // 시/도별 원형 마커 추가
+            Object.entries(sidoSales).forEach(([sido, data]) => {
+                const coords = SIDO_COORDS[sido];
+                if (!coords) return;
+
+                // 원 크기 (매출 비례, 최소 20, 최대 60)
+                const size = Math.max(20, Math.min(60, (data.sales / maxSales) * 60));
+
+                // 색상 (매출 구간별)
+                let color;
+                if (data.sales >= 1000000000) color = '#ef4444';      // 10억+ 빨강
+                else if (data.sales >= 500000000) color = '#f97316';  // 5~10억 주황
+                else if (data.sales >= 100000000) color = '#eab308';  // 1~5억 노랑
+                else color = '#22c55e';                                // 1억 미만 초록
+
+                // 커스텀 오버레이로 원형 마커 생성
+                const content = `
+                    <div style="
+                        width: ${size}px;
+                        height: ${size}px;
+                        background: ${color};
+                        border: 3px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: ${size > 30 ? '11px' : '9px'};
+                        font-weight: bold;
+                        color: white;
+                        text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+                    " onclick="showKakaoSidoDetail('${sido}')">${sido.substring(0, 2)}</div>
+                `;
+
+                const position = new kakao.maps.LatLng(coords.lat, coords.lng);
+                const overlay = new kakao.maps.CustomOverlay({
+                    position: position,
+                    content: content,
+                    yAnchor: 0.5,
+                    xAnchor: 0.5
+                });
+                overlay.setMap(kakaoMap);
+                kakaoMarkers.push(overlay);
+            });
+
+            console.log('[KAKAO MAP] 마커 업데이트 완료:', kakaoMarkers.length, '개');
+        }
+
+        // 카카오맵 시/도 상세 정보 표시
+        function showKakaoSidoDetail(sido) {
+            if (!regionAnalysisData) return;
+
+            const sidoData = regionAnalysisData.regionData.filter(r =>
+                (r.sido || r.name.split(' ')[0]) === sido
+            );
+
+            if (sidoData.length === 0) return;
+
+            const totalSales = sidoData.reduce((s, r) => s + r.sales, 0);
+            const totalCount = sidoData.reduce((s, r) => s + r.count, 0);
+
+            // 상세 패널 업데이트
+            const detailTitle = document.getElementById('regionDetailTitle');
+            const detailBadge = document.getElementById('regionDetailBadge');
+            const detailBody = document.getElementById('regionDetailBody');
+
+            if (detailTitle) detailTitle.textContent = `📍 ${sido} 상세 정보`;
+            if (detailBadge) detailBadge.textContent = `${sidoData.length}개 지역`;
+
+            const topRegions = [...sidoData].sort((a, b) => b.sales - a.sales).slice(0, 10);
+
+            if (detailBody) {
+                detailBody.innerHTML = `
+                    <div style="margin-bottom: 16px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                            <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 16px; border-radius: 12px;">
+                                <div style="font-size: 12px; opacity: 0.9;">총 매출</div>
+                                <div style="font-size: 20px; font-weight: bold;">${formatCurrency(totalSales)}</div>
+                            </div>
+                            <div style="background: linear-gradient(135deg, #10b981, #34d399); color: white; padding: 16px; border-radius: 12px;">
+                                <div style="font-size: 12px; opacity: 0.9;">총 건수</div>
+                                <div style="font-size: 20px; font-weight: bold;">${totalCount.toLocaleString()}건</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-weight: 600; margin-bottom: 8px; color: #374151;">📊 시/군/구별 매출 TOP 10</div>
+                    <div class="scroll-table" style="max-height: 280px;">
+                        <table class="data-table">
+                            <thead><tr><th>지역</th><th class="text-right">매출</th><th class="text-right">건수</th></tr></thead>
+                            <tbody>
+                                ${topRegions.map(r => `
+                                    <tr>
+                                        <td>${r.name}</td>
+                                        <td class="text-right">${formatCurrency(r.sales)}</td>
+                                        <td class="text-right">${r.count}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+        }
 
         function updateRegionTab() {
             const regions = currentData.by_region || [];
@@ -17825,8 +18000,9 @@ HTML_TEMPLATE = '''
             // KPI 업데이트
             updateRegionKPIs(mainRegions, growthRegions, newRegions, weakRegions);
 
-            // SVG 맵 업데이트
-            updateKoreaMap(regionData);
+            // 카카오맵 업데이트
+            initKakaoMap();
+            updateKakaoMapMarkers();
 
             // 차트 업데이트
             updateRegionSalesChart(regionData);
