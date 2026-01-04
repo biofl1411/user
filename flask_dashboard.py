@@ -4969,12 +4969,22 @@ HTML_TEMPLATE = '''
                             <svg id="koreaMap" style="width: 100%; height: 100%;"></svg>
                             <div id="mapTooltip" style="position: absolute; display: none; background: rgba(30,41,59,0.95); color: #e2e8f0; padding: 12px 16px; border-radius: 8px; font-size: 12px; pointer-events: none; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-width: 250px;"></div>
                         </div>
-                        <!-- 범례 -->
-                        <div id="mapLegend" style="display: flex; gap: 16px; margin-top: 12px; font-size: 11px; flex-wrap: wrap; justify-content: center;">
-                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #1e3a8a; border-radius: 3px;"></div><span>10억+</span></div>
-                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #3b82f6; border-radius: 3px;"></div><span>5~10억</span></div>
-                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #93c5fd; border-radius: 3px;"></div><span>1~5억</span></div>
-                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 14px; height: 14px; background: #dbeafe; border-radius: 3px;"></div><span>1억 미만</span></div>
+                        <!-- 시/도 지도 범례 (매출 기준) -->
+                        <div id="mapLegendSido" style="display: flex; gap: 12px; margin-top: 12px; font-size: 12px; flex-wrap: wrap; justify-content: center;">
+                            <span style="font-weight: 600; color: #64748b;">매출:</span>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 16px; height: 16px; background: #dc2626; border-radius: 3px;"></div><span>10억+</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 16px; height: 16px; background: #f97316; border-radius: 3px;"></div><span>5~10억</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 16px; height: 16px; background: #eab308; border-radius: 3px;"></div><span>1~5억</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 16px; height: 16px; background: #22c55e; border-radius: 3px;"></div><span>1억 미만</span></div>
+                        </div>
+                        <!-- 시군구 지도 범례 (거래처 수 기준) -->
+                        <div id="mapLegendSigungu" style="display: none; gap: 12px; margin-top: 12px; font-size: 12px; flex-wrap: wrap; justify-content: center;">
+                            <span style="font-weight: 600; color: #64748b;">거래처:</span>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 16px; height: 16px; background: #dc2626; border-radius: 3px;"></div><span>50개+</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 16px; height: 16px; background: #f97316; border-radius: 3px;"></div><span>20~49개</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 16px; height: 16px; background: #eab308; border-radius: 3px;"></div><span>10~19개</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 16px; height: 16px; background: #22c55e; border-radius: 3px;"></div><span>5~9개</span></div>
+                            <div style="display: flex; align-items: center; gap: 4px;"><div style="width: 16px; height: 16px; background: #06b6d4; border-radius: 3px;"></div><span>1~4개</span></div>
                         </div>
                     </div>
                 </div>
@@ -17841,6 +17851,10 @@ HTML_TEMPLATE = '''
             document.getElementById('mapBackBtn').style.display = 'none';
             document.getElementById('mapBreadcrumb').textContent = '전국';
 
+            // 범례 전환 (시/도 = 매출 기준)
+            document.getElementById('mapLegendSido').style.display = 'flex';
+            document.getElementById('mapLegendSigungu').style.display = 'none';
+
             try {
                 const response = await fetch('https://raw.githubusercontent.com/statgarten/maps/main/svg/simple/전국_시도_경계.svg');
                 const svgText = await response.text();
@@ -17910,6 +17924,10 @@ HTML_TEMPLATE = '''
             // UI 업데이트
             document.getElementById('mapBackBtn').style.display = 'inline-block';
             document.getElementById('mapBreadcrumb').textContent = `전국 > ${sidoName}`;
+
+            // 범례 전환 (시군구 = 거래처 수 기준)
+            document.getElementById('mapLegendSido').style.display = 'none';
+            document.getElementById('mapLegendSigungu').style.display = 'flex';
 
             // 해당 시/도의 시군구 데이터 준비
             prepareSigunguData(sidoName);
@@ -17981,22 +17999,22 @@ HTML_TEMPLATE = '''
                             // 지역명 라벨
                             svg.append('text')
                                 .attr('x', cx)
-                                .attr('y', cy - 6)
+                                .attr('y', cy - 8)
                                 .attr('text-anchor', 'middle')
-                                .attr('font-size', '10px')
-                                .attr('font-weight', '600')
-                                .attr('fill', '#334155')
+                                .attr('font-size', '13px')
+                                .attr('font-weight', '700')
+                                .attr('fill', '#1e293b')
                                 .attr('pointer-events', 'none')
-                                .text(id.length > 4 ? id.substring(0, 3) + '..' : id);
+                                .text(id.length > 5 ? id.substring(0, 4) + '..' : id);
 
                             // 거래처 수 라벨
                             if (data.count > 0) {
                                 svg.append('text')
                                     .attr('x', cx)
-                                    .attr('y', cy + 8)
+                                    .attr('y', cy + 10)
                                     .attr('text-anchor', 'middle')
-                                    .attr('font-size', '9px')
-                                    .attr('font-weight', '600')
+                                    .attr('font-size', '12px')
+                                    .attr('font-weight', '700')
                                     .attr('fill', '#dc2626')
                                     .attr('pointer-events', 'none')
                                     .text(data.count + '개');
@@ -18137,26 +18155,34 @@ HTML_TEMPLATE = '''
             });
         }
 
-        // 시군구 지도 색상 업데이트
+        // 시군구 지도 색상 업데이트 (거래처 수 기준)
         function updateSigunguMapColors() {
-            const maxSales = Math.max(...Object.values(sigunguSalesData).map(d => d.sales), 1);
-
             Object.entries(sigunguSalesData).forEach(([name, data]) => {
                 const path = d3.select('#region-' + name);
                 if (path.empty()) return;
 
-                const color = getColorBySales(data.sales);
+                const color = getColorByCount(data.count);
                 path.transition().duration(300).attr('fill', color);
             });
         }
 
-        // 매출액에 따른 색상 반환
+        // 매출액에 따른 색상 반환 (시/도 지도용)
         function getColorBySales(sales) {
-            if (sales >= 1000000000) return '#1e3a8a';      // 10억+ 진한 파랑
-            if (sales >= 500000000) return '#3b82f6';       // 5~10억 파랑
-            if (sales >= 100000000) return '#93c5fd';       // 1~5억 연한 파랑
-            if (sales > 0) return '#bfdbfe';                 // 1억 미만 매우 연한 파랑
-            return '#f1f5f9';                                // 데이터 없음
+            if (sales >= 1000000000) return '#dc2626';      // 10억+ 빨간색
+            if (sales >= 500000000) return '#f97316';       // 5~10억 주황색
+            if (sales >= 100000000) return '#eab308';       // 1~5억 노란색
+            if (sales > 0) return '#22c55e';                 // 1억 미만 초록색
+            return '#e2e8f0';                                // 데이터 없음 회색
+        }
+
+        // 거래처 수에 따른 색상 반환 (시군구 지도용)
+        function getColorByCount(count) {
+            if (count >= 50) return '#dc2626';      // 50개+ 빨간색
+            if (count >= 20) return '#f97316';      // 20~49개 주황색
+            if (count >= 10) return '#eab308';      // 10~19개 노란색
+            if (count >= 5) return '#22c55e';       // 5~9개 초록색
+            if (count > 0) return '#06b6d4';        // 1~4개 청록색
+            return '#e2e8f0';                        // 데이터 없음 회색
         }
 
         // 시/도 요약 표시
