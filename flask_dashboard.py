@@ -71,6 +71,12 @@ def init_sqlite_db():
             영업담당 TEXT,
             검사목적 TEXT,
             총금액 REAL,
+            시험분야 TEXT,
+            입금일 TEXT,
+            입금여부 TEXT,
+            검사구분 TEXT,
+            입금구분 TEXT,
+            업체분류 TEXT,
             raw_data TEXT
         )
     ''')
@@ -138,6 +144,15 @@ def init_sqlite_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_purpose ON food_item_data(검사목적)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_item ON food_item_data(항목명)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_token_yearmonth ON token_usage(year_month)')
+
+    # 기존 DB에 새 컬럼 추가 (마이그레이션)
+    new_columns = ['시험분야', '입금일', '입금여부', '검사구분', '입금구분', '업체분류']
+    for col in new_columns:
+        try:
+            cursor.execute(f'ALTER TABLE excel_data ADD COLUMN {col} TEXT')
+            print(f"[SQLITE] 컬럼 추가: {col}")
+        except:
+            pass  # 이미 존재하면 무시
 
     conn.commit()
     conn.close()
@@ -401,13 +416,19 @@ def convert_excel_to_sqlite():
                             str(row_dict.get('영업담당', '')),
                             str(row_dict.get('검사목적', '')),
                             float(row_dict.get('총금액', 0) or 0),
+                            str(row_dict.get('시험분야', '')),
+                            str(row_dict.get('입금일', '')),
+                            str(row_dict.get('입금여부', '')),
+                            str(row_dict.get('검사구분', '')),
+                            str(row_dict.get('입금구분', '')),
+                            str(row_dict.get('업체분류', '')),
                             json.dumps(row_dict, ensure_ascii=False, default=str)
                         ))
 
                     cursor.executemany('''
                         INSERT INTO excel_data
-                        (year, 접수번호, 접수일자, 발행일, 검체유형, 업체명, 의뢰인명, 업체주소, 영업담당, 검사목적, 총금액, raw_data)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (year, 접수번호, 접수일자, 발행일, 검체유형, 업체명, 의뢰인명, 업체주소, 영업담당, 검사목적, 총금액, 시험분야, 입금일, 입금여부, 검사구분, 입금구분, 업체분류, raw_data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', batch)
 
                     # 메타데이터 업데이트
