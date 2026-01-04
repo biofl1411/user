@@ -17801,7 +17801,7 @@ HTML_TEMPLATE = '''
 
         // 카카오맵 초기화 (비동기)
         let kakaoMapReady = false;
-        let kakaoMapPendingUpdate = false;
+        let kakaoInitRetryCount = 0;
 
         function initKakaoMap(callback) {
             if (kakaoMap) {
@@ -17812,9 +17812,15 @@ HTML_TEMPLATE = '''
             const container = document.getElementById('kakaoMapContainer');
             if (!container) return;
 
+            // SDK 로드 대기 (최대 10초, 500ms 간격)
             if (typeof kakao === 'undefined') {
-                console.log('[KAKAO MAP] SDK 로드 대기 중...');
-                kakaoMapPendingUpdate = true;
+                kakaoInitRetryCount++;
+                if (kakaoInitRetryCount <= 20) {
+                    console.log('[KAKAO MAP] SDK 로드 대기 중... (' + kakaoInitRetryCount + '/20)');
+                    setTimeout(function() { initKakaoMap(callback); }, 500);
+                } else {
+                    console.error('[KAKAO MAP] SDK 로드 실패 - 시간 초과');
+                }
                 return;
             }
 
@@ -17829,10 +17835,6 @@ HTML_TEMPLATE = '''
                     kakaoMapReady = true;
                     console.log('[KAKAO MAP] 초기화 완료');
                     if (callback) callback();
-                    if (kakaoMapPendingUpdate) {
-                        kakaoMapPendingUpdate = false;
-                        updateKakaoMapMarkers();
-                    }
                 } catch (e) {
                     console.error('[KAKAO MAP] 초기화 실패:', e);
                 }
