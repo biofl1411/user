@@ -1325,11 +1325,21 @@ def process_data(data, purpose_filter=None):
                     purpose_month_clients[purpose][month] = set()
                 purpose_month_clients[purpose][month].add(client)
 
+        # 거래처별 - 주소 추출
+        client_address = None
+        for col in address_columns:
+            if row.get(col):
+                client_address = str(row.get(col, '')).strip()
+                break
+
         # 거래처별
         if client not in by_client:
-            by_client[client] = {'sales': 0, 'count': 0, 'purposes': {}, 'managers': {}, 'months': set()}
+            by_client[client] = {'sales': 0, 'count': 0, 'purposes': {}, 'managers': {}, 'months': set(), 'address': ''}
         by_client[client]['sales'] += sales
         by_client[client]['count'] += 1
+        # 주소 저장 (첫번째 유효한 주소 사용)
+        if client_address and not by_client[client]['address']:
+            by_client[client]['address'] = client_address
         # 거래처별 담당자 집계
         if manager and manager != '미지정':
             if manager not in by_client[client]['managers']:
@@ -1739,7 +1749,8 @@ def process_data(data, purpose_filter=None):
             'tradeMonths': len(d.get('months', set())),
             'purposes': d.get('purposes', {}),
             'byPurpose': {p: {'sales': pd['sales'], 'count': pd['count']} for p, pd in d.get('purposes', {}).items()},
-            'byManager': {m: {'sales': md['sales'], 'count': md['count']} for m, md in d.get('managers', {}).items()}
+            'byManager': {m: {'sales': md['sales'], 'count': md['count']} for m, md in d.get('managers', {}).items()},
+            'address': d.get('address', '')
         }) for c, d in sorted_clients],
         'by_purpose': sorted_purposes,
         'by_defect': sorted_defects[:30],
@@ -18011,16 +18022,6 @@ HTML_TEMPLATE = '''
         function prepareSigunguData(sidoName) {
             sigunguSalesData = {};
             const clients = currentData.by_client || [];
-
-            // 디버그: 거래처 데이터 구조 확인
-            console.log('[DEBUG] 거래처 수:', clients.length);
-            if (clients.length > 0) {
-                console.log('[DEBUG] 첫번째 거래처 구조:', clients[0]);
-                console.log('[DEBUG] 거래처 데이터 샘플 (처음 5개):');
-                clients.slice(0, 5).forEach((c, i) => {
-                    console.log(`  ${i+1}. 이름: ${c[0]}, address: ${c[1]?.address}, sido: ${c[1]?.sido}`);
-                });
-            }
 
             if (clients.length === 0) return;
 
