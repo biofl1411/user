@@ -18013,10 +18013,12 @@ HTML_TEMPLATE = '''
             if (!regionAnalysisData || !regionAnalysisData.regionData) return;
 
             const shortName = SIDO_NAME_MAP[sidoName] || sidoName;
+            console.log('[DEBUG] prepareSigunguData - sidoName:', sidoName, ', shortName:', shortName);
+            console.log('[DEBUG] regionData 샘플:', regionAnalysisData.regionData.slice(0, 5).map(r => ({ name: r.name, sido: r.sido })));
 
             regionAnalysisData.regionData.forEach(r => {
                 const sido = r.sido || r.name.split(' ')[0];
-                if (sido === shortName) {
+                if (sido === shortName || sido === sidoName) {
                     // 시군구 이름 추출 (예: "서울 강남구" → "강남구")
                     const parts = r.name.split(' ');
                     const sigungu = parts.length > 1 ? parts.slice(1).join(' ') : r.name;
@@ -18028,6 +18030,9 @@ HTML_TEMPLATE = '''
                     sigunguSalesData[sigungu].count += r.count;
                 }
             });
+
+            console.log('[DEBUG] sigunguSalesData 결과:', Object.keys(sigunguSalesData).length, '개 시군구');
+            console.log('[DEBUG] sigunguSalesData:', sigunguSalesData);
         }
 
         // 마우스 오버 핸들러
