@@ -17985,10 +17985,10 @@ HTML_TEMPLATE = '''
                                     .attr('y', cy + 8)
                                     .attr('text-anchor', 'middle')
                                     .attr('font-size', '9px')
-                                    .attr('font-weight', '500')
-                                    .attr('fill', '#6366f1')
+                                    .attr('font-weight', '600')
+                                    .attr('fill', '#dc2626')
                                     .attr('pointer-events', 'none')
-                                    .text(data.count + '건');
+                                    .text(data.count + '개');
                             }
                         } catch (e) {}
                     });
@@ -18007,32 +18007,59 @@ HTML_TEMPLATE = '''
             loadSidoMap();
         }
 
-        // 시군구 데이터 준비
+        // 시군구 데이터 준비 (거래처 주소 기반)
         function prepareSigunguData(sidoName) {
             sigunguSalesData = {};
-            if (!regionAnalysisData || !regionAnalysisData.regionData) return;
+            const clients = currentData.by_client || [];
+            if (clients.length === 0) return;
 
             const shortName = SIDO_NAME_MAP[sidoName] || sidoName;
-            console.log('[DEBUG] prepareSigunguData - sidoName:', sidoName, ', shortName:', shortName);
-            console.log('[DEBUG] regionData 샘플:', regionAnalysisData.regionData.slice(0, 5).map(r => ({ name: r.name, sido: r.sido })));
 
-            regionAnalysisData.regionData.forEach(r => {
-                const sido = r.sido || r.name.split(' ')[0];
-                if (sido === shortName || sido === sidoName) {
-                    // 시군구 이름 추출 (예: "서울 강남구" → "강남구")
-                    const parts = r.name.split(' ');
-                    const sigungu = parts.length > 1 ? parts.slice(1).join(' ') : r.name;
+            // 거래처 주소에서 시군구 추출
+            clients.forEach(c => {
+                const clientData = c[1];
+                const address = clientData.address || '';
 
-                    if (!sigunguSalesData[sigungu]) {
-                        sigunguSalesData[sigungu] = { sales: 0, count: 0, clients: [] };
+                // 주소에서 시/도 확인
+                const hasSido = address.includes(sidoName) || address.includes(shortName);
+                if (!hasSido) return;
+
+                // 시군구 추출 (예: "서울특별시 강남구 역삼동" → "강남구")
+                let sigungu = null;
+
+                // 패턴: ~구, ~시, ~군 찾기
+                const match = address.match(/([가-힣]+(?:구|시|군))/g);
+                if (match) {
+                    for (const m of match) {
+                        // 광역시/특별시/도 제외
+                        if (!m.includes('특별') && !m.includes('광역') &&
+                            m !== sidoName && m !== shortName &&
+                            !['서울시', '부산시', '대구시', '인천시', '광주시', '대전시', '울산시'].includes(m)) {
+                            sigungu = m;
+                            break;
+                        }
                     }
-                    sigunguSalesData[sigungu].sales += r.sales;
-                    sigunguSalesData[sigungu].count += r.count;
+                }
+
+                if (sigungu) {
+                    if (!sigunguSalesData[sigungu]) {
+                        sigunguSalesData[sigungu] = {
+                            sales: 0,
+                            count: 0,  // 거래처 수
+                            clients: []
+                        };
+                    }
+                    sigunguSalesData[sigungu].sales += clientData.sales || 0;
+                    sigunguSalesData[sigungu].count += 1;  // 거래처 1개 추가
+                    sigunguSalesData[sigungu].clients.push({
+                        name: c[0],
+                        sales: clientData.sales || 0,
+                        address: address
+                    });
                 }
             });
 
-            console.log('[DEBUG] sigunguSalesData 결과:', Object.keys(sigunguSalesData).length, '개 시군구');
-            console.log('[DEBUG] sigunguSalesData:', sigunguSalesData);
+            console.log('[SVG MAP] 시군구별 거래처:', Object.entries(sigunguSalesData).map(([k,v]) => `${k}:${v.count}개`).slice(0,10).join(', '));
         }
 
         // 마우스 오버 핸들러
@@ -18050,10 +18077,12 @@ HTML_TEMPLATE = '''
 
             if (data) {
                 const tooltip = document.getElementById('mapTooltip');
+                const countLabel = level === 'sigungu' ? '거래처' : '거래';
+                const countUnit = level === 'sigungu' ? '개' : '건';
                 tooltip.innerHTML = `
                     <div style="font-weight: 600; margin-bottom: 8px;">${name}</div>
                     <div>매출: ${formatCurrency(data.sales)}</div>
-                    <div>거래: ${data.count.toLocaleString()}건</div>
+                    <div>${countLabel}: ${data.count.toLocaleString()}${countUnit}</div>
                 `;
                 tooltip.style.display = 'block';
                 tooltip.style.left = (event.offsetX + 10) + 'px';
@@ -18132,32 +18161,36 @@ HTML_TEMPLATE = '''
             if (detailBadge) detailBadge.textContent = `${Object.keys(sigunguSalesData).length}개 시군구`;
 
             const sortedSigungu = Object.entries(sigunguSalesData)
-                .sort((a, b) => b[1].sales - a[1].sales)
-                .slice(0, 10);
+                .sort((a, b) => b[1].count - a[1].count)  // 거래처 수 순 정렬
+                .slice(0, 15);
+
+            // 총 거래처 수 계산
+            const totalClients = Object.values(sigunguSalesData).reduce((sum, d) => sum + d.count, 0);
+            const totalSales = Object.values(sigunguSalesData).reduce((sum, d) => sum + d.sales, 0);
 
             if (detailBody) {
                 detailBody.innerHTML = `
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                         <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 16px; border-radius: 12px;">
                             <div style="font-size: 12px; opacity: 0.9;">총 매출</div>
-                            <div style="font-size: 20px; font-weight: bold;">${formatCurrency(data.sales)}</div>
+                            <div style="font-size: 20px; font-weight: bold;">${formatCurrency(totalSales)}</div>
                         </div>
                         <div style="background: linear-gradient(135deg, #10b981, #34d399); color: white; padding: 16px; border-radius: 12px;">
-                            <div style="font-size: 12px; opacity: 0.9;">총 거래</div>
-                            <div style="font-size: 20px; font-weight: bold;">${data.count.toLocaleString()}건</div>
+                            <div style="font-size: 12px; opacity: 0.9;">거래처 수</div>
+                            <div style="font-size: 20px; font-weight: bold;">${totalClients.toLocaleString()}개</div>
                         </div>
                     </div>
-                    <div style="font-weight: 600; margin-bottom: 8px; color: #374151;">📊 시/군/구별 매출 TOP 10</div>
-                    <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">지도에서 시군구를 클릭하면 상세 정보를 볼 수 있습니다</div>
+                    <div style="font-weight: 600; margin-bottom: 8px; color: #374151;">📊 시/군/구별 거래처 분포</div>
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">지도에서 시군구를 클릭하면 거래처 목록을 볼 수 있습니다</div>
                     <div class="scroll-table" style="max-height: 280px;">
                         <table class="data-table">
-                            <thead><tr><th>시/군/구</th><th class="text-right">매출</th><th class="text-right">거래</th></tr></thead>
+                            <thead><tr><th>시/군/구</th><th class="text-right">거래처</th><th class="text-right">매출</th></tr></thead>
                             <tbody>
                                 ${sortedSigungu.map(([name, d]) => `
                                     <tr style="cursor: pointer;" onclick="showSigunguDetail('${name}')">
                                         <td>${name}</td>
+                                        <td class="text-right" style="color: #dc2626; font-weight: 600;">${d.count}개</td>
                                         <td class="text-right">${formatCurrency(d.sales)}</td>
-                                        <td class="text-right">${d.count}건</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -18179,36 +18212,33 @@ HTML_TEMPLATE = '''
             const fullRegionName = currentSido ? `${SIDO_NAME_MAP[currentSido] || currentSido} ${sigunguName}` : sigunguName;
 
             if (detailTitle) detailTitle.textContent = `📍 ${sigunguName}`;
-            if (detailBadge) detailBadge.textContent = currentSido || '';
+            if (detailBadge) detailBadge.textContent = `${data.count}개 거래처`;
 
-            // 해당 시군구의 거래처 찾기
-            const clients = (currentData.by_client || []).filter(c => {
-                const addr = c[1].address || '';
-                return addr.includes(sigunguName);
-            }).sort((a, b) => b[1].sales - a[1].sales).slice(0, 10);
+            // sigunguSalesData에 저장된 거래처 목록 사용
+            const clients = (data.clients || []).sort((a, b) => b.sales - a.sales).slice(0, 15);
 
             if (detailBody) {
                 detailBody.innerHTML = `
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
                         <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 16px; border-radius: 12px;">
-                            <div style="font-size: 12px; opacity: 0.9;">매출</div>
+                            <div style="font-size: 12px; opacity: 0.9;">총 매출</div>
                             <div style="font-size: 20px; font-weight: bold;">${formatCurrency(data.sales)}</div>
                         </div>
-                        <div style="background: linear-gradient(135deg, #10b981, #34d399); color: white; padding: 16px; border-radius: 12px;">
-                            <div style="font-size: 12px; opacity: 0.9;">거래</div>
-                            <div style="font-size: 20px; font-weight: bold;">${data.count.toLocaleString()}건</div>
+                        <div style="background: linear-gradient(135deg, #dc2626, #f87171); color: white; padding: 16px; border-radius: 12px;">
+                            <div style="font-size: 12px; opacity: 0.9;">거래처 수</div>
+                            <div style="font-size: 20px; font-weight: bold;">${data.count.toLocaleString()}개</div>
                         </div>
                     </div>
                     ${clients.length > 0 ? `
-                        <div style="font-weight: 600; margin-bottom: 8px; color: #374151;">🏢 주요 거래처 TOP 10</div>
-                        <div class="scroll-table" style="max-height: 280px;">
+                        <div style="font-weight: 600; margin-bottom: 8px; color: #374151;">🏢 거래처 목록 (매출순)</div>
+                        <div class="scroll-table" style="max-height: 300px;">
                             <table class="data-table">
-                                <thead><tr><th>거래처</th><th class="text-right">매출</th></tr></thead>
+                                <thead><tr><th>거래처명</th><th class="text-right">매출</th></tr></thead>
                                 <tbody>
                                     ${clients.map(c => `
                                         <tr>
-                                            <td>${c[0]}</td>
-                                            <td class="text-right">${formatCurrency(c[1].sales)}</td>
+                                            <td title="${c.address || ''}">${c.name}</td>
+                                            <td class="text-right">${formatCurrency(c.sales)}</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
