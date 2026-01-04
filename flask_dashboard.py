@@ -19199,8 +19199,25 @@ HTML_TEMPLATE = '''
             document.getElementById('stSortCount').style.cssText = sortType === 'count' ? activeStyle : inactiveStyle;
             document.getElementById('stSortAvg').style.cssText = sortType === 'avgSales' ? activeStyle : inactiveStyle;
 
-            // 데이터 정렬
-            let types = [...(currentData.by_sample_type || [])];
+            // 현재 필터 확인
+            const currentFilter = document.getElementById('stPurposeFilter')?.value || '전체';
+            let types = [];
+
+            if (currentFilter !== '전체') {
+                // 필터가 적용된 경우: 해당 목적의 데이터만 사용
+                const stPurposes = currentData.sample_type_purposes || {};
+                Object.entries(stPurposes).forEach(([sampleType, purposes]) => {
+                    const matchPurpose = purposes.find(p => p.name === currentFilter);
+                    if (matchPurpose) {
+                        types.push([sampleType, { sales: matchPurpose.sales, count: matchPurpose.count }]);
+                    }
+                });
+            } else {
+                // 전체 데이터
+                types = [...(currentData.by_sample_type || [])];
+            }
+
+            // 정렬 적용
             if (sortType === 'sales') {
                 types.sort((a, b) => b[1].sales - a[1].sales);
             } else if (sortType === 'count') {
