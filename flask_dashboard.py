@@ -18011,6 +18011,17 @@ HTML_TEMPLATE = '''
         function prepareSigunguData(sidoName) {
             sigunguSalesData = {};
             const clients = currentData.by_client || [];
+
+            // 디버그: 거래처 데이터 구조 확인
+            console.log('[DEBUG] 거래처 수:', clients.length);
+            if (clients.length > 0) {
+                console.log('[DEBUG] 첫번째 거래처 구조:', clients[0]);
+                console.log('[DEBUG] 거래처 데이터 샘플 (처음 5개):');
+                clients.slice(0, 5).forEach((c, i) => {
+                    console.log(`  ${i+1}. 이름: ${c[0]}, address: ${c[1]?.address}, sido: ${c[1]?.sido}`);
+                });
+            }
+
             if (clients.length === 0) return;
 
             const shortName = SIDO_NAME_MAP[sidoName] || sidoName;
