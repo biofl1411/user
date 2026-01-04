@@ -1179,7 +1179,8 @@ def process_data(data, purpose_filter=None):
     by_urgent_month = {}  # 월별 긴급 데이터
     by_branch_month_clients = {}  # 지사별 월별 거래처 (중복 분석용)
     purpose_month_clients = {}  # 목적별 월별 거래처 (필터링용)
-    client_purpose_months = {}  # 거래처+유형별 월별 거래 추적 (지속적인 거래 분석용)
+    client_purpose_months = {}  # 거래처+목적별 월별 거래 추적 (지속적인 거래 분석용)
+    client_sample_type_months = {}  # 거래처+검체유형별 월별 거래 추적
     by_department = {}  # 부서별 데이터 (본사, 마케팅, 영업부, 지사)
     purposes = set()
     sample_types = set()  # 검체유형 목록
@@ -1492,6 +1493,14 @@ def process_data(data, purpose_filter=None):
                         by_sample_type_month[sample_type][month]['by_purpose'][purpose] = {'sales': 0, 'count': 0}
                     by_sample_type_month[sample_type][month]['by_purpose'][purpose]['sales'] += sales
                     by_sample_type_month[sample_type][month]['by_purpose'][purpose]['count'] += 1
+
+                # 거래처+검체유형별 월별 거래 추적
+                cst_key = f"{client}|{sample_type}"
+                if cst_key not in client_sample_type_months:
+                    client_sample_type_months[cst_key] = {'client': client, 'sample_type': sample_type, 'months': set(), 'sales': 0, 'count': 0}
+                client_sample_type_months[cst_key]['months'].add(month)
+                client_sample_type_months[cst_key]['sales'] += sales
+                client_sample_type_months[cst_key]['count'] += 1
 
         # 지역별 분석
         address = None
@@ -1812,6 +1821,11 @@ def process_data(data, purpose_filter=None):
         'client_purpose_months': [
             {'client': d['client'], 'purpose': d['purpose'], 'monthCount': len(d['months']), 'months': sorted(list(d['months'])), 'sales': d['sales'], 'count': d['count']}
             for d in sorted(client_purpose_months.values(), key=lambda x: (len(x['months']), x['sales']), reverse=True)
+            if len(d['months']) >= 2  # 2개월 이상 지속된 거래만 포함
+        ][:100],  # 상위 100개만
+        'client_sample_type_months': [
+            {'client': d['client'], 'sample_type': d['sample_type'], 'monthCount': len(d['months']), 'months': sorted(list(d['months'])), 'sales': d['sales'], 'count': d['count']}
+            for d in sorted(client_sample_type_months.values(), key=lambda x: (len(x['months']), x['sales']), reverse=True)
             if len(d['months']) >= 2  # 2개월 이상 지속된 거래만 포함
         ][:100]  # 상위 100개만
     }
@@ -5325,6 +5339,13 @@ HTML_TEMPLATE = '''
                 </div>
                 <div class="purpose-kpi-grid" id="sampleTypeGrid"></div>
             </section>
+            <!-- 정렬 버튼 -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+                <button class="btn btn-primary btn-sm" onclick="sortSampleTypeCards('sales')" id="stSortSales">💰 매출순</button>
+                <button class="btn btn-secondary btn-sm" onclick="sortSampleTypeCards('count')" id="stSortCount">📋 건수순</button>
+                <button class="btn btn-secondary btn-sm" onclick="sortSampleTypeCards('avgSales')" id="stSortAvg">💵 건당매출순</button>
+            </div>
+
             <div class="content-grid">
                 <div class="card">
                     <div class="card-header"><div class="card-title">🥧 유형별 매출 비중</div></div>
@@ -5335,7 +5356,43 @@ HTML_TEMPLATE = '''
                     <div class="card-body">
                         <div class="scroll-table">
                             <table class="data-table" id="sampleTypeTable">
-                                <thead><tr><th>검체유형</th><th class="text-right">매출액</th><th class="text-right">건수</th><th>비중</th></tr></thead>
+                                <thead><tr><th>검체유형</th><th class="text-right">매출액</th><th class="text-right">건수</th><th class="text-right">건당매출</th><th>비중</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 담당자별 유형 보유 수 & 지속적인 거래 유형 -->
+            <div class="grid grid-cols-2" style="margin-top: 20px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">👤 담당자별 유형 보유 수</div>
+                        <div class="card-badge" id="stManagerTypeBadge">-</div>
+                    </div>
+                    <div class="card-body">
+                        <div id="stManagerTypeSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
+                        <div class="chart-container" style="height: 320px;"><canvas id="stManagerTypeChart"></canvas></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">🔄 지속적인 거래 유형</div>
+                        <div class="card-badge" id="stContinuousTradeBadge">-</div>
+                    </div>
+                    <div class="card-body">
+                        <div id="stContinuousTradeSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
+                        <div class="scroll-table" style="max-height: 340px;">
+                            <table class="data-table" id="stContinuousTradeTable">
+                                <thead><tr>
+                                    <th>업체명</th>
+                                    <th>검체유형</th>
+                                    <th class="text-right">지속개월</th>
+                                    <th class="text-right">매출액</th>
+                                    <th class="text-right">건수</th>
+                                    <th>거래월</th>
+                                </tr></thead>
                                 <tbody></tbody>
                             </table>
                         </div>
@@ -19096,7 +19153,172 @@ HTML_TEMPLATE = '''
             const tbody = document.querySelector('#sampleTypeTable tbody');
             tbody.innerHTML = types.map(t => {
                 const percent = (t[1].sales / total * 100).toFixed(1);
-                return `<tr><td><strong>${t[0]}</strong></td><td class="text-right">${formatCurrency(t[1].sales)}</td><td class="text-right">${t[1].count.toLocaleString()}</td><td><div class="progress-cell"><div class="progress-bar"><div class="progress-fill" style="width: ${percent}%;"></div></div><span class="progress-value">${percent}%</span></div></td></tr>`;
+                const avgSales = t[1].count > 0 ? Math.round(t[1].sales / t[1].count) : 0;
+                return `<tr><td><strong>${t[0]}</strong></td><td class="text-right">${formatCurrency(t[1].sales)}</td><td class="text-right">${t[1].count.toLocaleString()}</td><td class="text-right">${formatCurrency(avgSales)}</td><td><div class="progress-cell"><div class="progress-bar"><div class="progress-fill" style="width: ${percent}%;"></div></div><span class="progress-value">${percent}%</span></div></td></tr>`;
+            }).join('');
+
+            // 담당자별 유형 보유 수 차트 & 지속적인 거래 테이블 업데이트
+            updateSTManagerTypeChart();
+            updateSTContinuousTradeTable();
+        }
+
+        // 검체유형 정렬 상태
+        let stSortType = 'sales';
+
+        function sortSampleTypeCards(sortType) {
+            stSortType = sortType;
+
+            // 버튼 스타일 업데이트
+            document.querySelectorAll('[id^="stSort"]').forEach(btn => {
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-secondary');
+            });
+            document.getElementById(`stSort${sortType.charAt(0).toUpperCase() + sortType.slice(1)}`).classList.remove('btn-secondary');
+            document.getElementById(`stSort${sortType.charAt(0).toUpperCase() + sortType.slice(1)}`).classList.add('btn-primary');
+
+            // 데이터 정렬
+            let types = [...(currentData.by_sample_type || [])];
+            if (sortType === 'sales') {
+                types.sort((a, b) => b[1].sales - a[1].sales);
+            } else if (sortType === 'count') {
+                types.sort((a, b) => b[1].count - a[1].count);
+            } else if (sortType === 'avgSales') {
+                types.sort((a, b) => {
+                    const avgA = a[1].count > 0 ? a[1].sales / a[1].count : 0;
+                    const avgB = b[1].count > 0 ? b[1].sales / b[1].count : 0;
+                    return avgB - avgA;
+                });
+            }
+
+            // 그리드 업데이트
+            const colors = ['blue', 'green', 'orange', 'purple', 'pink', 'info', 'teal', 'amber'];
+            const icons = ['📦', '🌿', '🥩', '🐟', '💊', '🥤', '🧀', '📁'];
+            const grid = document.getElementById('sampleTypeGrid');
+            grid.innerHTML = types.map((t, i) => {
+                const avgSales = t[1].count > 0 ? Math.round(t[1].sales / t[1].count) : 0;
+                return `
+                <div class="purpose-kpi-card" data-color="${colors[i % colors.length]}">
+                    <div class="purpose-kpi-header"><div class="purpose-kpi-icon">${icons[i % icons.length]}</div></div>
+                    <div class="purpose-kpi-name">${t[0]}</div>
+                    <div class="purpose-kpi-value">${formatCurrency(t[1].sales)}</div>
+                    <div class="purpose-kpi-sub">건수: ${t[1].count.toLocaleString()}건 · 💰 ${formatCurrency(avgSales)}/건</div>
+                </div>
+            `}).join('');
+        }
+
+        // 담당자별 검체유형 보유 수 차트
+        function updateSTManagerTypeChart() {
+            const ctx = document.getElementById('stManagerTypeChart');
+            if (!ctx) return;
+            if (charts.stManagerType) charts.stManagerType.destroy();
+
+            // 담당자별 검체유형 수 계산
+            const managerSampleTypes = {};
+            const stManagers = currentData.sample_type_managers || {};
+
+            // sample_type_managers: { sample_type: [{ name, sales, count }, ...] }
+            Object.entries(stManagers).forEach(([sampleType, managers]) => {
+                managers.forEach(m => {
+                    if (!m.name || m.name === '미지정') return;
+                    if (!managerSampleTypes[m.name]) {
+                        managerSampleTypes[m.name] = { count: 0, sales: 0, types: [] };
+                    }
+                    managerSampleTypes[m.name].count += 1;
+                    managerSampleTypes[m.name].sales += m.sales;
+                    managerSampleTypes[m.name].types.push({ name: sampleType, sales: m.sales });
+                });
+            });
+
+            // 유형 수 기준 정렬
+            const sorted = Object.entries(managerSampleTypes)
+                .map(([name, data]) => [name, { ...data, types: data.types.sort((a, b) => b.sales - a.sales) }])
+                .sort((a, b) => b[1].count - a[1].count)
+                .slice(0, 15);
+
+            // 요약 정보
+            const summaryEl = document.getElementById('stManagerTypeSummary');
+            if (summaryEl && sorted.length > 0) {
+                const avgTypes = sorted.reduce((s, [_, d]) => s + d.count, 0) / sorted.length;
+                const maxTypes = sorted[0][1].count;
+                const maxManager = sorted[0][0];
+                let html = `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">TOP: <strong>${maxManager}</strong> (${maxTypes}개)</span>`;
+                html += `<span style="white-space:nowrap;background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">평균: <strong>${avgTypes.toFixed(1)}개</strong></span>`;
+                html += `<span style="white-space:nowrap;background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">담당자: <strong>${sorted.length}명</strong></span>`;
+                summaryEl.innerHTML = html;
+            }
+
+            document.getElementById('stManagerTypeBadge').textContent = `TOP ${sorted.length}`;
+
+            const colors = sorted.map((_, i) => `hsl(${(i * 25) % 360}, 70%, 50%)`);
+
+            charts.stManagerType = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: sorted.map(([name]) => name.length > 6 ? name.substring(0, 6) + '..' : name),
+                    datasets: [{
+                        label: '유형 수',
+                        data: sorted.map(([_, d]) => d.count),
+                        backgroundColor: colors.map(c => c.replace('50%)', '50%, 0.7)')),
+                        borderColor: colors,
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterBody: function(context) {
+                                    const idx = context[0].dataIndex;
+                                    const [name, data] = sorted[idx];
+                                    const top3 = data.types.slice(0, 3);
+                                    return ['', '주요 유형:'].concat(top3.map(t => `  • ${t.name}: ${formatCurrency(t.sales)}`));
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { stepSize: 1, callback: v => v + '개' } }
+                    }
+                }
+            });
+        }
+
+        // 지속적인 거래 검체유형 테이블
+        function updateSTContinuousTradeTable() {
+            const tbody = document.querySelector('#stContinuousTradeTable tbody');
+            if (!tbody) return;
+
+            const data = currentData.client_sample_type_months || [];
+            const summaryEl = document.getElementById('stContinuousTradeSummary');
+            document.getElementById('stContinuousTradeBadge').textContent = `${data.length}건`;
+
+            // 요약 정보
+            if (summaryEl && data.length > 0) {
+                const avg = data.reduce((s, d) => s + d.monthCount, 0) / data.length;
+                const over6 = data.filter(d => d.monthCount >= 6).length;
+                const over12 = data.filter(d => d.monthCount >= 12).length;
+                let html = `<span style="white-space:nowrap;background:#d1fae5;padding:4px 10px;border-radius:4px;color:#059669;">12개월+: <strong>${over12}건</strong></span>`;
+                html += `<span style="white-space:nowrap;background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">6개월+: <strong>${over6}건</strong></span>`;
+                html += `<span style="white-space:nowrap;background:#fef08a;padding:4px 10px;border-radius:4px;color:#854d0e;">평균: <strong>${avg.toFixed(1)}개월</strong></span>`;
+                summaryEl.innerHTML = html;
+            }
+
+            tbody.innerHTML = data.slice(0, 50).map(d => {
+                const monthCountColor = d.monthCount >= 12 ? '#059669' : d.monthCount >= 6 ? '#3b82f6' : '#f59e0b';
+                const monthsStr = d.months.map(m => m + '월').join(', ');
+                return `<tr>
+                    <td style="font-weight:600;">${d.client.length > 15 ? d.client.substring(0, 15) + '..' : d.client}</td>
+                    <td><span style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:11px;">${d.sample_type.length > 12 ? d.sample_type.substring(0, 12) + '..' : d.sample_type}</span></td>
+                    <td class="text-right"><span style="color:${monthCountColor};font-weight:700;">${d.monthCount}개월</span></td>
+                    <td class="text-right">${formatCurrency(d.sales)}</td>
+                    <td class="text-right">${d.count.toLocaleString()}건</td>
+                    <td style="font-size:11px;color:#64748b;">${monthsStr}</td>
+                </tr>`;
             }).join('');
         }
 
