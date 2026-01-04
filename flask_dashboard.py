@@ -1167,6 +1167,10 @@ def process_data(data, purpose_filter=None):
     by_defect_month = {}
     by_defect_purpose = {}  # 부적합-검사목적별 데이터
     by_defect_purpose_month = {}  # 부적합-검사목적별-월별 데이터
+    by_defect_manager = {}  # 부적합-담당자별 데이터
+    by_defect_client = {}  # 부적합-업체별 데이터
+    by_defect_season = {}  # 부적합-계절별 데이터
+    defect_monthly_total = {}  # 부적합 월별 총 건수
     by_purpose_month = {}  # 목적별-월별 데이터
     by_region = {}  # 지역별 데이터
     by_region_manager = {}  # 지역-담당자별 데이터
@@ -1425,6 +1429,55 @@ def process_data(data, purpose_filter=None):
                 if month not in by_defect_month[defect]:
                     by_defect_month[defect][month] = 0
                 by_defect_month[defect][month] += 1
+
+                # 월별 총 부적합 건수
+                if month not in defect_monthly_total:
+                    defect_monthly_total[month] = {'count': 0, 'by_purpose': {}}
+                defect_monthly_total[month]['count'] += 1
+                if purpose:
+                    if purpose not in defect_monthly_total[month]['by_purpose']:
+                        defect_monthly_total[month]['by_purpose'][purpose] = 0
+                    defect_monthly_total[month]['by_purpose'][purpose] += 1
+
+                # 계절별 부적합
+                season = '봄' if month in [3, 4, 5] else '여름' if month in [6, 7, 8] else '가을' if month in [9, 10, 11] else '겨울'
+                if season not in by_defect_season:
+                    by_defect_season[season] = {'count': 0, 'months': set(), 'defects': {}, 'by_purpose': {}}
+                by_defect_season[season]['count'] += 1
+                by_defect_season[season]['months'].add(month)
+                if defect not in by_defect_season[season]['defects']:
+                    by_defect_season[season]['defects'][defect] = 0
+                by_defect_season[season]['defects'][defect] += 1
+                if purpose:
+                    if purpose not in by_defect_season[season]['by_purpose']:
+                        by_defect_season[season]['by_purpose'][purpose] = 0
+                    by_defect_season[season]['by_purpose'][purpose] += 1
+
+            # 부적합항목-담당자별
+            if manager and manager != '미지정':
+                if manager not in by_defect_manager:
+                    by_defect_manager[manager] = {'count': 0, 'defects': {}, 'by_purpose': {}}
+                by_defect_manager[manager]['count'] += 1
+                if defect not in by_defect_manager[manager]['defects']:
+                    by_defect_manager[manager]['defects'][defect] = 0
+                by_defect_manager[manager]['defects'][defect] += 1
+                if purpose:
+                    if purpose not in by_defect_manager[manager]['by_purpose']:
+                        by_defect_manager[manager]['by_purpose'][purpose] = 0
+                    by_defect_manager[manager]['by_purpose'][purpose] += 1
+
+            # 부적합항목-업체별
+            if client and client != '미지정':
+                if client not in by_defect_client:
+                    by_defect_client[client] = {'count': 0, 'defects': {}, 'by_purpose': {}}
+                by_defect_client[client]['count'] += 1
+                if defect not in by_defect_client[client]['defects']:
+                    by_defect_client[client]['defects'][defect] = 0
+                by_defect_client[client]['defects'][defect] += 1
+                if purpose:
+                    if purpose not in by_defect_client[client]['by_purpose']:
+                        by_defect_client[client]['by_purpose'][purpose] = 0
+                    by_defect_client[client]['by_purpose'][purpose] += 1
 
             # 부적합항목-검사목적별
             if purpose:
@@ -1793,6 +1846,10 @@ def process_data(data, purpose_filter=None):
         'by_defect_month': {d: sorted(months.items()) for d, months in by_defect_month.items()},
         'by_defect_purpose': {p: sorted(defects.items(), key=lambda x: x[1]['count'], reverse=True)[:30] for p, defects in by_defect_purpose.items()},
         'by_defect_purpose_month': {p: {d: sorted(months.items()) for d, months in defects.items()} for p, defects in by_defect_purpose_month.items()},
+        'by_defect_manager': [(m, {'count': d['count'], 'defects': sorted(d['defects'].items(), key=lambda x: x[1], reverse=True)[:10], 'by_purpose': d['by_purpose']}) for m, d in sorted(by_defect_manager.items(), key=lambda x: x[1]['count'], reverse=True)[:30]],
+        'by_defect_client': [(c, {'count': d['count'], 'defects': sorted(d['defects'].items(), key=lambda x: x[1], reverse=True)[:10], 'by_purpose': d['by_purpose']}) for c, d in sorted(by_defect_client.items(), key=lambda x: x[1]['count'], reverse=True)[:50]],
+        'by_defect_season': {s: {'count': d['count'], 'months': list(d['months']), 'defects': sorted(d['defects'].items(), key=lambda x: x[1], reverse=True)[:10], 'by_purpose': d['by_purpose']} for s, d in by_defect_season.items()},
+        'defect_monthly_total': {m: {'count': d['count'], 'by_purpose': d['by_purpose']} for m, d in sorted(defect_monthly_total.items())},
         'by_purpose_month': {p: {m: {'sales': d['sales'], 'count': d['count'], 'by_manager': d.get('by_manager', {})} for m, d in months.items()} for p, months in by_purpose_month.items()},
         'manager_top_clients': manager_top_clients,
         'high_efficiency': [(c, {'sales': d['sales'], 'count': d['count'], 'avg': d['sales']/d['count'] if d['count'] > 0 else 0})
@@ -5402,17 +5459,113 @@ HTML_TEMPLATE = '''
 
         <!-- 부적합 탭 -->
         <div id="defect" class="tab-content">
-            <div class="content-grid">
+            <!-- KPI 요약 -->
+            <div class="kpi-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                <div class="kpi-card" style="background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border: 1px solid #fecaca; border-radius: 12px; padding: 16px; text-align: center;">
+                    <div style="font-size: 12px; color: #991b1b; font-weight: 600;">📛 총 부적합</div>
+                    <div id="defectTotalCount" style="font-size: 28px; font-weight: 700; color: #dc2626;">0건</div>
+                </div>
+                <div class="kpi-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #fcd34d; border-radius: 12px; padding: 16px; text-align: center;">
+                    <div style="font-size: 12px; color: #92400e; font-weight: 600;">📅 최다 발생월</div>
+                    <div id="defectPeakMonth" style="font-size: 28px; font-weight: 700; color: #d97706;">-</div>
+                </div>
+                <div class="kpi-card" style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #a7f3d0; border-radius: 12px; padding: 16px; text-align: center;">
+                    <div style="font-size: 12px; color: #065f46; font-weight: 600;">🌡️ 최다 계절</div>
+                    <div id="defectPeakSeason" style="font-size: 28px; font-weight: 700; color: #059669;">-</div>
+                </div>
+                <div class="kpi-card" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1px solid #bfdbfe; border-radius: 12px; padding: 16px; text-align: center;">
+                    <div style="font-size: 12px; color: #1e40af; font-weight: 600;">🏆 1위 항목</div>
+                    <div id="defectTopItem" style="font-size: 18px; font-weight: 700; color: #2563eb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">-</div>
+                </div>
+            </div>
+
+            <!-- 검사목적 필터 -->
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding: 12px 16px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 12px; border: 1px solid #e2e8f0;">
+                <span style="font-size: 13px; font-weight: 600; color: #475569;">🎯 검사목적 필터</span>
+                <select id="defectPurposeFilter" onchange="updateDefectCharts()" style="padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 13px; background: white; min-width: 150px;">
+                    <option value="전체">전체</option>
+                </select>
+            </div>
+
+            <!-- 1행: 월별 추이 + 계절별 -->
+            <div class="content-grid" style="margin-bottom: 20px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📈 월별 부적합 추이</div>
+                        <div class="card-badge" id="defectMonthlyBadge">-</div>
+                    </div>
+                    <div class="card-body"><div class="chart-container"><canvas id="defectMonthlyChart"></canvas></div></div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">🌸 계절별 부적합</div>
+                        <div class="card-badge" id="defectSeasonBadge">-</div>
+                    </div>
+                    <div class="card-body"><div class="chart-container"><canvas id="defectSeasonChart"></canvas></div></div>
+                </div>
+            </div>
+
+            <!-- 2행: 항목별 차트 + 항목별 상세 -->
+            <div class="content-grid" style="margin-bottom: 20px;">
                 <div class="card">
                     <div class="card-header"><div class="card-title">📊 부적합 항목별 현황</div></div>
                     <div class="card-body"><div class="chart-container"><canvas id="defectChart"></canvas></div></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><div class="card-title">📋 부적합 상세</div></div>
+                    <div class="card-header"><div class="card-title">📋 부적합 항목 상세</div></div>
                     <div class="card-body">
-                        <div class="scroll-table">
+                        <div class="scroll-table" style="max-height: 350px;">
                             <table class="data-table" id="defectTable">
                                 <thead><tr><th>부적합항목</th><th class="text-right">건수</th><th>비중</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3행: 담당자별 + 업체별 -->
+            <div class="content-grid" style="margin-bottom: 20px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">👤 담당자별 부적합</div>
+                        <div class="card-badge" id="defectManagerBadge">-</div>
+                    </div>
+                    <div class="card-body"><div class="chart-container"><canvas id="defectManagerChart"></canvas></div></div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">🏢 업체별 부적합 순위</div>
+                        <div class="card-badge" id="defectClientBadge">TOP 20</div>
+                    </div>
+                    <div class="card-body">
+                        <div class="scroll-table" style="max-height: 350px;">
+                            <table class="data-table" id="defectClientTable">
+                                <thead><tr><th>순위</th><th>업체명</th><th class="text-right">건수</th><th>주요 부적합 항목</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4행: 검사목적별 부적합 항목 -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">🎯 검사목적별 부적합 항목 분석</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <select id="defectPurposeDetailFilter" onchange="updateDefectByPurposeDetail()" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 12px; background: white; min-width: 140px;">
+                            <option value="">검사목적 선택</option>
+                        </select>
+                        <div class="card-badge" id="defectPurposeDetailBadge">-</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="content-grid">
+                        <div><canvas id="defectPurposeDetailChart"></canvas></div>
+                        <div class="scroll-table" style="max-height: 300px;">
+                            <table class="data-table" id="defectPurposeDetailTable">
+                                <thead><tr><th>부적합항목</th><th class="text-right">건수</th><th>비중</th><th>월별 추이</th></tr></thead>
                                 <tbody></tbody>
                             </table>
                         </div>
@@ -19525,17 +19678,421 @@ HTML_TEMPLATE = '''
         }
 
         function updateDefectTab() {
-            const defects = currentData.by_defect || [];
-            const total = defects.reduce((s, d) => s + d[1].count, 0) || 1;
+            // 드롭다운 초기화
+            const purposeFilter = document.getElementById('defectPurposeFilter');
+            const purposeDetailFilter = document.getElementById('defectPurposeDetailFilter');
+            const purposes = currentData.purposes || [];
 
+            // 드롭다운 옵션 설정
+            if (purposeFilter.options.length <= 1) {
+                purposes.forEach(p => {
+                    if (p && p !== '접수취소') {
+                        purposeFilter.add(new Option(p, p));
+                        purposeDetailFilter.add(new Option(p, p));
+                    }
+                });
+            }
+
+            updateDefectCharts();
+
+            // 첫 번째 검사목적으로 상세 분석 초기화
+            if (purposeDetailFilter.options.length > 1 && !purposeDetailFilter.value) {
+                purposeDetailFilter.selectedIndex = 1;
+                updateDefectByPurposeDetail();
+            }
+        }
+
+        function updateDefectCharts() {
+            const purposeFilter = document.getElementById('defectPurposeFilter').value;
+            const isFiltered = purposeFilter && purposeFilter !== '전체';
+
+            // 필터된 데이터 가져오기
+            let defects, defectManagers, defectClients, defectSeason, defectMonthly;
+
+            if (isFiltered) {
+                // 검사목적별 필터된 부적합 데이터
+                const byPurpose = currentData.by_defect_purpose || {};
+                const purposeDefects = byPurpose[purposeFilter] || [];
+                defects = purposeDefects.map(([name, data]) => [name, data]);
+
+                // 담당자별 (필터된)
+                const allManagers = currentData.by_defect_manager || [];
+                defectManagers = allManagers.map(([name, data]) => {
+                    const purposeCount = data.by_purpose?.[purposeFilter] || 0;
+                    return [name, { count: purposeCount, defects: data.defects }];
+                }).filter(([_, data]) => data.count > 0).sort((a, b) => b[1].count - a[1].count);
+
+                // 업체별 (필터된)
+                const allClients = currentData.by_defect_client || [];
+                defectClients = allClients.map(([name, data]) => {
+                    const purposeCount = data.by_purpose?.[purposeFilter] || 0;
+                    return [name, { count: purposeCount, defects: data.defects }];
+                }).filter(([_, data]) => data.count > 0).sort((a, b) => b[1].count - a[1].count);
+
+                // 계절별 (필터된)
+                const allSeasons = currentData.by_defect_season || {};
+                defectSeason = {};
+                Object.entries(allSeasons).forEach(([season, data]) => {
+                    const purposeCount = data.by_purpose?.[purposeFilter] || 0;
+                    if (purposeCount > 0) {
+                        defectSeason[season] = { count: purposeCount, months: data.months, defects: data.defects };
+                    }
+                });
+
+                // 월별 (필터된)
+                const allMonthly = currentData.defect_monthly_total || {};
+                defectMonthly = {};
+                Object.entries(allMonthly).forEach(([month, data]) => {
+                    const purposeCount = data.by_purpose?.[purposeFilter] || 0;
+                    defectMonthly[month] = { count: purposeCount };
+                });
+            } else {
+                defects = currentData.by_defect || [];
+                defectManagers = currentData.by_defect_manager || [];
+                defectClients = currentData.by_defect_client || [];
+                defectSeason = currentData.by_defect_season || {};
+                defectMonthly = currentData.defect_monthly_total || {};
+            }
+
+            const total = defects.reduce((s, d) => s + (d[1].count || 0), 0) || 1;
+
+            // KPI 업데이트
+            document.getElementById('defectTotalCount').textContent = total.toLocaleString() + '건';
+
+            // 최다 발생월
+            const monthlyEntries = Object.entries(defectMonthly).sort((a, b) => b[1].count - a[1].count);
+            const peakMonth = monthlyEntries.length > 0 ? monthlyEntries[0][0] + '월' : '-';
+            document.getElementById('defectPeakMonth').textContent = peakMonth;
+
+            // 최다 계절
+            const seasonEntries = Object.entries(defectSeason).sort((a, b) => b[1].count - a[1].count);
+            const peakSeason = seasonEntries.length > 0 ? seasonEntries[0][0] : '-';
+            document.getElementById('defectPeakSeason').textContent = peakSeason;
+
+            // 1위 항목
+            const topItem = defects.length > 0 ? defects[0][0] : '-';
+            document.getElementById('defectTopItem').textContent = topItem;
+            document.getElementById('defectTopItem').title = topItem;
+
+            // 1. 월별 추이 차트
+            updateDefectMonthlyChart(defectMonthly);
+
+            // 2. 계절별 차트
+            updateDefectSeasonChart(defectSeason);
+
+            // 3. 항목별 차트
+            updateDefectItemChart(defects);
+
+            // 4. 항목별 테이블
+            updateDefectItemTable(defects, total);
+
+            // 5. 담당자별 차트
+            updateDefectManagerChart(defectManagers);
+
+            // 6. 업체별 테이블
+            updateDefectClientTable(defectClients);
+        }
+
+        function updateDefectMonthlyChart(monthlyData) {
+            const months = [];
+            const counts = [];
+            for (let i = 1; i <= 12; i++) {
+                months.push(i + '월');
+                counts.push(monthlyData[i]?.count || 0);
+            }
+            const total = counts.reduce((s, c) => s + c, 0);
+            document.getElementById('defectMonthlyBadge').textContent = '총 ' + total.toLocaleString() + '건';
+
+            const ctx = document.getElementById('defectMonthlyChart').getContext('2d');
+            if (charts.defectMonthly) charts.defectMonthly.destroy();
+            charts.defectMonthly = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: '부적합 건수',
+                        data: counts,
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#ef4444'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function updateDefectSeasonChart(seasonData) {
+            const seasonOrder = ['봄', '여름', '가을', '겨울'];
+            const seasonColors = {
+                '봄': '#f472b6', '여름': '#34d399', '가을': '#fbbf24', '겨울': '#60a5fa'
+            };
+            const labels = [];
+            const data = [];
+            const colors = [];
+
+            seasonOrder.forEach(s => {
+                if (seasonData[s]) {
+                    labels.push(s);
+                    data.push(seasonData[s].count);
+                    colors.push(seasonColors[s]);
+                }
+            });
+
+            const total = data.reduce((s, c) => s + c, 0);
+            document.getElementById('defectSeasonBadge').textContent = '총 ' + total.toLocaleString() + '건';
+
+            const ctx = document.getElementById('defectSeasonChart').getContext('2d');
+            if (charts.defectSeason) charts.defectSeason.destroy();
+            charts.defectSeason = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const percent = (value / total * 100).toFixed(1);
+                                    return context.label + ': ' + value.toLocaleString() + '건 (' + percent + '%)';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateDefectItemChart(defects) {
+            const top10 = defects.slice(0, 10);
             const ctx = document.getElementById('defectChart').getContext('2d');
             if (charts.defect) charts.defect.destroy();
-            charts.defect = new Chart(ctx, { type: 'bar', data: { labels: defects.slice(0, 10).map(d => d[0]), datasets: [{ data: defects.slice(0, 10).map(d => d[1].count), backgroundColor: 'rgba(239, 68, 68, 0.8)', borderRadius: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
+            charts.defect = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: top10.map(d => d[0].length > 10 ? d[0].substring(0, 10) + '..' : d[0]),
+                    datasets: [{
+                        data: top10.map(d => d[1].count),
+                        backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+        }
 
+        function updateDefectItemTable(defects, total) {
             const tbody = document.querySelector('#defectTable tbody');
             tbody.innerHTML = defects.map(d => {
                 const percent = (d[1].count / total * 100).toFixed(1);
-                return `<tr><td><strong>${d[0]}</strong></td><td class="text-right">${d[1].count.toLocaleString()}</td><td><div class="progress-cell"><div class="progress-bar" style="background: var(--danger-light);"><div class="progress-fill" style="width: ${percent}%; background: var(--danger);"></div></div><span class="progress-value">${percent}%</span></div></td></tr>`;
+                return `<tr>
+                    <td><strong>${d[0]}</strong></td>
+                    <td class="text-right">${d[1].count.toLocaleString()}</td>
+                    <td><div class="progress-cell"><div class="progress-bar" style="background: var(--danger-light);"><div class="progress-fill" style="width: ${percent}%; background: var(--danger);"></div></div><span class="progress-value">${percent}%</span></div></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function updateDefectManagerChart(managers) {
+            const top15 = managers.slice(0, 15);
+            document.getElementById('defectManagerBadge').textContent = managers.length + '명';
+
+            const ctx = document.getElementById('defectManagerChart').getContext('2d');
+            if (charts.defectManager) charts.defectManager.destroy();
+
+            // 담당자별 부적합 차트 - 오버레이 툴팁
+            const getOrCreateTooltip = () => {
+                let tooltipEl = document.getElementById('defectManagerTooltip');
+                if (!tooltipEl) {
+                    tooltipEl = document.createElement('div');
+                    tooltipEl.id = 'defectManagerTooltip';
+                    tooltipEl.style.cssText = 'position:fixed;pointer-events:none;background:#1e293b;color:#f8fafc;padding:12px;border-radius:8px;font-size:12px;z-index:9999;max-width:280px;box-shadow:0 10px 25px rgba(0,0,0,0.3);transition:opacity 0.15s;';
+                    document.body.appendChild(tooltipEl);
+                }
+                return tooltipEl;
+            };
+
+            const externalTooltipHandler = (context) => {
+                const { chart, tooltip } = context;
+                const tooltipEl = getOrCreateTooltip();
+
+                if (tooltip.opacity === 0) {
+                    tooltipEl.style.opacity = 0;
+                    return;
+                }
+
+                const dataIndex = tooltip.dataPoints?.[0]?.dataIndex;
+                if (dataIndex === undefined) return;
+
+                const [name, data] = top15[dataIndex];
+                const topDefects = data.defects?.slice(0, 5) || [];
+                const maxDefect = topDefects.length > 0 ? topDefects[0][1] : 1;
+
+                let html = `
+                    <div style="border-bottom: 1px solid #475569; padding-bottom: 8px; margin-bottom: 8px;">
+                        <div style="font-size: 14px; font-weight: 700;">👤 ${name}</div>
+                        <div style="color: #94a3b8;">부적합 건수: ${data.count.toLocaleString()}건</div>
+                    </div>
+                    <div style="font-size: 11px; color: #cbd5e1; margin-bottom: 6px;">📋 주요 부적합 항목</div>
+                `;
+
+                topDefects.forEach(([defect, count]) => {
+                    const pct = (count / maxDefect * 100).toFixed(0);
+                    html += `
+                        <div style="margin: 4px 0;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                                <span style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${defect}</span>
+                                <span style="color: #f87171; font-weight: 600;">${count}건</span>
+                            </div>
+                            <div style="background: #334155; border-radius: 4px; height: 4px; overflow: hidden;">
+                                <div style="width: ${pct}%; height: 100%; background: #f87171;"></div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                tooltipEl.innerHTML = html;
+                tooltipEl.style.opacity = 1;
+
+                const pos = chart.canvas.getBoundingClientRect();
+                tooltipEl.style.left = pos.left + tooltip.caretX + 15 + 'px';
+                tooltipEl.style.top = pos.top + tooltip.caretY + 'px';
+            };
+
+            charts.defectManager = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: top15.map(d => d[0]),
+                    datasets: [{
+                        data: top15.map(d => d[1].count),
+                        backgroundColor: top15.map((_, i) => `hsla(${i * 24}, 70%, 60%, 0.8)`),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: false, external: externalTooltipHandler }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                        x: { grid: { display: false }, ticks: { maxRotation: 45 } }
+                    }
+                }
+            });
+        }
+
+        function updateDefectClientTable(clients) {
+            const top20 = clients.slice(0, 20);
+            document.getElementById('defectClientBadge').textContent = 'TOP ' + top20.length;
+
+            const tbody = document.querySelector('#defectClientTable tbody');
+            tbody.innerHTML = top20.map(([name, data], idx) => {
+                const topDefect = data.defects?.slice(0, 2).map(([d, _]) => d.length > 8 ? d.substring(0, 8) + '..' : d).join(', ') || '-';
+                const bgColor = idx % 2 === 0 ? '#fff' : '#f8fafc';
+                return `<tr style="background: ${bgColor};">
+                    <td style="text-align: center; font-weight: 700; color: ${idx < 3 ? '#ef4444' : '#64748b'};">${idx + 1}</td>
+                    <td style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${name}">${name}</td>
+                    <td class="text-right" style="font-weight: 600; color: #ef4444;">${data.count.toLocaleString()}건</td>
+                    <td style="font-size: 11px; color: #64748b;">${topDefect}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function updateDefectByPurposeDetail() {
+            const purpose = document.getElementById('defectPurposeDetailFilter').value;
+            if (!purpose) return;
+
+            const byPurpose = currentData.by_defect_purpose || {};
+            const byPurposeMonth = currentData.by_defect_purpose_month || {};
+
+            const defects = byPurpose[purpose] || [];
+            const monthData = byPurposeMonth[purpose] || {};
+
+            const total = defects.reduce((s, d) => s + d[1].count, 0) || 1;
+            document.getElementById('defectPurposeDetailBadge').textContent = total.toLocaleString() + '건';
+
+            // 차트
+            const top10 = defects.slice(0, 10);
+            const ctx = document.getElementById('defectPurposeDetailChart').getContext('2d');
+            if (charts.defectPurposeDetail) charts.defectPurposeDetail.destroy();
+            charts.defectPurposeDetail = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: top10.map(d => d[0].length > 12 ? d[0].substring(0, 12) + '..' : d[0]),
+                    datasets: [{
+                        data: top10.map(d => d[1].count),
+                        backgroundColor: 'rgba(139, 92, 246, 0.8)',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+
+            // 테이블
+            const renderMonthDots = (defectName) => {
+                const defectMonths = monthData[defectName] || {};
+                let dots = '';
+                for (let i = 1; i <= 12; i++) {
+                    const count = defectMonths[i] || 0;
+                    const hasMonth = count > 0;
+                    const color = hasMonth ? '#ef4444' : '#e2e8f0';
+                    dots += `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin:0 1px;" title="${i}월: ${count}건"></span>`;
+                }
+                return dots;
+            };
+
+            const tbody = document.querySelector('#defectPurposeDetailTable tbody');
+            tbody.innerHTML = defects.slice(0, 20).map((d, idx) => {
+                const percent = (d[1].count / total * 100).toFixed(1);
+                const bgColor = idx % 2 === 0 ? '#fff' : '#f8fafc';
+                return `<tr style="background: ${bgColor};">
+                    <td style="font-weight: 600; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${d[0]}">${d[0]}</td>
+                    <td class="text-right" style="color: #8b5cf6; font-weight: 600;">${d[1].count.toLocaleString()}</td>
+                    <td style="color: #64748b;">${percent}%</td>
+                    <td style="white-space: nowrap;">${renderMonthDots(d[0])}</td>
+                </tr>`;
             }).join('');
         }
 
