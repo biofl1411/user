@@ -21799,7 +21799,7 @@ def debug_food_item_data():
 
         # 샘플 데이터 조회
         cursor.execute('''
-            SELECT 접수번호, 접수일자, 검사목적, 항목명, 항목수수료, 결과입력자
+            SELECT id, 접수일자, 검사목적, 항목명, 항목수수료, 결과입력자, 업체명
             FROM food_item_data
             WHERE year = ? AND 검사목적 = ? AND 항목명 = ?
             LIMIT 10
