@@ -5337,11 +5337,23 @@ HTML_TEMPLATE = '''
                     <div class="section-title">🧪 검체 유형별 현황</div>
                     <div class="section-badge" id="sampleTypeCount">0개 유형</div>
                 </div>
-                <!-- 정렬 버튼 -->
-                <div style="display: flex; gap: 8px; margin: 12px 0 16px 0; flex-wrap: wrap;">
-                    <button class="btn btn-primary btn-sm" onclick="sortSampleTypeCards('sales')" id="stSortSales">💰 매출순</button>
-                    <button class="btn btn-secondary btn-sm" onclick="sortSampleTypeCards('count')" id="stSortCount">📋 건수순</button>
-                    <button class="btn btn-secondary btn-sm" onclick="sortSampleTypeCards('avgSales')" id="stSortAvg">💵 건당매출순</button>
+                <!-- 필터 & 정렬 툴바 -->
+                <div style="display: flex; align-items: center; gap: 16px; margin: 12px 0 16px 0; flex-wrap: wrap; padding: 12px 16px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 12px; border: 1px solid #e2e8f0;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 13px; font-weight: 600; color: #475569;">🎯 검사목적</span>
+                        <select id="stPurposeFilter" onchange="filterSampleTypeByPurpose()" style="padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; font-size: 13px; min-width: 140px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                            <option value="전체">전체</option>
+                        </select>
+                    </div>
+                    <div style="height: 24px; width: 1px; background: #cbd5e1;"></div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 13px; font-weight: 600; color: #475569;">정렬</span>
+                        <div style="display: flex; gap: 6px;">
+                            <button onclick="sortSampleTypeCards('sales')" id="stSortSales" style="padding: 8px 14px; border-radius: 8px; border: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 4px rgba(99,102,241,0.3); transition: all 0.2s;">💰 매출순</button>
+                            <button onclick="sortSampleTypeCards('count')" id="stSortCount" style="padding: 8px 14px; border-radius: 8px; border: 1px solid #e2e8f0; background: white; color: #64748b; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;">📋 건수순</button>
+                            <button onclick="sortSampleTypeCards('avgSales')" id="stSortAvg" style="padding: 8px 14px; border-radius: 8px; border: 1px solid #e2e8f0; background: white; color: #64748b; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;">💵 건당매출순</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="purpose-kpi-grid" id="sampleTypeGrid"></div>
             </section>
@@ -19136,6 +19148,12 @@ HTML_TEMPLATE = '''
 
             document.getElementById('sampleTypeCount').textContent = types.length + '개 유형';
 
+            // 검사목적 드롭다운 채우기
+            const purposeSelect = document.getElementById('stPurposeFilter');
+            const purposes = currentData.purposes || [];
+            purposeSelect.innerHTML = '<option value="전체">전체</option>' +
+                purposes.map(p => `<option value="${p}">${p}</option>`).join('');
+
             const grid = document.getElementById('sampleTypeGrid');
             grid.innerHTML = types.map((t, i) => `
                 <div class="purpose-kpi-card" data-color="${colors[i % colors.length]}">
@@ -19164,17 +19182,18 @@ HTML_TEMPLATE = '''
 
         // 검체유형 정렬 상태
         let stSortType = 'sales';
+        let stPurposeFilter = '전체';
 
         function sortSampleTypeCards(sortType) {
             stSortType = sortType;
 
-            // 버튼 스타일 업데이트
-            document.querySelectorAll('[id^="stSort"]').forEach(btn => {
-                btn.classList.remove('btn-primary');
-                btn.classList.add('btn-secondary');
-            });
-            document.getElementById(`stSort${sortType.charAt(0).toUpperCase() + sortType.slice(1)}`).classList.remove('btn-secondary');
-            document.getElementById(`stSort${sortType.charAt(0).toUpperCase() + sortType.slice(1)}`).classList.add('btn-primary');
+            // 버튼 스타일 업데이트 (인라인 스타일)
+            const activeStyle = 'padding: 8px 14px; border-radius: 8px; border: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 4px rgba(99,102,241,0.3); transition: all 0.2s;';
+            const inactiveStyle = 'padding: 8px 14px; border-radius: 8px; border: 1px solid #e2e8f0; background: white; color: #64748b; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;';
+
+            document.getElementById('stSortSales').style.cssText = sortType === 'sales' ? activeStyle : inactiveStyle;
+            document.getElementById('stSortCount').style.cssText = sortType === 'count' ? activeStyle : inactiveStyle;
+            document.getElementById('stSortAvg').style.cssText = sortType === 'avgSales' ? activeStyle : inactiveStyle;
 
             // 데이터 정렬
             let types = [...(currentData.by_sample_type || [])];
@@ -19195,6 +19214,59 @@ HTML_TEMPLATE = '''
             const icons = ['📦', '🌿', '🥩', '🐟', '💊', '🥤', '🧀', '📁'];
             const grid = document.getElementById('sampleTypeGrid');
             grid.innerHTML = types.map((t, i) => {
+                const avgSales = t[1].count > 0 ? Math.round(t[1].sales / t[1].count) : 0;
+                return `
+                <div class="purpose-kpi-card" data-color="${colors[i % colors.length]}">
+                    <div class="purpose-kpi-header"><div class="purpose-kpi-icon">${icons[i % icons.length]}</div></div>
+                    <div class="purpose-kpi-name">${t[0]}</div>
+                    <div class="purpose-kpi-value">${formatCurrency(t[1].sales)}</div>
+                    <div class="purpose-kpi-sub">건수: ${t[1].count.toLocaleString()}건 · 💰 ${formatCurrency(avgSales)}/건</div>
+                </div>
+            `}).join('');
+        }
+
+        // 검사목적별 필터링
+        function filterSampleTypeByPurpose() {
+            const filter = document.getElementById('stPurposeFilter').value;
+            stPurposeFilter = filter;
+
+            if (filter === '전체') {
+                // 전체 데이터로 복원
+                sortSampleTypeCards(stSortType);
+                return;
+            }
+
+            // sample_type_purposes에서 해당 목적이 있는 검체유형만 필터링
+            const stPurposes = currentData.sample_type_purposes || {};
+            let filteredTypes = [];
+
+            Object.entries(stPurposes).forEach(([sampleType, purposes]) => {
+                const matchPurpose = purposes.find(p => p.name === filter);
+                if (matchPurpose) {
+                    filteredTypes.push([sampleType, { sales: matchPurpose.sales, count: matchPurpose.count }]);
+                }
+            });
+
+            // 정렬 적용
+            if (stSortType === 'sales') {
+                filteredTypes.sort((a, b) => b[1].sales - a[1].sales);
+            } else if (stSortType === 'count') {
+                filteredTypes.sort((a, b) => b[1].count - a[1].count);
+            } else if (stSortType === 'avgSales') {
+                filteredTypes.sort((a, b) => {
+                    const avgA = a[1].count > 0 ? a[1].sales / a[1].count : 0;
+                    const avgB = b[1].count > 0 ? b[1].sales / b[1].count : 0;
+                    return avgB - avgA;
+                });
+            }
+
+            // 그리드 업데이트
+            const colors = ['blue', 'green', 'orange', 'purple', 'pink', 'info', 'teal', 'amber'];
+            const icons = ['📦', '🌿', '🥩', '🐟', '💊', '🥤', '🧀', '📁'];
+            const grid = document.getElementById('sampleTypeGrid');
+            document.getElementById('sampleTypeCount').textContent = filteredTypes.length + '개 유형';
+
+            grid.innerHTML = filteredTypes.map((t, i) => {
                 const avgSales = t[1].count > 0 ? Math.round(t[1].sales / t[1].count) : 0;
                 return `
                 <div class="purpose-kpi-card" data-color="${colors[i % colors.length]}">
