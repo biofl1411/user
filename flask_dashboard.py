@@ -18250,9 +18250,6 @@ HTML_TEMPLATE = '''
             updateRegionHeatmapTable(regionData);
             updateRegionTopClientTable(regions, clients);
             updateManagerRegionTable(managerRegions);
-
-            // 맵 클릭 이벤트 등록
-            setupMapClickEvents(regionData, clients);
         }
 
         function updateRegionKPIs(mainRegions, growthRegions, newRegions, weakRegions) {
