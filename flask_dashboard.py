@@ -5337,14 +5337,14 @@ HTML_TEMPLATE = '''
                     <div class="section-title">🧪 검체 유형별 현황</div>
                     <div class="section-badge" id="sampleTypeCount">0개 유형</div>
                 </div>
+                <!-- 정렬 버튼 -->
+                <div style="display: flex; gap: 8px; margin: 12px 0 16px 0; flex-wrap: wrap;">
+                    <button class="btn btn-primary btn-sm" onclick="sortSampleTypeCards('sales')" id="stSortSales">💰 매출순</button>
+                    <button class="btn btn-secondary btn-sm" onclick="sortSampleTypeCards('count')" id="stSortCount">📋 건수순</button>
+                    <button class="btn btn-secondary btn-sm" onclick="sortSampleTypeCards('avgSales')" id="stSortAvg">💵 건당매출순</button>
+                </div>
                 <div class="purpose-kpi-grid" id="sampleTypeGrid"></div>
             </section>
-            <!-- 정렬 버튼 -->
-            <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
-                <button class="btn btn-primary btn-sm" onclick="sortSampleTypeCards('sales')" id="stSortSales">💰 매출순</button>
-                <button class="btn btn-secondary btn-sm" onclick="sortSampleTypeCards('count')" id="stSortCount">📋 건수순</button>
-                <button class="btn btn-secondary btn-sm" onclick="sortSampleTypeCards('avgSales')" id="stSortAvg">💵 건당매출순</button>
-            </div>
 
             <div class="content-grid">
                 <div class="card">
