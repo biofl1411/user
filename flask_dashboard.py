@@ -18012,14 +18012,20 @@ HTML_TEMPLATE = '''
 
                             const data = sigunguSalesData[id] || { count: 0 };
 
+                            // 배경색에 따른 글씨 색상 결정
+                            const bgColor = getColorByCount(data.count);
+                            const isDarkBg = ['#dc2626', '#f97316'].includes(bgColor);  // 빨강, 주황
+                            const textColor = isDarkBg ? '#ffffff' : '#1e293b';
+                            const countColor = isDarkBg ? '#ffffff' : '#7c2d12';  // 흰색 또는 진한 갈색
+
                             // 지역명 라벨
                             svg.append('text')
                                 .attr('x', cx)
-                                .attr('y', cy - 8)
+                                .attr('y', cy - 10)
                                 .attr('text-anchor', 'middle')
-                                .attr('font-size', '13px')
+                                .attr('font-size', '14px')
                                 .attr('font-weight', '700')
-                                .attr('fill', '#1e293b')
+                                .attr('fill', textColor)
                                 .attr('pointer-events', 'none')
                                 .text(id.length > 5 ? id.substring(0, 4) + '..' : id);
 
@@ -18027,11 +18033,11 @@ HTML_TEMPLATE = '''
                             if (data.count > 0) {
                                 svg.append('text')
                                     .attr('x', cx)
-                                    .attr('y', cy + 10)
+                                    .attr('y', cy + 8)
                                     .attr('text-anchor', 'middle')
-                                    .attr('font-size', '12px')
-                                    .attr('font-weight', '700')
-                                    .attr('fill', '#dc2626')
+                                    .attr('font-size', '13px')
+                                    .attr('font-weight', '800')
+                                    .attr('fill', countColor)
                                     .attr('pointer-events', 'none')
                                     .text(data.count + '개');
                             }
