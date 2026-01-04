@@ -974,6 +974,10 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
     by_month_fee = {}  # 월별-수수료 데이터
     by_purpose_sample_type = {}  # 검사목적별-검체유형 매핑
     by_purpose_sample_type_item = {}  # 검사목적+검체유형별-항목 매핑
+    by_purpose_item = {}  # 검사목적별-항목 데이터 (NEW)
+    by_analyzer = {}  # 분석자별 데이터 (NEW)
+    by_analyzer_item = {}  # 분석자별-항목 데이터 (NEW)
+    by_month_item = {}  # 월별-항목 데이터 (NEW)
 
     purposes = set()
     sample_types = set()
@@ -1099,9 +1103,61 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
             by_month_fee[month]['count'] += 1
             by_month_fee[month]['fee'] += fee
 
+            # 월별-항목 (NEW)
+            if item_name:
+                if month not in by_month_item:
+                    by_month_item[month] = {}
+                if item_name not in by_month_item[month]:
+                    by_month_item[month][item_name] = 0
+                by_month_item[month][item_name] += 1
+
+        # 검사목적별-항목 (NEW)
+        if purpose and item_name:
+            if purpose not in by_purpose_item:
+                by_purpose_item[purpose] = {}
+            if item_name not in by_purpose_item[purpose]:
+                by_purpose_item[purpose][item_name] = {'count': 0, 'fee': 0}
+            by_purpose_item[purpose][item_name]['count'] += 1
+            by_purpose_item[purpose][item_name]['fee'] += fee
+
+        # 분석자별 집계 (NEW)
+        if analyzer and analyzer != '미지정':
+            if analyzer not in by_analyzer:
+                by_analyzer[analyzer] = {'count': 0, 'fee': 0, 'items': set()}
+            by_analyzer[analyzer]['count'] += 1
+            by_analyzer[analyzer]['fee'] += fee
+            if item_name:
+                by_analyzer[analyzer]['items'].add(item_name)
+
+            # 분석자별-항목 (NEW)
+            if item_name:
+                if analyzer not in by_analyzer_item:
+                    by_analyzer_item[analyzer] = {}
+                if item_name not in by_analyzer_item[analyzer]:
+                    by_analyzer_item[analyzer][item_name] = 0
+                by_analyzer_item[analyzer][item_name] += 1
+
+    # 항목별 분석자 다양성 계산 (NEW)
+    item_analyzer_diversity = []
+    for item_name, analyzers_data in by_item_analyzer.items():
+        analyzer_count = len(analyzers_data)
+        total_count = sum(a['count'] for a in analyzers_data.values())
+        top_analyzers = sorted(analyzers_data.items(), key=lambda x: x[1]['count'], reverse=True)[:5]
+        item_analyzer_diversity.append({
+            'item': item_name,
+            'total_count': total_count,
+            'analyzer_count': analyzer_count,
+            'top_analyzers': [(name, data['count']) for name, data in top_analyzers]
+        })
+    item_analyzer_diversity.sort(key=lambda x: x['total_count'], reverse=True)
+
     # 결과 정리
     by_item_sorted = sorted(by_item.items(), key=lambda x: x[1]['count'], reverse=True)
     by_manager_sorted = sorted(by_manager_item.items(), key=lambda x: x[1]['fee'], reverse=True)
+
+    # 분석자별 정렬
+    by_analyzer_sorted = [(name, {'count': d['count'], 'fee': d['fee'], 'item_count': len(d['items'])})
+                          for name, d in sorted(by_analyzer.items(), key=lambda x: x[1]['count'], reverse=True)]
 
     return {
         'by_item': by_item_sorted,
@@ -1120,7 +1176,16 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
         'total_fee': total_fee,
         'total_count': total_count,
         'by_purpose_sample_type': {k: sorted(v) for k, v in by_purpose_sample_type.items()},
-        'by_purpose_sample_type_item': {k: sorted(v) for k, v in by_purpose_sample_type_item.items()}
+        'by_purpose_sample_type_item': {k: sorted(v) for k, v in by_purpose_sample_type_item.items()},
+        # 새로운 데이터
+        'by_purpose_item': {k: sorted(v.items(), key=lambda x: x[1]['count'], reverse=True)[:30]
+                           for k, v in by_purpose_item.items()},
+        'by_analyzer': by_analyzer_sorted[:30],
+        'by_analyzer_item': {k: sorted(v.items(), key=lambda x: x[1], reverse=True)[:20]
+                            for k, v in by_analyzer_item.items()},
+        'by_month_item': {m: sorted(items.items(), key=lambda x: x[1], reverse=True)[:10]
+                         for m, items in by_month_item.items()},
+        'item_analyzer_diversity': item_analyzer_diversity[:50]
     }
 
 def extract_region(address):
@@ -5646,20 +5711,102 @@ HTML_TEMPLATE = '''
 
         <!-- 검사항목 탭 -->
         <div id="foodItem" class="tab-content">
-            <div class="content-grid">
+            <!-- KPI 요약 -->
+            <div class="kpi-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                <div class="kpi-card" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1px solid #bfdbfe; border-radius: 12px; padding: 16px; text-align: center;">
+                    <div style="font-size: 12px; color: #1e40af; font-weight: 600;">🔬 총 검사건수</div>
+                    <div id="foodItemTotalCount" style="font-size: 26px; font-weight: 700; color: #2563eb;">0건</div>
+                </div>
+                <div class="kpi-card" style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #a7f3d0; border-radius: 12px; padding: 16px; text-align: center;">
+                    <div style="font-size: 12px; color: #065f46; font-weight: 600;">💰 총 수수료</div>
+                    <div id="foodItemTotalFee" style="font-size: 26px; font-weight: 700; color: #059669;">0원</div>
+                </div>
+                <div class="kpi-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #fcd34d; border-radius: 12px; padding: 16px; text-align: center;">
+                    <div style="font-size: 12px; color: #92400e; font-weight: 600;">📋 항목 종류</div>
+                    <div id="foodItemTypeCount" style="font-size: 26px; font-weight: 700; color: #d97706;">0개</div>
+                </div>
+                <div class="kpi-card" style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); border: 1px solid #d8b4fe; border-radius: 12px; padding: 16px; text-align: center;">
+                    <div style="font-size: 12px; color: #6b21a8; font-weight: 600;">👨‍🔬 분석자 수</div>
+                    <div id="foodItemAnalyzerCount" style="font-size: 26px; font-weight: 700; color: #7c3aed;">0명</div>
+                </div>
+            </div>
+
+            <!-- 1행: 검사목적별 항목 건수 -->
+            <div class="card" style="margin-bottom: 20px;">
+                <div class="card-header">
+                    <div class="card-title">🎯 검사목적별 검사항목 현황</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <select id="foodItemPurposeFilter" onchange="updateFoodItemByPurpose()" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 12px; background: white; min-width: 140px;">
+                            <option value="">검사목적 선택</option>
+                        </select>
+                        <div class="card-badge" id="foodItemPurposeBadge">-</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="content-grid">
+                        <div><canvas id="foodItemPurposeChart"></canvas></div>
+                        <div class="scroll-table" style="max-height: 350px;">
+                            <table class="data-table" id="foodItemPurposeTable">
+                                <thead><tr><th>항목명</th><th class="text-right">건수</th><th class="text-right">수수료</th><th>비중</th></tr></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2행: 항목 TOP + 항목별 분석자 다양성 -->
+            <div class="content-grid" style="margin-bottom: 20px;">
                 <div class="card">
                     <div class="card-header"><div class="card-title">📊 검사항목 TOP 15</div></div>
                     <div class="card-body"><div class="chart-container"><canvas id="foodItemChart"></canvas></div></div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><div class="card-title">📋 검사항목별 상세</div><div class="card-badge" id="foodItemTableBadge">0개</div></div>
+                    <div class="card-header">
+                        <div class="card-title">👥 항목별 분석자 현황</div>
+                        <div class="card-badge" id="foodItemDiversityBadge">-</div>
+                    </div>
                     <div class="card-body">
-                        <div class="scroll-table">
-                            <table class="data-table" id="foodItemTable">
-                                <thead><tr><th>항목명</th><th class="text-right">매출액</th><th class="text-right">건수</th><th>비중</th></tr></thead>
+                        <div class="scroll-table" style="max-height: 350px;">
+                            <table class="data-table" id="foodItemDiversityTable">
+                                <thead><tr><th>항목명</th><th class="text-right">처리건수</th><th class="text-right">분석자수</th><th>주요 분석자</th></tr></thead>
                                 <tbody></tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3행: 분석자별 현황 + 월별 추이 -->
+            <div class="content-grid" style="margin-bottom: 20px;">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">👨‍🔬 분석자별 처리 현황</div>
+                        <div class="card-badge" id="foodItemAnalyzerBadge">-</div>
+                    </div>
+                    <div class="card-body"><div class="chart-container"><canvas id="foodItemAnalyzerChart"></canvas></div></div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📈 월별 검사 추이</div>
+                        <div class="card-badge" id="foodItemMonthlyBadge">-</div>
+                    </div>
+                    <div class="card-body"><div class="chart-container"><canvas id="foodItemMonthlyChart"></canvas></div></div>
+                </div>
+            </div>
+
+            <!-- 4행: 상세 테이블 -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">📋 검사항목별 상세</div>
+                    <div class="card-badge" id="foodItemTableBadge">0개</div>
+                </div>
+                <div class="card-body">
+                    <div class="scroll-table" style="max-height: 400px;">
+                        <table class="data-table" id="foodItemTable">
+                            <thead><tr><th>항목명</th><th class="text-right">건수</th><th class="text-right">수수료</th><th>비중</th><th>월별 추이</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -5910,6 +6057,7 @@ HTML_TEMPLATE = '''
             updateSampleTypeTab();
             updateDefectTab();
             updatePurposeTab();
+            updateFoodItemTab();
         }
 
         function updateSummary() {
@@ -20946,6 +21094,324 @@ HTML_TEMPLATE = '''
                     <td class="text-right">${formatCurrency(d.sales)}</td>
                     <td class="text-right">${d.count.toLocaleString()}건</td>
                     <td style="font-size:11px;color:#64748b;">${monthsStr}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // ========================================
+        // 검사항목 탭 기능
+        // ========================================
+        let foodItemData = null;
+
+        async function updateFoodItemTab() {
+            const year = document.getElementById('yearSelect').value;
+            try {
+                const res = await fetch(`/api/food_item?year=${year}`);
+                foodItemData = await res.json();
+
+                // KPI 업데이트
+                document.getElementById('foodItemTotalCount').textContent = (foodItemData.total_count || 0).toLocaleString() + '건';
+                document.getElementById('foodItemTotalFee').textContent = formatCurrency(foodItemData.total_fee || 0);
+                document.getElementById('foodItemTypeCount').textContent = (foodItemData.items?.length || 0) + '개';
+                document.getElementById('foodItemAnalyzerCount').textContent = (foodItemData.analyzers?.length || 0) + '명';
+
+                // 검사목적 드롭다운 초기화
+                const purposeFilter = document.getElementById('foodItemPurposeFilter');
+                if (purposeFilter.options.length <= 1) {
+                    (foodItemData.purposes || []).forEach(p => {
+                        if (p && p !== '접수취소') purposeFilter.add(new Option(p, p));
+                    });
+                }
+
+                // 첫 번째 목적으로 초기화
+                if (purposeFilter.options.length > 1 && !purposeFilter.value) {
+                    purposeFilter.selectedIndex = 1;
+                }
+
+                // 차트/테이블 업데이트
+                updateFoodItemByPurpose();
+                updateFoodItemChart();
+                updateFoodItemDiversityTable();
+                updateFoodItemAnalyzerChart();
+                updateFoodItemMonthlyChart();
+                updateFoodItemDetailTable();
+            } catch (e) {
+                console.log('검사항목 데이터 로드 실패:', e);
+            }
+        }
+
+        // 검사목적별 항목 현황
+        function updateFoodItemByPurpose() {
+            if (!foodItemData) return;
+            const purpose = document.getElementById('foodItemPurposeFilter').value;
+            const byPurposeItem = foodItemData.by_purpose_item || {};
+            const items = byPurposeItem[purpose] || [];
+
+            const total = items.reduce((s, [n, d]) => s + d.count, 0);
+            const totalFee = items.reduce((s, [n, d]) => s + d.fee, 0);
+            document.getElementById('foodItemPurposeBadge').textContent = items.length + '개 항목 · ' + total.toLocaleString() + '건';
+
+            // 차트 업데이트
+            const ctx = document.getElementById('foodItemPurposeChart');
+            if (!ctx) return;
+            if (charts.foodItemPurpose) charts.foodItemPurpose.destroy();
+
+            const top15 = items.slice(0, 15);
+            const colors = top15.map((_, i) => `hsl(${210 + i * 8}, 70%, ${55 - i * 2}%)`);
+
+            charts.foodItemPurpose = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: top15.map(([n]) => n.length > 12 ? n.substring(0, 12) + '..' : n),
+                    datasets: [{
+                        label: '건수',
+                        data: top15.map(([_, d]) => d.count),
+                        backgroundColor: colors.map(c => c.replace(')', ', 0.7)')),
+                        borderColor: colors,
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: (ctx) => {
+                                    const [name, data] = top15[ctx.dataIndex];
+                                    const pct = total > 0 ? (data.count / total * 100).toFixed(1) : 0;
+                                    return `수수료: ${formatCurrency(data.fee)} (${pct}%)`;
+                                }
+                            }
+                        }
+                    },
+                    scales: { x: { beginAtZero: true } }
+                }
+            });
+
+            // 테이블 업데이트
+            const tbody = document.querySelector('#foodItemPurposeTable tbody');
+            tbody.innerHTML = items.slice(0, 30).map(([name, data], idx) => {
+                const pct = total > 0 ? (data.count / total * 100).toFixed(1) : 0;
+                return `<tr>
+                    <td style="font-weight:500;">${name}</td>
+                    <td class="text-right" style="font-weight:600;color:#2563eb;">${data.count.toLocaleString()}건</td>
+                    <td class="text-right" style="color:#64748b;">${formatCurrency(data.fee)}</td>
+                    <td><span style="background:#dbeafe;padding:2px 8px;border-radius:4px;font-size:11px;color:#1e40af;">${pct}%</span></td>
+                </tr>`;
+            }).join('');
+        }
+
+        // 검사항목 TOP 15 차트
+        function updateFoodItemChart() {
+            if (!foodItemData) return;
+            const ctx = document.getElementById('foodItemChart');
+            if (!ctx) return;
+            if (charts.foodItem) charts.foodItem.destroy();
+
+            const items = (foodItemData.by_item || []).slice(0, 15);
+            const total = items.reduce((s, [_, d]) => s + d.count, 0);
+
+            const colors = items.map((_, i) => {
+                const hue = (220 + i * 10) % 360;
+                return `hsl(${hue}, 65%, 55%)`;
+            });
+
+            charts.foodItem = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: items.map(([n]) => n.length > 10 ? n.substring(0, 10) + '..' : n),
+                    datasets: [{
+                        label: '건수',
+                        data: items.map(([_, d]) => d.count),
+                        backgroundColor: colors.map(c => c.replace(')', ', 0.75)')),
+                        borderColor: colors,
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: (ctx) => {
+                                    const [name, data] = items[ctx.dataIndex];
+                                    const pct = total > 0 ? (data.count / total * 100).toFixed(1) : 0;
+                                    return `수수료: ${formatCurrency(data.fee)} (${pct}%)`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true },
+                        x: { ticks: { maxRotation: 45, minRotation: 45 } }
+                    }
+                }
+            });
+        }
+
+        // 항목별 분석자 다양성 테이블
+        function updateFoodItemDiversityTable() {
+            if (!foodItemData) return;
+            const diversity = foodItemData.item_analyzer_diversity || [];
+            document.getElementById('foodItemDiversityBadge').textContent = diversity.length + '개 항목';
+
+            const tbody = document.querySelector('#foodItemDiversityTable tbody');
+            tbody.innerHTML = diversity.slice(0, 30).map(d => {
+                const topAnalyzers = d.top_analyzers || [];
+                const analyzerTags = topAnalyzers.slice(0, 3).map(([name, cnt]) =>
+                    `<span style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:10px;margin-right:4px;">${name}(${cnt})</span>`
+                ).join('');
+
+                return `<tr>
+                    <td style="font-weight:500;">${d.item}</td>
+                    <td class="text-right" style="font-weight:600;color:#2563eb;">${d.total_count.toLocaleString()}건</td>
+                    <td class="text-right"><span style="background:${d.analyzer_count > 1 ? '#fef3c7' : '#f1f5f9'};padding:2px 8px;border-radius:4px;font-size:12px;color:${d.analyzer_count > 1 ? '#92400e' : '#64748b'};">${d.analyzer_count}명</span></td>
+                    <td style="font-size:11px;">${analyzerTags}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // 분석자별 처리 현황 차트
+        function updateFoodItemAnalyzerChart() {
+            if (!foodItemData) return;
+            const ctx = document.getElementById('foodItemAnalyzerChart');
+            if (!ctx) return;
+            if (charts.foodItemAnalyzer) charts.foodItemAnalyzer.destroy();
+
+            const analyzers = (foodItemData.by_analyzer || []).slice(0, 12);
+            const total = analyzers.reduce((s, [_, d]) => s + d.count, 0);
+            document.getElementById('foodItemAnalyzerBadge').textContent = (foodItemData.analyzers?.length || 0) + '명 분석자';
+
+            const colors = analyzers.map((_, i) => {
+                const hue = (140 + i * 20) % 360;
+                return `hsl(${hue}, 60%, 50%)`;
+            });
+
+            charts.foodItemAnalyzer = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: analyzers.map(([n]) => n.length > 8 ? n.substring(0, 8) + '..' : n),
+                    datasets: [{
+                        label: '처리건수',
+                        data: analyzers.map(([_, d]) => d.count),
+                        backgroundColor: colors.map(c => c.replace(')', ', 0.75)')),
+                        borderColor: colors,
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterLabel: (ctx) => {
+                                    const [name, data] = analyzers[ctx.dataIndex];
+                                    const pct = total > 0 ? (data.count / total * 100).toFixed(1) : 0;
+                                    return `항목 종류: ${data.item_count || 0}개, 비중: ${pct}%`;
+                                }
+                            }
+                        }
+                    },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        // 월별 검사 추이 차트
+        function updateFoodItemMonthlyChart() {
+            if (!foodItemData) return;
+            const ctx = document.getElementById('foodItemMonthlyChart');
+            if (!ctx) return;
+            if (charts.foodItemMonthly) charts.foodItemMonthly.destroy();
+
+            const monthFee = foodItemData.by_month_fee || [];
+            const months = [];
+            const fees = [];
+            for (let i = 1; i <= 12; i++) {
+                months.push(i + '월');
+                const found = monthFee.find(([m]) => parseInt(m) === i);
+                fees.push(found ? found[1] : 0);
+            }
+
+            const total = fees.reduce((s, f) => s + f, 0);
+            document.getElementById('foodItemMonthlyBadge').textContent = '총 ' + formatCurrency(total);
+
+            charts.foodItemMonthly = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: '수수료',
+                        data: fees,
+                        borderColor: '#6366f1',
+                        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointBackgroundColor: '#6366f1',
+                        pointRadius: 5,
+                        pointHoverRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => formatCurrency(ctx.raw)
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: v => formatCurrency(v) }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 검사항목별 상세 테이블
+        function updateFoodItemDetailTable() {
+            if (!foodItemData) return;
+            const items = foodItemData.by_item || [];
+            const total = items.reduce((s, [_, d]) => s + d.count, 0);
+            document.getElementById('foodItemTableBadge').textContent = items.length + '개';
+
+            const tbody = document.querySelector('#foodItemTable tbody');
+            tbody.innerHTML = items.slice(0, 50).map(([name, data], idx) => {
+                const pct = total > 0 ? (data.count / total * 100).toFixed(1) : 0;
+
+                // 월별 추이 (미니 바)
+                const byMonth = foodItemData.by_item_month?.[name] || [];
+                const maxMonth = Math.max(...byMonth.map(([_, c]) => c), 1);
+                const monthBars = [];
+                for (let m = 1; m <= 12; m++) {
+                    const found = byMonth.find(([mon]) => parseInt(mon) === m);
+                    const cnt = found ? found[1] : 0;
+                    const h = cnt > 0 ? Math.max(4, (cnt / maxMonth) * 20) : 2;
+                    const color = cnt > 0 ? '#6366f1' : '#e2e8f0';
+                    monthBars.push(`<div style="width:6px;height:${h}px;background:${color};border-radius:1px;" title="${m}월: ${cnt}건"></div>`);
+                }
+
+                return `<tr>
+                    <td style="font-weight:500;">${name}</td>
+                    <td class="text-right" style="font-weight:600;color:#2563eb;">${data.count.toLocaleString()}건</td>
+                    <td class="text-right" style="color:#64748b;">${formatCurrency(data.fee)}</td>
+                    <td><span style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:11px;">${pct}%</span></td>
+                    <td><div style="display:flex;gap:2px;align-items:flex-end;height:24px;">${monthBars.join('')}</div></td>
                 </tr>`;
             }).join('');
         }
