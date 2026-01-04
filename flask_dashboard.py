@@ -18021,9 +18021,9 @@ HTML_TEMPLATE = '''
                             // 지역명 라벨
                             svg.append('text')
                                 .attr('x', cx)
-                                .attr('y', cy - 10)
+                                .attr('y', cy - 14)
                                 .attr('text-anchor', 'middle')
-                                .attr('font-size', '14px')
+                                .attr('font-size', '28px')
                                 .attr('font-weight', '700')
                                 .attr('fill', textColor)
                                 .attr('pointer-events', 'none')
@@ -18033,9 +18033,9 @@ HTML_TEMPLATE = '''
                             if (data.count > 0) {
                                 svg.append('text')
                                     .attr('x', cx)
-                                    .attr('y', cy + 8)
+                                    .attr('y', cy + 18)
                                     .attr('text-anchor', 'middle')
-                                    .attr('font-size', '13px')
+                                    .attr('font-size', '26px')
                                     .attr('font-weight', '800')
                                     .attr('fill', countColor)
                                     .attr('pointer-events', 'none')
