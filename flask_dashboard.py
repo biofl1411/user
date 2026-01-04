@@ -467,6 +467,8 @@ HTML_TEMPLATE = '''
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>경영지표 대시보드</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Malgun Gothic', sans-serif; background: #f5f7fa; padding: 20px; }
@@ -744,6 +746,15 @@ HTML_TEMPLATE = '''
             </div>
         </div>
         <div class="charts">
+            <div class="chart-container full">
+                <h3>🗺️ 지역별 매출 지도</h3>
+                <div id="regionMap" style="height: 450px; border-radius: 8px; z-index: 1;"></div>
+                <div style="margin-top: 10px; font-size: 12px; color: #666;">
+                    <span>● 원 크기: 매출 규모 | 클릭하면 상세 정보 표시</span>
+                </div>
+            </div>
+        </div>
+        <div class="charts" style="margin-top: 20px;">
             <div class="chart-container">
                 <h3>📍 지역별 매출 TOP 15</h3>
                 <canvas id="regionChart"></canvas>
@@ -991,6 +1002,29 @@ HTML_TEMPLATE = '''
         let charts = {};
         let currentData = null;
         let compareData = null;
+        let regionMap = null;
+        let mapMarkers = [];
+
+        // 시/도 중심 좌표
+        const SIDO_COORDS = {
+            '서울': [37.5665, 126.9780],
+            '부산': [35.1796, 129.0756],
+            '대구': [35.8714, 128.6014],
+            '인천': [37.4563, 126.7052],
+            '광주': [35.1595, 126.8526],
+            '대전': [36.3504, 127.3845],
+            '울산': [35.5384, 129.3114],
+            '세종': [36.4800, 127.2890],
+            '경기': [37.4138, 127.5183],
+            '강원': [37.8228, 128.1555],
+            '충북': [36.6357, 127.4914],
+            '충남': [36.5184, 126.8000],
+            '전북': [35.7175, 127.1530],
+            '전남': [34.8679, 126.9910],
+            '경북': [36.4919, 128.8889],
+            '경남': [35.4606, 128.2132],
+            '제주': [33.4996, 126.5312]
+        };
 
         function formatCurrency(value) {
             if (value >= 100000000) return (value/100000000).toFixed(1) + '억';
@@ -1105,6 +1139,11 @@ HTML_TEMPLATE = '''
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
             document.querySelector(`[onclick="showTab('${tabId}')"]`).classList.add('active');
             document.getElementById(tabId).classList.add('active');
+
+            // 지역 탭일 때 지도 크기 재조정
+            if (tabId === 'region' && regionMap) {
+                setTimeout(() => regionMap.invalidateSize(), 100);
+            }
         }
 
         function getDateParams(prefix = '') {
@@ -1232,6 +1271,7 @@ HTML_TEMPLATE = '''
                 ['updateBranchTable', updateBranchTable],
                 ['updateClientTables', updateClientTables],
                 ['updateRegionTables', updateRegionTables],
+                ['updateRegionMap', updateRegionMap],
                 ['updateRegionSelects', updateRegionSelects],
                 ['updatePurposeCheckboxes', updatePurposeCheckboxes],
                 ['updatePurposeTab', updatePurposeTab],
@@ -1584,6 +1624,125 @@ HTML_TEMPLATE = '''
             });
         }
 
+        // 지도 함수들
+        function initRegionMap() {
+            if (regionMap) return; // 이미 초기화됨
+
+            const mapContainer = document.getElementById('regionMap');
+            if (!mapContainer) return;
+
+            // 한국 중심 좌표
+            regionMap = L.map('regionMap').setView([36.5, 127.5], 7);
+
+            // CartoDB Positron 타일 (밝은 테마)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap, © CartoDB',
+                maxZoom: 18
+            }).addTo(regionMap);
+        }
+
+        function updateRegionMap() {
+            if (!regionMap) {
+                initRegionMap();
+                if (!regionMap) return;
+            }
+
+            // 기존 마커 제거
+            mapMarkers.forEach(marker => regionMap.removeLayer(marker));
+            mapMarkers = [];
+
+            if (!currentData || !currentData.by_region) return;
+
+            // 담당자 필터 확인
+            const selectedManager = document.getElementById('regionManagerFilter').value;
+            let regionData = currentData.by_region;
+
+            if (selectedManager && currentData.manager_regions && currentData.manager_regions[selectedManager]) {
+                const managerRegions = currentData.manager_regions[selectedManager];
+                regionData = managerRegions.map(r => [r.region, {sales: r.sales, count: r.count, sido: r.sido}]);
+            }
+
+            // 시/도별 매출 집계
+            const sidoSales = {};
+            regionData.forEach(([region, data]) => {
+                // 시/도 추출 (첫 번째 단어)
+                const sido = data.sido || region.split(' ')[0];
+                if (!sidoSales[sido]) {
+                    sidoSales[sido] = { sales: 0, count: 0, regions: [] };
+                }
+                sidoSales[sido].sales += data.sales;
+                sidoSales[sido].count += data.count;
+                sidoSales[sido].regions.push({ name: region, sales: data.sales, count: data.count });
+            });
+
+            // 최대 매출 계산 (원 크기 정규화용)
+            const maxSales = Math.max(...Object.values(sidoSales).map(d => d.sales));
+            if (maxSales === 0) return;
+
+            // 시/도별 원 마커 추가
+            Object.entries(sidoSales).forEach(([sido, data]) => {
+                const coords = SIDO_COORDS[sido];
+                if (!coords) return;
+
+                // 원 크기 계산 (최소 15, 최대 50)
+                const radius = Math.max(15, Math.min(50, (data.sales / maxSales) * 50));
+
+                // 색상 (매출 규모에 따라)
+                const intensity = Math.min(255, Math.floor((data.sales / maxSales) * 255));
+                const color = `rgb(${255 - intensity}, ${100}, ${intensity + 100})`;
+
+                // 원 마커 생성
+                const circle = L.circleMarker(coords, {
+                    radius: radius,
+                    fillColor: '#667eea',
+                    color: '#4a5568',
+                    weight: 2,
+                    opacity: 0.9,
+                    fillOpacity: 0.6
+                }).addTo(regionMap);
+
+                // 팝업 내용 생성
+                const topRegions = data.regions
+                    .sort((a, b) => b.sales - a.sales)
+                    .slice(0, 5)
+                    .map(r => `<tr><td>${r.name}</td><td style="text-align:right">${formatCurrency(r.sales)}</td></tr>`)
+                    .join('');
+
+                const popupContent = `
+                    <div style="min-width: 180px; font-family: 'Malgun Gothic', sans-serif;">
+                        <h4 style="margin: 0 0 8px 0; color: #667eea; border-bottom: 2px solid #667eea; padding-bottom: 5px;">
+                            📍 ${sido}
+                        </h4>
+                        <div style="margin-bottom: 8px;">
+                            <strong>총 매출:</strong> ${formatCurrency(data.sales)}<br>
+                            <strong>총 건수:</strong> ${data.count.toLocaleString()}건
+                        </div>
+                        <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+                            <thead><tr style="background: #f8f9fa;"><th style="text-align:left; padding: 3px;">지역</th><th style="text-align:right; padding: 3px;">매출</th></tr></thead>
+                            <tbody>${topRegions}</tbody>
+                        </table>
+                    </div>
+                `;
+
+                circle.bindPopup(popupContent);
+
+                // 호버 시 하이라이트
+                circle.on('mouseover', function() {
+                    this.setStyle({ fillOpacity: 0.9, weight: 3 });
+                });
+                circle.on('mouseout', function() {
+                    this.setStyle({ fillOpacity: 0.6, weight: 2 });
+                });
+
+                mapMarkers.push(circle);
+            });
+
+            // 지도 크기 재조정 (탭 전환 시 필요)
+            setTimeout(() => {
+                if (regionMap) regionMap.invalidateSize();
+            }, 100);
+        }
+
         // 지역별 함수들
         function initRegionChart() {
             if (!currentData.by_region || currentData.by_region.length === 0) {
@@ -1670,6 +1829,9 @@ HTML_TEMPLATE = '''
                 initRegionChart();
             }
             updateRegionChart(regionData, compareRegionData);
+
+            // 지도 업데이트 (담당자 필터 변경 시)
+            updateRegionMap();
         }
 
         function updateRegionChart(regionData, compareRegionData) {
