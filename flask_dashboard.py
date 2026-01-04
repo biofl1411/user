@@ -4632,6 +4632,7 @@ HTML_TEMPLATE = '''
         let compareData = null;
         let currentTab = 'main';
         let managerTableSort = { column: null, direction: 'desc' };
+        let availableYears = ['2024', '2025'];
 
         // 툴팁 hover 상태 관리 (스크롤 가능하도록)
         const tooltipHoverState = {};
