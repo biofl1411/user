@@ -23215,7 +23215,7 @@ HTML_TEMPLATE = '''
             if (!markdown) return '';
 
             // 줄 단위로 처리
-            const lines = markdown.split('\n');
+            const lines = markdown.split('\\n');
             let html = '';
             let inList = false;
 
