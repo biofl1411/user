@@ -115,6 +115,25 @@ def init_user_db():
         )
     ''')
 
+    # 팀원 테이블 (부서별 인원 관리)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS team_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            position TEXT,
+            duties TEXT,
+            region TEXT,
+            hire_year INTEGER,
+            phone TEXT,
+            email TEXT,
+            notes TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (team_id) REFERENCES teams(id)
+        )
+    ''')
+
     # 시스템 설정 테이블
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS system_settings (
@@ -2871,6 +2890,84 @@ ADMIN_TEMPLATE = '''
         </div>
     </div>
 
+    <!-- 팀원 관리 모달 -->
+    <div class="modal" id="teamMemberModal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3 id="teamMemberModalTitle">팀원 관리</h3>
+                <button class="modal-close" onclick="closeModal('teamMemberModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <span id="teamMemberCount" style="color: #64748b;">총 0명</span>
+                    <button class="btn btn-primary" onclick="showAddMemberForm()">+ 인원 추가</button>
+                </div>
+
+                <!-- 인원 추가/수정 폼 -->
+                <div id="memberFormContainer" style="display: none; background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <input type="hidden" id="editMemberId">
+                    <div class="form-row" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                        <div class="form-group">
+                            <label>이름 *</label>
+                            <input type="text" class="form-control" id="memberName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>직책</label>
+                            <input type="text" class="form-control" id="memberPosition" placeholder="예: 팀장, 과장">
+                        </div>
+                        <!-- 본사 부서용 필드 -->
+                        <div class="form-group headquarters-field">
+                            <label>담당 업무</label>
+                            <input type="text" class="form-control" id="memberDuties" placeholder="예: 회계, 인사관리">
+                        </div>
+                        <!-- 영업/지사용 필드 -->
+                        <div class="form-group sales-field" style="display: none;">
+                            <label>담당 지역</label>
+                            <input type="text" class="form-control" id="memberRegion" placeholder="예: 서울 강남구">
+                        </div>
+                        <div class="form-group sales-field" style="display: none;">
+                            <label>입사년도</label>
+                            <input type="number" class="form-control" id="memberHireYear" placeholder="2020">
+                        </div>
+                        <div class="form-group sales-field" style="display: none;">
+                            <label>연락처</label>
+                            <input type="text" class="form-control" id="memberPhone" placeholder="010-0000-0000">
+                        </div>
+                        <div class="form-group">
+                            <label>이메일</label>
+                            <input type="email" class="form-control" id="memberEmail">
+                        </div>
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label>비고</label>
+                            <input type="text" class="form-control" id="memberNotes">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button class="btn btn-primary" onclick="saveMember()">저장</button>
+                        <button class="btn" onclick="hideMemberForm()">취소</button>
+                    </div>
+                </div>
+
+                <!-- 팀원 목록 테이블 -->
+                <table>
+                    <thead>
+                        <tr id="memberTableHeader">
+                            <th>이름</th>
+                            <th>직책</th>
+                            <th class="headquarters-col">담당 업무</th>
+                            <th class="sales-col" style="display: none;">담당 지역</th>
+                            <th class="sales-col" style="display: none;">입사년도</th>
+                            <th class="sales-col" style="display: none;">연락처</th>
+                            <th>이메일</th>
+                            <th>관리</th>
+                        </tr>
+                    </thead>
+                    <tbody id="teamMembersTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- 목표 추가 모달 -->
     <div class="modal" id="goalModal">
         <div class="modal-content">
@@ -3329,17 +3426,149 @@ ADMIN_TEMPLATE = '''
             // 간단한 필터링
         }
 
-        // 팀 수정
+        // 팀원 관리
+        let currentTeamId = null;
+        let currentTeamCategory = null;
+
         function editTeam(teamId) {
             const team = teamsData.find(t => t.id === teamId);
             if (!team) return;
-            const newName = prompt('팀명:', team.name);
-            if (newName && newName !== team.name) {
-                fetch(`/api/admin/teams/${teamId}`, {
-                    method: 'PUT',
+
+            currentTeamId = teamId;
+            currentTeamCategory = team.category;
+
+            // 모달 제목 설정
+            document.getElementById('teamMemberModalTitle').textContent = team.name + ' - 인원 관리';
+
+            // 부서 유형에 따라 필드 표시/숨김
+            const isHeadquarters = (team.category === '본사');
+            document.querySelectorAll('.headquarters-field, .headquarters-col').forEach(el => {
+                el.style.display = isHeadquarters ? '' : 'none';
+            });
+            document.querySelectorAll('.sales-field, .sales-col').forEach(el => {
+                el.style.display = isHeadquarters ? 'none' : '';
+            });
+
+            // 폼 초기화 및 숨기기
+            hideMemberForm();
+
+            // 팀원 목록 로드
+            loadTeamMembers(teamId);
+
+            // 모달 열기
+            document.getElementById('teamMemberModal').classList.add('show');
+        }
+
+        async function loadTeamMembers(teamId) {
+            try {
+                const res = await fetch(`/api/admin/teams/${teamId}/members`);
+                const data = await res.json();
+                const members = data.members || [];
+                const isHeadquarters = (currentTeamCategory === '본사');
+
+                document.getElementById('teamMemberCount').textContent = '총 ' + members.length + '명';
+
+                document.getElementById('teamMembersTable').innerHTML = members.map(m => `
+                    <tr>
+                        <td>${m.name}</td>
+                        <td>${m.position || '-'}</td>
+                        ${isHeadquarters ? `<td>${m.duties || '-'}</td>` : ''}
+                        ${!isHeadquarters ? `<td>${m.region || '-'}</td>` : ''}
+                        ${!isHeadquarters ? `<td>${m.hire_year || '-'}</td>` : ''}
+                        ${!isHeadquarters ? `<td>${m.phone || '-'}</td>` : ''}
+                        <td>${m.email || '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="editMember(${m.id})">수정</button>
+                            <button class="btn btn-sm" style="background:#ef4444;color:#fff;" onclick="deleteMember(${m.id})">삭제</button>
+                        </td>
+                    </tr>
+                `).join('') || '<tr><td colspan="8" style="text-align:center;color:#94a3b8;">등록된 인원이 없습니다</td></tr>';
+            } catch (e) {
+                console.error('팀원 로드 실패:', e);
+            }
+        }
+
+        function showAddMemberForm() {
+            document.getElementById('editMemberId').value = '';
+            document.getElementById('memberName').value = '';
+            document.getElementById('memberPosition').value = '';
+            document.getElementById('memberDuties').value = '';
+            document.getElementById('memberRegion').value = '';
+            document.getElementById('memberHireYear').value = '';
+            document.getElementById('memberPhone').value = '';
+            document.getElementById('memberEmail').value = '';
+            document.getElementById('memberNotes').value = '';
+            document.getElementById('memberFormContainer').style.display = 'block';
+        }
+
+        function hideMemberForm() {
+            document.getElementById('memberFormContainer').style.display = 'none';
+        }
+
+        async function editMember(memberId) {
+            try {
+                const res = await fetch(`/api/admin/team-members/${memberId}`);
+                const data = await res.json();
+                if (data.member) {
+                    const m = data.member;
+                    document.getElementById('editMemberId').value = m.id;
+                    document.getElementById('memberName').value = m.name || '';
+                    document.getElementById('memberPosition').value = m.position || '';
+                    document.getElementById('memberDuties').value = m.duties || '';
+                    document.getElementById('memberRegion').value = m.region || '';
+                    document.getElementById('memberHireYear').value = m.hire_year || '';
+                    document.getElementById('memberPhone').value = m.phone || '';
+                    document.getElementById('memberEmail').value = m.email || '';
+                    document.getElementById('memberNotes').value = m.notes || '';
+                    document.getElementById('memberFormContainer').style.display = 'block';
+                }
+            } catch (e) {
+                console.error('팀원 정보 로드 실패:', e);
+            }
+        }
+
+        async function saveMember() {
+            const memberId = document.getElementById('editMemberId').value;
+            const data = {
+                team_id: currentTeamId,
+                name: document.getElementById('memberName').value,
+                position: document.getElementById('memberPosition').value,
+                duties: document.getElementById('memberDuties').value,
+                region: document.getElementById('memberRegion').value,
+                hire_year: document.getElementById('memberHireYear').value || null,
+                phone: document.getElementById('memberPhone').value,
+                email: document.getElementById('memberEmail').value,
+                notes: document.getElementById('memberNotes').value
+            };
+
+            if (!data.name) {
+                alert('이름을 입력하세요.');
+                return;
+            }
+
+            try {
+                const url = memberId ? `/api/admin/team-members/${memberId}` : '/api/admin/team-members';
+                const method = memberId ? 'PUT' : 'POST';
+                await fetch(url, {
+                    method,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: newName })
-                }).then(() => loadSettings());
+                    body: JSON.stringify(data)
+                });
+                hideMemberForm();
+                loadTeamMembers(currentTeamId);
+            } catch (e) {
+                console.error('팀원 저장 실패:', e);
+                alert('저장에 실패했습니다.');
+            }
+        }
+
+        async function deleteMember(memberId) {
+            if (!confirm('이 인원을 삭제하시겠습니까?')) return;
+            try {
+                await fetch(`/api/admin/team-members/${memberId}`, { method: 'DELETE' });
+                loadTeamMembers(currentTeamId);
+            } catch (e) {
+                console.error('팀원 삭제 실패:', e);
             }
         }
 
@@ -23756,6 +23985,83 @@ def api_admin_teams():
             "INSERT INTO teams (name, category, parent_id, track_details) VALUES (?, ?, ?, ?)",
             (data.get('name'), data.get('category'), data.get('parent_id'), data.get('track_details', 0))
         )
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+
+@app.route('/api/admin/teams/<int:team_id>/members')
+@admin_required
+def api_admin_team_members(team_id):
+    """팀별 팀원 목록"""
+    conn = get_user_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM team_members WHERE team_id = ? AND is_active = 1 ORDER BY name", (team_id,))
+    members = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({'members': members})
+
+@app.route('/api/admin/team-members', methods=['POST'])
+@admin_required
+def api_admin_team_members_create():
+    """팀원 추가"""
+    conn = get_user_db()
+    cursor = conn.cursor()
+    data = request.get_json()
+    cursor.execute('''
+        INSERT INTO team_members (team_id, name, position, duties, region, hire_year, phone, email, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        data.get('team_id'),
+        data.get('name'),
+        data.get('position'),
+        data.get('duties'),
+        data.get('region'),
+        data.get('hire_year'),
+        data.get('phone'),
+        data.get('email'),
+        data.get('notes')
+    ))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+@app.route('/api/admin/team-members/<int:member_id>', methods=['GET', 'PUT', 'DELETE'])
+@admin_required
+def api_admin_team_member(member_id):
+    """팀원 조회/수정/삭제"""
+    conn = get_user_db()
+    cursor = conn.cursor()
+
+    if request.method == 'GET':
+        cursor.execute("SELECT * FROM team_members WHERE id = ?", (member_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return jsonify({'member': dict(row) if row else None})
+
+    elif request.method == 'PUT':
+        data = request.get_json()
+        cursor.execute('''
+            UPDATE team_members SET
+                name = ?, position = ?, duties = ?, region = ?,
+                hire_year = ?, phone = ?, email = ?, notes = ?
+            WHERE id = ?
+        ''', (
+            data.get('name'),
+            data.get('position'),
+            data.get('duties'),
+            data.get('region'),
+            data.get('hire_year'),
+            data.get('phone'),
+            data.get('email'),
+            data.get('notes'),
+            member_id
+        ))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+
+    elif request.method == 'DELETE':
+        cursor.execute("UPDATE team_members SET is_active = 0 WHERE id = ?", (member_id,))
         conn.commit()
         conn.close()
         return jsonify({'success': True})
