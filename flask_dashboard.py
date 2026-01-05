@@ -19798,11 +19798,11 @@ HTML_TEMPLATE = '''
                 const addr = c[1]?.address || '';
                 if (!addr) return;
 
-                // 식품제조가공업 필터: 시험분야=식품 AND 업체분류=식품 OR 식품,축산
+                // 식품제조가공업 필터: 시험분야="식품" AND 업체분류="식품" OR "식품,축산"
                 const testFields = c[1]?.testFields || [];
                 const companyTypes = c[1]?.companyTypes || [];
-                const hasFood = testFields.some(f => f.includes('식품'));
-                const isFoodCompany = companyTypes.some(t => t === '식품' || t === '식품,축산' || t.includes('식품'));
+                const hasFood = testFields.includes('식품');  // 정확히 "식품" 일치
+                const isFoodCompany = companyTypes.includes('식품') || companyTypes.includes('식품,축산');
                 if (!hasFood || !isFoodCompany) return;
 
                 // 시도 추출 (JavaScript 버전)
@@ -19975,11 +19975,11 @@ HTML_TEMPLATE = '''
                 const addr = c[1]?.address || '';
                 if (!addr) return;
 
-                // 축산물가공업 필터: 시험분야=축산 AND 업체분류=축산 OR 식품,축산
+                // 축산물가공업 필터: 시험분야="축산" AND 업체분류="축산" OR "식품,축산"
                 const testFields = c[1]?.testFields || [];
                 const companyTypes = c[1]?.companyTypes || [];
-                const hasLivestock = testFields.some(f => f.includes('축산'));
-                const isLivestockCompany = companyTypes.some(t => t === '축산' || t === '식품,축산' || t.includes('축산'));
+                const hasLivestock = testFields.includes('축산');  // 정확히 "축산" 일치
+                const isLivestockCompany = companyTypes.includes('축산') || companyTypes.includes('식품,축산');
                 if (!hasLivestock || !isLivestockCompany) return;
 
                 const sidoPatterns = {
