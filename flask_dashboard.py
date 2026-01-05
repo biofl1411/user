@@ -5211,8 +5211,18 @@ HTML_TEMPLATE = '''
         </div>
         <div class="header-right">
             <div class="token-badge">
-                <div class="current">이번달: <span id="thisMonthTokens">0</span> 토큰 | ₩<span id="thisMonthKRW">0</span></div>
-                <div class="prev">저번달: <span id="lastMonthTokens">0</span> 토큰 | ₩<span id="lastMonthKRW">0</span></div>
+                <div class="current">
+                    <span style="opacity:0.8;">이번달</span>
+                    <span style="margin-left:8px;">🎫 <span id="thisMonthTokens">0</span></span>
+                    <span style="margin-left:6px;">💵 $<span id="thisMonthUSD">0</span></span>
+                    <span style="margin-left:6px;">🇰🇷 ₩<span id="thisMonthKRW">0</span></span>
+                </div>
+                <div class="prev">
+                    <span style="opacity:0.8;">지난달</span>
+                    <span style="margin-left:8px;">🎫 <span id="lastMonthTokens">0</span></span>
+                    <span style="margin-left:6px;">💵 $<span id="lastMonthUSD">0</span></span>
+                    <span style="margin-left:6px;">🇰🇷 ₩<span id="lastMonthKRW">0</span></span>
+                </div>
             </div>
             <div class="header-menu-buttons">
                 <button class="header-menu-btn ai-btn" onclick="showTab('aiAnalysis')" title="AI 분석">
@@ -7506,12 +7516,20 @@ HTML_TEMPLATE = '''
                 const res = await fetch('/api/token-usage');
                 const data = await res.json();
                 if (data.this_month) {
-                    document.getElementById('thisMonthTokens').textContent = (data.this_month.tokens || 0).toLocaleString();
-                    document.getElementById('thisMonthKRW').textContent = Math.round(data.this_month.cost_krw || 0).toLocaleString();
+                    const tokens = data.this_month.tokens || 0;
+                    const krw = Math.round(data.this_month.cost_krw || 0);
+                    const usd = data.this_month.cost_usd || (krw / 1450).toFixed(2);
+                    document.getElementById('thisMonthTokens').textContent = tokens.toLocaleString();
+                    document.getElementById('thisMonthUSD').textContent = parseFloat(usd).toFixed(2);
+                    document.getElementById('thisMonthKRW').textContent = krw.toLocaleString();
                 }
                 if (data.last_month) {
-                    document.getElementById('lastMonthTokens').textContent = (data.last_month.tokens || 0).toLocaleString();
-                    document.getElementById('lastMonthKRW').textContent = Math.round(data.last_month.cost_krw || 0).toLocaleString();
+                    const tokens = data.last_month.tokens || 0;
+                    const krw = Math.round(data.last_month.cost_krw || 0);
+                    const usd = data.last_month.cost_usd || (krw / 1450).toFixed(2);
+                    document.getElementById('lastMonthTokens').textContent = tokens.toLocaleString();
+                    document.getElementById('lastMonthUSD').textContent = parseFloat(usd).toFixed(2);
+                    document.getElementById('lastMonthKRW').textContent = krw.toLocaleString();
                 }
             } catch (e) { console.log('토큰 로드 실패', e); }
         }
