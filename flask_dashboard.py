@@ -22813,137 +22813,127 @@ def get_food_item_data():
     return jsonify(processed)
 
 @app.route('/api/collection')
+@login_required
 def get_collection_data():
     """수금 현황 API"""
     from datetime import datetime, date
     year = request.args.get('year', '2025')
 
-    # 데이터 로드
-    data = load_data(year)
+    try:
+        # 데이터 로드
+        data = load_excel_data(year)
+        today = date.today()
+        total_sales = 0
+        paid_amount = 0
+        unpaid_amount = 0
+        collection_days = []
+        by_manager = {}
+        by_month = {}
+        by_type = {}
+        unpaid_list = []
 
-    today = date.today()
-    total_sales = 0
-    paid_amount = 0
-    unpaid_amount = 0
-    collection_days = []  # 수금 기간 리스트
-    by_manager = {}  # 담당별 수금
-    by_month = {}  # 월별 수금
-    by_type = {}  # 입금 구분별
-    unpaid_list = []  # 미수금 목록
+        for row in data:
+            sales = row.get('총금액', 0) or 0
+            if isinstance(sales, str):
+                sales = float(sales.replace(',', '').replace('원', '')) if sales else 0
 
-    for row in data:
-        sales = row.get('총금액', 0) or 0
-        if isinstance(sales, str):
-            sales = float(sales.replace(',', '').replace('원', '')) if sales else 0
+            total_sales += sales
 
-        total_sales += sales
+            manager = str(row.get('영업담당', '') or '').strip() or '미지정'
+            payment_status = str(row.get('입금여부', '') or '').strip()
+            payment_date_str = str(row.get('입금일', '') or '').strip()
+            reception_date_str = str(row.get('접수일자', '') or '').strip()
+            payment_type = str(row.get('입금구분', '') or '').strip() or '기타'
+            company = str(row.get('업체명', '') or '').strip()
 
-        manager = str(row.get('영업담당', '') or '').strip() or '미지정'
-        payment_status = str(row.get('입금여부', '') or '').strip()
-        payment_date_str = str(row.get('입금일', '') or '').strip()
-        reception_date_str = str(row.get('접수일자', '') or '').strip()
-        payment_type = str(row.get('입금구분', '') or '').strip() or '기타'
-        company = str(row.get('업체명', '') or '').strip()
+            if manager not in by_manager:
+                by_manager[manager] = {'total': 0, 'paid': 0, 'unpaid': 0}
+            by_manager[manager]['total'] += sales
 
-        # 담당별 초기화
-        if manager not in by_manager:
-            by_manager[manager] = {'total': 0, 'paid': 0, 'unpaid': 0}
-        by_manager[manager]['total'] += sales
+            if payment_type not in by_type:
+                by_type[payment_type] = 0
 
-        # 입금 구분별
-        if payment_type not in by_type:
-            by_type[payment_type] = 0
+            is_paid = payment_status in ['Y', 'y', '완료', '입금', '입금완료', '수금', '수금완료']
 
-        # 입금 여부 확인
-        is_paid = payment_status in ['Y', 'y', '완료', '입금', '입금완료', '수금', '수금완료']
+            if is_paid and sales > 0:
+                paid_amount += sales
+                by_manager[manager]['paid'] += sales
+                by_type[payment_type] += sales
 
-        if is_paid and sales > 0:
-            paid_amount += sales
-            by_manager[manager]['paid'] += sales
-            by_type[payment_type] += sales
-
-            # 수금 기간 계산
-            try:
-                if reception_date_str and payment_date_str:
-                    reception_date = datetime.strptime(reception_date_str[:10], '%Y-%m-%d').date()
-                    payment_date = datetime.strptime(payment_date_str[:10], '%Y-%m-%d').date()
-                    days = (payment_date - reception_date).days
-                    if 0 <= days <= 365:  # 합리적인 범위
-                        collection_days.append(days)
-
-                    # 월별 수금
-                    month = payment_date.month
-                    if month not in by_month:
-                        by_month[month] = {'paid': 0, 'count': 0}
-                    by_month[month]['paid'] += sales
-                    by_month[month]['count'] += 1
-            except:
-                pass
-        else:
-            unpaid_amount += sales
-            by_manager[manager]['unpaid'] += sales
-
-            # 미수금 목록 추가
-            if sales > 0:
-                elapsed_days = 0
                 try:
-                    if reception_date_str:
+                    if reception_date_str and payment_date_str:
                         reception_date = datetime.strptime(reception_date_str[:10], '%Y-%m-%d').date()
-                        elapsed_days = (today - reception_date).days
+                        payment_date = datetime.strptime(payment_date_str[:10], '%Y-%m-%d').date()
+                        days = (payment_date - reception_date).days
+                        if 0 <= days <= 365:
+                            collection_days.append(days)
+                        month = payment_date.month
+                        if month not in by_month:
+                            by_month[month] = {'paid': 0, 'count': 0}
+                        by_month[month]['paid'] += sales
+                        by_month[month]['count'] += 1
                 except:
                     pass
+            else:
+                unpaid_amount += sales
+                by_manager[manager]['unpaid'] += sales
 
-                unpaid_list.append({
-                    'company': company,
-                    'date': reception_date_str[:10] if reception_date_str else '-',
-                    'amount': sales,
-                    'days': elapsed_days,
-                    'manager': manager
-                })
+                if sales > 0:
+                    elapsed_days = 0
+                    try:
+                        if reception_date_str:
+                            reception_date = datetime.strptime(reception_date_str[:10], '%Y-%m-%d').date()
+                            elapsed_days = (today - reception_date).days
+                    except:
+                        pass
 
-    # 수금 기간 통계
-    avg_days = sum(collection_days) / len(collection_days) if collection_days else 0
-    min_days = min(collection_days) if collection_days else 0
-    max_days = max(collection_days) if collection_days else 0
+                    unpaid_list.append({
+                        'company': company,
+                        'date': reception_date_str[:10] if reception_date_str else '-',
+                        'amount': sales,
+                        'days': elapsed_days,
+                        'manager': manager
+                    })
 
-    # 수금 기간 분포 (구간별)
-    days_distribution = {'0-7일': 0, '8-14일': 0, '15-30일': 0, '31-60일': 0, '60일+': 0}
-    for d in collection_days:
-        if d <= 7:
-            days_distribution['0-7일'] += 1
-        elif d <= 14:
-            days_distribution['8-14일'] += 1
-        elif d <= 30:
-            days_distribution['15-30일'] += 1
-        elif d <= 60:
-            days_distribution['31-60일'] += 1
-        else:
-            days_distribution['60일+'] += 1
+        avg_days = sum(collection_days) / len(collection_days) if collection_days else 0
+        min_days = min(collection_days) if collection_days else 0
+        max_days = max(collection_days) if collection_days else 0
 
-    # 담당별 정렬
-    by_manager_sorted = sorted(by_manager.items(), key=lambda x: x[1]['total'], reverse=True)[:15]
+        days_distribution = {'0-7일': 0, '8-14일': 0, '15-30일': 0, '31-60일': 0, '60일+': 0}
+        for d in collection_days:
+            if d <= 7:
+                days_distribution['0-7일'] += 1
+            elif d <= 14:
+                days_distribution['8-14일'] += 1
+            elif d <= 30:
+                days_distribution['15-30일'] += 1
+            elif d <= 60:
+                days_distribution['31-60일'] += 1
+            else:
+                days_distribution['60일+'] += 1
 
-    # 미수금 목록 정렬 (금액 높은 순)
-    unpaid_list_sorted = sorted(unpaid_list, key=lambda x: x['amount'], reverse=True)[:50]
+        by_manager_sorted = sorted(by_manager.items(), key=lambda x: x[1]['total'], reverse=True)[:15]
+        unpaid_list_sorted = sorted(unpaid_list, key=lambda x: x['amount'], reverse=True)[:50]
+        collection_rate = (paid_amount / total_sales * 100) if total_sales > 0 else 0
 
-    # 수금률
-    collection_rate = (paid_amount / total_sales * 100) if total_sales > 0 else 0
-
-    return jsonify({
-        'year': int(year),
-        'total_sales': total_sales,
-        'paid_amount': paid_amount,
-        'unpaid_amount': unpaid_amount,
-        'collection_rate': round(collection_rate, 1),
-        'avg_days': round(avg_days, 1),
-        'min_days': min_days,
-        'max_days': max_days,
-        'by_manager': by_manager_sorted,
-        'by_month': sorted(by_month.items()),
-        'by_type': sorted(by_type.items(), key=lambda x: x[1], reverse=True),
-        'days_distribution': list(days_distribution.items()),
-        'unpaid_list': unpaid_list_sorted
-    })
+        return jsonify({
+            'year': int(year),
+            'total_sales': total_sales,
+            'paid_amount': paid_amount,
+            'unpaid_amount': unpaid_amount,
+            'collection_rate': round(collection_rate, 1),
+            'avg_days': round(avg_days, 1),
+            'min_days': min_days,
+            'max_days': max_days,
+            'by_manager': by_manager_sorted,
+            'by_month': sorted(by_month.items()),
+            'by_type': sorted(by_type.items(), key=lambda x: x[1], reverse=True),
+            'days_distribution': list(days_distribution.items()),
+            'unpaid_list': unpaid_list_sorted
+        })
+    except Exception as e:
+        print(f"[API] 수금 API 에러: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/food_item/verify')
 def verify_food_item_data():
