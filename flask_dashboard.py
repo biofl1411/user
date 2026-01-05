@@ -337,9 +337,10 @@ GEMINI_API_KEYS = [
 GEMINI_API_KEYS = [k for k in GEMINI_API_KEYS if k]  # 빈 키 제거
 current_api_key_index = 0  # 현재 사용 중인 키 인덱스
 
-# Claude API 설정
-CLAUDE_API_KEY = os.environ.get('CLAUDE_API_KEY', '')  # 환경변수에서 로드
-CLAUDE_MODEL = "claude-opus-4-20250514"  # Opus 4 - 최고 성능 모델
+# Claude API 설정 (경영지표 분석용)
+# 서버에서 환경변수 CLAUDE_API_KEY 설정 필요: export CLAUDE_API_KEY="your-api-key"
+CLAUDE_API_KEY = os.environ.get('CLAUDE_API_KEY', '')
+CLAUDE_MODEL = "claude-sonnet-4-20250514"  # Claude Sonnet 4 - 경영 분석용
 USE_CLAUDE = bool(CLAUDE_API_KEY)  # API 키가 있으면 Claude 사용
 
 # 경로 설정 - 절대 경로 사용
@@ -5175,20 +5176,28 @@ HTML_TEMPLATE = '''
         .ai-header h2 { font-size: 24px; margin-bottom: 8px; }
         .ai-header p { opacity: 0.9; font-size: 14px; }
         .ai-input-container { background: white; border-radius: 16px; padding: 20px; }
-        .ai-input-wrapper { display: flex; gap: 12px; margin-bottom: 16px; }
-        .ai-input { flex: 1; padding: 14px 18px; border: 2px solid var(--gray-200); border-radius: 12px; font-size: 15px; outline: none; }
+        .ai-input-wrapper { display: flex; gap: 12px; margin-bottom: 16px; align-items: flex-start; }
+        .ai-input { flex: 1; padding: 14px 18px; border: 2px solid var(--gray-200); border-radius: 12px; font-size: 15px; outline: none; resize: vertical; font-family: inherit; min-height: 80px; }
         .ai-input:focus { border-color: var(--primary); }
-        .ai-btn { padding: 14px 28px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .ai-btn { padding: 14px 28px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
         .ai-btn:hover { background: var(--primary-dark); }
         .ai-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .ai-examples { display: flex; gap: 8px; flex-wrap: wrap; }
-        .ai-example { background: var(--gray-100); padding: 6px 12px; border-radius: 20px; font-size: 12px; color: var(--gray-600); cursor: pointer; transition: all 0.2s; }
+        .ai-examples { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+        .ai-example { background: var(--gray-100); padding: 8px 14px; border-radius: 20px; font-size: 13px; color: var(--gray-600); cursor: pointer; transition: all 0.2s; }
         .ai-example:hover { background: var(--primary-light); color: var(--primary); }
-        .ai-result { margin-top: 20px; padding: 20px; background: var(--gray-50); border-radius: 12px; display: none; }
+        .ai-result { margin-top: 20px; padding: 24px; background: var(--gray-50); border-radius: 12px; display: none; }
         .ai-result.show { display: block; }
         .ai-result-table { width: 100%; }
         .ai-result-table th, .ai-result-table td { padding: 10px; text-align: left; border-bottom: 1px solid var(--gray-200); }
         .ai-insight { margin-top: 16px; padding: 12px 16px; background: var(--warning-light); border-radius: 8px; font-size: 14px; }
+        .ai-section-title { font-size: 16px; font-weight: 600; color: var(--gray-800); margin: 20px 0 12px; padding-bottom: 8px; border-bottom: 2px solid var(--primary); }
+        .ai-section-title:first-child { margin-top: 0; }
+        .ai-pros { background: var(--success-light); padding: 16px; border-radius: 10px; margin-bottom: 16px; }
+        .ai-cons { background: var(--danger-light); padding: 16px; border-radius: 10px; margin-bottom: 16px; }
+        .ai-improve { background: var(--info-light); padding: 16px; border-radius: 10px; margin-bottom: 16px; }
+        .ai-evidence { background: var(--gray-100); padding: 16px; border-radius: 10px; font-size: 13px; }
+        .ai-list { margin: 8px 0; padding-left: 20px; }
+        .ai-list li { margin-bottom: 8px; line-height: 1.6; }
     </style>
 </head>
 <body>
@@ -7307,21 +7316,28 @@ HTML_TEMPLATE = '''
         <div id="aiAnalysis" class="tab-content">
             <section class="ai-section">
                 <div class="ai-header">
-                    <h2>🤖 AI 데이터 분석</h2>
-                    <p>자연어로 질문하면 데이터를 분석해드립니다.</p>
+                    <h2>🤖 AI 경영 분석 어시스턴트</h2>
+                    <p>데이터 기반 경영 판단을 도와드립니다. 장점, 단점, 개선 방향을 근거와 함께 제시합니다.</p>
                 </div>
                 <div class="ai-input-container">
                     <div class="ai-input-wrapper">
-                        <input type="text" id="aiQueryInput" class="ai-input" placeholder="예: 2025년 1월과 2024년 1월 매출 비교해줘">
-                        <button onclick="runAiAnalysis()" class="ai-btn" id="aiBtn">분석하기</button>
+                        <textarea id="aiQueryInput" class="ai-input" rows="3" placeholder="예: 올해 매출 성과를 분석하고 개선 방향을 제안해주세요"></textarea>
+                        <button onclick="runAiAnalysis()" class="ai-btn" id="aiBtn">🔍 분석</button>
                     </div>
                     <div class="ai-examples">
-                        <span class="ai-example" onclick="setAiQuery('월별 매출')">월별 매출</span>
-                        <span class="ai-example" onclick="setAiQuery('2025년 vs 2024년 비교')">연도 비교</span>
-                        <span class="ai-example" onclick="setAiQuery('영업담당 TOP 10')">TOP 담당자</span>
+                        <span class="ai-example" onclick="setAiQuery('올해 매출 성과를 분석하고 장단점과 개선 방향을 알려주세요')">📊 매출 성과 분석</span>
+                        <span class="ai-example" onclick="setAiQuery('영업담당별 실적을 비교하고 우수사례와 개선이 필요한 부분을 알려주세요')">👥 영업 실적 분석</span>
+                        <span class="ai-example" onclick="setAiQuery('거래처 현황을 분석하고 고객 유지 전략을 제안해주세요')">🏢 거래처 분석</span>
+                        <span class="ai-example" onclick="setAiQuery('검사목적별 매출 추이를 분석하고 성장 기회를 알려주세요')">🔬 검사목적 분석</span>
+                        <span class="ai-example" onclick="setAiQuery('전년 대비 성과를 비교하고 경영 개선 방향을 제안해주세요')">📈 전년 비교 분석</span>
+                        <span class="ai-example" onclick="setAiQuery('수금 현황을 분석하고 현금흐름 개선 방안을 제안해주세요')">💰 수금 분석</span>
                     </div>
                     <div class="ai-result" id="aiResult">
-                        <div id="aiLoading" style="text-align: center; display: none;">⏳ AI가 분석 중입니다...</div>
+                        <div id="aiLoading" style="text-align: center; display: none;">
+                            <div style="font-size: 24px; margin-bottom: 10px;">⏳</div>
+                            <div>AI가 데이터를 분석하고 있습니다...</div>
+                            <div style="font-size: 12px; color: #666; margin-top: 5px;">경영 인사이트 도출 중</div>
+                        </div>
                         <div id="aiError" style="color: var(--danger); display: none;"></div>
                         <div id="aiContent"></div>
                     </div>
@@ -23123,7 +23139,25 @@ HTML_TEMPLATE = '''
                 if (data.error) {
                     error.textContent = data.error;
                     error.style.display = 'block';
+                } else if (data.analysis_type === 'management_insight' && data.response) {
+                    // 새로운 경영 분석 응답 처리
+                    const markdown = data.response;
+                    let html = formatMarkdownToHtml(markdown);
+
+                    // 데이터 요약 표시
+                    if (data.data_summary) {
+                        const summary = data.data_summary;
+                        html += `<div class="ai-evidence" style="margin-top: 20px;">
+                            <strong>📊 분석 기준 데이터</strong><br>
+                            2025년 매출: ${formatCurrency(summary.total_sales_2025)} |
+                            2024년 매출: ${formatCurrency(summary.total_sales_2024)} |
+                            성장률: ${summary.growth_rate > 0 ? '+' : ''}${summary.growth_rate}%
+                        </div>`;
+                    }
+
+                    content.innerHTML = html;
                 } else {
+                    // 기존 응답 형식 처리 (하위 호환성)
                     let html = `<p style="margin-bottom: 12px;"><strong>📝 ${data.description || '분석 결과'}</strong></p>`;
 
                     if (data.analysis_type === 'year_comparison' && data.comparison) {
@@ -23159,6 +23193,36 @@ HTML_TEMPLATE = '''
                 btn.disabled = false;
                 loadTokenUsage();
             }
+        }
+
+        // 마크다운을 HTML로 변환
+        function formatMarkdownToHtml(markdown) {
+            let html = markdown
+                // 헤딩 변환
+                .replace(/^## (.*$)/gm, '<h3 class="ai-section-title">$1</h3>')
+                .replace(/^### (.*$)/gm, '<h4 style="font-size: 14px; font-weight: 600; margin: 12px 0 8px;">$1</h4>')
+                // 굵은 텍스트
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                // 리스트 변환
+                .replace(/^- (.*$)/gm, '<li>$1</li>')
+                // 줄바꿈 처리
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\n/g, '<br>');
+
+            // li 태그들을 ul로 감싸기
+            html = html.replace(/(<li>.*?<\/li>)+/gs, match => {
+                return '<ul class="ai-list">' + match + '</ul>';
+            });
+
+            // 섹션별 스타일 적용
+            html = html.replace(/<h3 class="ai-section-title">(.*장점.*|.*강점.*)<\/h3>/gi,
+                '<h3 class="ai-section-title" style="color: var(--success);">$1</h3>');
+            html = html.replace(/<h3 class="ai-section-title">(.*개선.*|.*주의.*|.*단점.*)<\/h3>/gi,
+                '<h3 class="ai-section-title" style="color: var(--danger);">$1</h3>');
+            html = html.replace(/<h3 class="ai-section-title">(.*제안.*|.*방향.*|.*방안.*)<\/h3>/gi,
+                '<h3 class="ai-section-title" style="color: var(--info);">$1</h3>');
+
+            return '<div class="ai-response">' + html + '</div>';
         }
 
         // ============ 수금 탭 ============
@@ -24586,24 +24650,160 @@ def get_company_context():
 
 @app.route('/api/ai/analyze', methods=['POST'])
 def ai_analyze():
-    """AI 분석 API - Claude 또는 Gemini로 자연어 질문 분석"""
+    """AI 경영 분석 API - Claude를 사용한 경영 판단 지원"""
     import urllib.request
     import urllib.error
     import time
 
     query = request.json.get('query', '')
-    print(f"[AI] === 분석 요청 시작 ===")
+    print(f"[AI] === 경영 분석 요청 시작 ===")
     print(f"[AI] 질문: {query}")
-    print(f"[AI] 사용 API: {'Claude' if USE_CLAUDE else 'Gemini'}")
 
     if not query:
-        print(f"[AI] 오류: 질문 없음")
+        return jsonify({'error': '질문을 입력해주세요.'})
+
+    # 종합 데이터 수집
+    data_summary = get_ai_data_summary()
+    stats_2024 = data_summary['2024']
+    stats_2025 = data_summary['2025']
+
+    # 2024년 vs 2025년 비교 데이터 계산
+    growth_rate = ((stats_2025['total_fee'] - stats_2024['total_fee']) / stats_2024['total_fee'] * 100) if stats_2024['total_fee'] > 0 else 0
+    count_growth = ((stats_2025['total_count'] - stats_2024['total_count']) / stats_2024['total_count'] * 100) if stats_2024['total_count'] > 0 else 0
+
+    # TOP 분석
+    top_purposes_2025 = sorted(stats_2025['by_purpose'].items(), key=lambda x: x[1]['fee'], reverse=True)[:7]
+    top_purposes_2024 = sorted(stats_2024['by_purpose'].items(), key=lambda x: x[1]['fee'], reverse=True)[:7]
+    top_managers_2025 = sorted(stats_2025['by_manager'].items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
+    top_managers_2024 = sorted(stats_2024['by_manager'].items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
+
+    # 월별 추이 (2025년)
+    monthly_2025 = stats_2025.get('monthly', {})
+    monthly_trend = []
+    for m in range(1, 13):
+        if m in monthly_2025:
+            monthly_trend.append(f"{m}월: {monthly_2025[m]['fee']/100000000:.2f}억")
+
+    # 영업담당별 상세 분석
+    manager_analysis = []
+    for name, data in top_managers_2025:
+        prev = stats_2024['by_manager'].get(name, {'fee': 0, 'count': 0})
+        growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 0
+        manager_analysis.append(f"{name}: {data['fee']/100000000:.2f}억(전년비 {growth:+.1f}%)")
+
+    # 검사목적별 성장률 분석
+    purpose_growth = []
+    for name, data in top_purposes_2025:
+        prev = stats_2024['by_purpose'].get(name, {'fee': 0})
+        growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 0
+        purpose_growth.append(f"{name}: {data['fee']/100000000:.2f}억(전년비 {growth:+.1f}%)")
+
+    # 기업 정보 컨텍스트
+    company_context = get_company_context()
+
+    # 종합 데이터 컨텍스트 생성
+    comprehensive_context = f"""
+=== 경영 데이터 현황 ===
+
+[2025년 실적]
+- 총 매출: {stats_2025['total_fee']/100000000:.2f}억원 (전년비 {growth_rate:+.1f}%)
+- 총 건수: {stats_2025['total_count']:,}건 (전년비 {count_growth:+.1f}%)
+
+[2024년 실적]
+- 총 매출: {stats_2024['total_fee']/100000000:.2f}억원
+- 총 건수: {stats_2024['total_count']:,}건
+
+[2025년 월별 매출 추이]
+{', '.join(monthly_trend) if monthly_trend else '데이터 없음'}
+
+[영업담당별 실적 (2025년 TOP 10)]
+{chr(10).join(manager_analysis)}
+
+[검사목적별 매출 (2025년)]
+{chr(10).join(purpose_growth)}
+
+[검체유형 TOP 5 (2025년)]
+{', '.join([f"{k}({v['fee']/100000000:.2f}억)" for k, v in sorted(stats_2025['by_sample_type'].items(), key=lambda x: x[1]['fee'], reverse=True)[:5]])}
+
+{company_context if company_context else ''}
+"""
+
+    # Claude API 호출 - 경영 분석 전문가 프롬프트
+    system_prompt = f"""당신은 식품검사업계 전문 경영 컨설턴트입니다. 제공된 데이터를 분석하여 경영자의 의사결정에 도움이 되는 인사이트를 제공합니다.
+
+{comprehensive_context}
+
+응답 지침:
+1. 질문에 대해 데이터 기반의 명확한 분석을 제공하세요
+2. 반드시 다음 구조로 답변하세요:
+
+## 📊 현황 분석
+(데이터에 기반한 현재 상황 설명)
+
+## ✅ 장점 (강점)
+- 구체적인 수치와 함께 긍정적인 측면 나열
+
+## ⚠️ 개선 필요 사항
+- 구체적인 수치와 함께 주의가 필요한 부분 나열
+
+## 💡 개선 방향 제안
+- 실행 가능한 구체적인 개선 방안 제시
+
+## 📈 근거 데이터
+- 분석에 사용된 핵심 수치 요약
+
+중요:
+- 모든 분석은 제공된 데이터의 구체적인 수치를 인용하세요
+- 추측이나 일반론이 아닌 데이터 기반 인사이트를 제공하세요
+- 경영자가 바로 활용할 수 있는 실용적인 제안을 하세요"""
+
+    print(f"[AI] Claude API 호출 중...")
+    claude_result = call_claude_api(f"질문: {query}", system_prompt=system_prompt, max_tokens=2000)
+
+    if claude_result['success']:
+        ai_response = claude_result['text']
+        print(f"[AI] Claude 응답 수신: {len(ai_response)}자")
+
+        # 로그 기록
+        session_id = request.cookies.get('session_id')
+        session = verify_user_session(session_id) if session_id else None
+        if session:
+            log_ai_analysis(session.get('user_id'), query, len(ai_response), claude_result.get('tokens', 0))
+
+        return jsonify({
+            'success': True,
+            'analysis_type': 'management_insight',
+            'response': ai_response,
+            'ai_model': 'Claude Sonnet 4',
+            'data_summary': {
+                'total_sales_2025': stats_2025['total_fee'],
+                'total_sales_2024': stats_2024['total_fee'],
+                'growth_rate': round(growth_rate, 1),
+                'total_count_2025': stats_2025['total_count']
+            }
+        })
+    else:
+        print(f"[AI] Claude API 오류: {claude_result.get('error')}")
+        return jsonify({'error': f"AI 분석 실패: {claude_result.get('error', '알 수 없는 오류')}"})
+
+
+@app.route('/api/ai/analyze-legacy', methods=['POST'])
+def ai_analyze_legacy():
+    """AI 분석 API (레거시) - 기존 JSON 파싱 방식"""
+    import urllib.request
+    import urllib.error
+    import time
+
+    query = request.json.get('query', '')
+    print(f"[AI-Legacy] === 분석 요청 시작 ===")
+    print(f"[AI-Legacy] 질문: {query}")
+
+    if not query:
         return jsonify({'error': '질문을 입력해주세요.'})
 
     # 캐시된 데이터 요약 사용 (변경 감지 포함)
     data_summary = get_ai_data_summary()
     filter_values = data_summary['filter_values']
-    print(f"[AI] 캐시된 요약 사용: 목적 {len(filter_values['purposes'])}개, 유형 {len(filter_values['sample_types'])}개")
 
     # 2025년 주요 통계 요약
     stats_2025 = data_summary['2025']
@@ -24616,16 +24816,8 @@ def ai_analyze():
 - TOP 검사목적: {', '.join([f"{p[0]}({p[1]['fee']/10000:.0f}만)" for p in top_purposes])}
 - TOP 영업담당: {', '.join([f"{m[0]}({m[1]['fee']/10000:.0f}만)" for m in top_managers])}"""
 
-    # 기업 정보 컨텍스트 추가
-    company_context = get_company_context()
-    if company_context:
-        stats_text = company_context + "\n\n" + stats_text
-        print(f"[AI] 기업 정보 컨텍스트 추가됨")
-
     # Claude API 사용
     if USE_CLAUDE and CLAUDE_API_KEY:
-        print(f"[AI] Claude API 사용 (모델: {CLAUDE_MODEL})")
-
         system_prompt = f"""당신은 경영 데이터 분석 전문가입니다. 사용자의 질문을 분석하여 JSON 형식으로 응답하세요.
 
 {stats_text}
@@ -24645,8 +24837,6 @@ def ai_analyze():
 - summary: 요약 통계
 - direct_answer: 직접 답변 (계산 없이 바로 답변 가능한 경우)
 
-중요: 연도 비교 질문(예: "2025년 1월과 2024년 1월 비교")은 반드시 year_comparison 타입을 사용하고 compare_year를 설정하세요.
-
 반드시 JSON 형식만 응답하세요:
 {{"analysis_type":"타입","year":"2025","compare_year":"2024","month":null,"purpose":null,"sample_type":null,"manager":null,"top_n":10,"description":"분석 설명","direct_answer":"직접 답변 가능시 여기에 작성"}}"""
 
@@ -24654,7 +24844,6 @@ def ai_analyze():
 
         if claude_result['success']:
             ai_response = claude_result['text']
-            print(f"[AI] Claude 응답: {ai_response[:300]}...")
 
             # JSON 파싱
             try:
@@ -24665,7 +24854,6 @@ def ai_analyze():
                     json_str = json_str.split('```')[1].split('```')[0]
 
                 parsed = json.loads(json_str.strip())
-                print(f"[AI] 파싱 성공: {parsed}")
 
                 # direct_answer 타입이면 바로 응답 반환
                 if parsed.get('analysis_type') == 'direct_answer' and parsed.get('direct_answer'):
@@ -24688,7 +24876,7 @@ def ai_analyze():
                 analysis_result['parsed_query'] = parsed
                 analysis_result['ai_model'] = 'Claude Sonnet 4'
 
-                print(f"[AI] 분석 완료: {analysis_result.get('analysis_type')}")
+                print(f"[AI-Legacy] 분석 완료: {analysis_result.get('analysis_type')}")
                 return jsonify(analysis_result)
 
             except json.JSONDecodeError as e:
