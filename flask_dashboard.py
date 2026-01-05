@@ -1236,6 +1236,7 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
         # 잔류농약(참고용), 항생물질(참고용)은 접수일자+업체명+검체유형으로 고유 카운트
         is_pesticide_ref = purpose == '잔류농약(참고용)'
         is_antibiotic_ref = purpose == '항생물질(참고용)'
+        should_count_as_sample = True  # 이 행을 샘플 건수로 카운트할지 여부
 
         if is_pesticide_ref or is_antibiotic_ref:
             # 고유 식별 키: 접수일자 + 업체명 + 검체유형
@@ -1247,6 +1248,8 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
                     pesticide_unique_count += 1
                 else:
                     antibiotic_unique_count += 1
+            else:
+                should_count_as_sample = False  # 이미 카운트된 샘플
         else:
             # 일반 항목은 건별로 카운트
             total_count += 1
@@ -1284,10 +1287,11 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
                 by_sample_type_item[sample_type][item_name]['count'] += 1
                 by_sample_type_item[sample_type][item_name]['fee'] += fee
 
-        # 영업담당별 집계
+        # 영업담당별 집계 (잔류농약/항생물질은 고유 샘플만 카운트)
         if manager not in by_manager_item:
             by_manager_item[manager] = {'count': 0, 'fee': 0, 'items': {}}
-        by_manager_item[manager]['count'] += 1
+        if should_count_as_sample:
+            by_manager_item[manager]['count'] += 1
         by_manager_item[manager]['fee'] += fee
         if item_name:
             if item_name not in by_manager_item[manager]['items']:
@@ -1295,11 +1299,12 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
             by_manager_item[manager]['items'][item_name]['count'] += 1
             by_manager_item[manager]['items'][item_name]['fee'] += fee
 
-        # 월별 수수료
+        # 월별 수수료 (잔류농약/항생물질은 고유 샘플만 카운트)
         if month > 0:
             if month not in by_month_fee:
                 by_month_fee[month] = {'count': 0, 'fee': 0}
-            by_month_fee[month]['count'] += 1
+            if should_count_as_sample:
+                by_month_fee[month]['count'] += 1
             by_month_fee[month]['fee'] += fee
 
             # 월별-항목 (NEW)
@@ -1319,11 +1324,12 @@ def process_food_item_data(data, purpose_filter=None, sample_type_filter=None,
             by_purpose_item[purpose][item_name]['count'] += 1
             by_purpose_item[purpose][item_name]['fee'] += fee
 
-        # 분석자별 집계 (NEW)
+        # 분석자별 집계 (잔류농약/항생물질은 고유 샘플만 카운트)
         if analyzer and analyzer != '미지정':
             if analyzer not in by_analyzer:
                 by_analyzer[analyzer] = {'count': 0, 'fee': 0, 'items': set()}
-            by_analyzer[analyzer]['count'] += 1
+            if should_count_as_sample:
+                by_analyzer[analyzer]['count'] += 1
             by_analyzer[analyzer]['fee'] += fee
             if item_name:
                 by_analyzer[analyzer]['items'].add(item_name)
