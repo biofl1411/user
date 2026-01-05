@@ -23197,32 +23197,44 @@ HTML_TEMPLATE = '''
 
         // 마크다운을 HTML로 변환
         function formatMarkdownToHtml(markdown) {
-            let html = markdown
-                // 헤딩 변환
-                .replace(/^## (.*$)/gm, '<h3 class="ai-section-title">$1</h3>')
-                .replace(/^### (.*$)/gm, '<h4 style="font-size: 14px; font-weight: 600; margin: 12px 0 8px;">$1</h4>')
-                // 굵은 텍스트
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                // 리스트 변환
-                .replace(/^- (.*$)/gm, '<li>$1</li>')
-                // 줄바꿈 처리
-                .replace(/\n\n/g, '</p><p>')
-                .replace(/\n/g, '<br>');
+            if (!markdown) return '';
 
-            // li 태그들을 ul로 감싸기
-            html = html.replace(/(<li>.*?<\/li>)+/gs, match => {
-                return '<ul class="ai-list">' + match + '</ul>';
+            // 줄 단위로 처리
+            const lines = markdown.split('\n');
+            let html = '';
+            let inList = false;
+
+            lines.forEach(line => {
+                // 헤딩
+                if (line.startsWith('## ')) {
+                    if (inList) { html += '</ul>'; inList = false; }
+                    const title = line.substring(3);
+                    let color = '';
+                    if (title.includes('장점') || title.includes('강점')) color = 'color: var(--success);';
+                    else if (title.includes('개선') || title.includes('주의') || title.includes('단점')) color = 'color: var(--warning);';
+                    else if (title.includes('제안') || title.includes('방향') || title.includes('방안')) color = 'color: var(--info);';
+                    else if (title.includes('근거') || title.includes('데이터')) color = 'color: var(--gray-600);';
+                    html += '<h3 class="ai-section-title" style="' + color + '">' + title + '</h3>';
+                }
+                // 리스트
+                else if (line.startsWith('- ')) {
+                    if (!inList) { html += '<ul class="ai-list">'; inList = true; }
+                    html += '<li>' + formatInlineMarkdown(line.substring(2)) + '</li>';
+                }
+                // 일반 텍스트
+                else if (line.trim()) {
+                    if (inList) { html += '</ul>'; inList = false; }
+                    html += '<p>' + formatInlineMarkdown(line) + '</p>';
+                }
             });
 
-            // 섹션별 스타일 적용
-            html = html.replace(/<h3 class="ai-section-title">(.*장점.*|.*강점.*)<\/h3>/gi,
-                '<h3 class="ai-section-title" style="color: var(--success);">$1</h3>');
-            html = html.replace(/<h3 class="ai-section-title">(.*개선.*|.*주의.*|.*단점.*)<\/h3>/gi,
-                '<h3 class="ai-section-title" style="color: var(--danger);">$1</h3>');
-            html = html.replace(/<h3 class="ai-section-title">(.*제안.*|.*방향.*|.*방안.*)<\/h3>/gi,
-                '<h3 class="ai-section-title" style="color: var(--info);">$1</h3>');
-
+            if (inList) html += '</ul>';
             return '<div class="ai-response">' + html + '</div>';
+        }
+
+        function formatInlineMarkdown(text) {
+            // 굵은 텍스트 변환
+            return text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         }
 
         // ============ 수금 탭 ============
