@@ -1648,11 +1648,21 @@ def process_data(data, purpose_filter=None):
                 client_address = str(row.get(col, '')).strip()
                 break
 
+        # 시험분야, 업체분류 추출
+        test_field = str(row.get('시험분야', '') or '').strip()  # 식품, 축산 등
+        company_type = str(row.get('업체분류', '') or '').strip()  # 식품, 축산, 식품,축산 등
+
         # 거래처별
         if client not in by_client:
-            by_client[client] = {'sales': 0, 'count': 0, 'purposes': {}, 'managers': {}, 'months': set(), 'address': ''}
+            by_client[client] = {'sales': 0, 'count': 0, 'purposes': {}, 'managers': {}, 'months': set(), 'address': '', 'test_fields': set(), 'company_types': set()}
         by_client[client]['sales'] += sales
         by_client[client]['count'] += 1
+        # 시험분야 저장
+        if test_field:
+            by_client[client]['test_fields'].add(test_field)
+        # 업체분류 저장
+        if company_type:
+            by_client[client]['company_types'].add(company_type)
         # 주소 저장 (첫번째 유효한 주소 사용)
         if client_address and not by_client[client]['address']:
             by_client[client]['address'] = client_address
@@ -2132,7 +2142,9 @@ def process_data(data, purpose_filter=None):
             'purposes': d.get('purposes', {}),
             'byPurpose': {p: {'sales': pd['sales'], 'count': pd['count']} for p, pd in d.get('purposes', {}).items()},
             'byManager': {m: {'sales': md['sales'], 'count': md['count']} for m, md in d.get('managers', {}).items()},
-            'address': d.get('address', '')
+            'address': d.get('address', ''),
+            'testFields': list(d.get('test_fields', set())),  # 시험분야 (식품, 축산 등)
+            'companyTypes': list(d.get('company_types', set()))  # 업체분류 (식품, 축산, 식품,축산 등)
         }) for c, d in sorted_clients],
         'by_purpose': sorted_purposes,
         'by_defect': sorted_defects[:30],
@@ -19786,6 +19798,13 @@ HTML_TEMPLATE = '''
                 const addr = c[1]?.address || '';
                 if (!addr) return;
 
+                // 식품제조가공업 필터: 시험분야=식품 AND 업체분류=식품 OR 식품,축산
+                const testFields = c[1]?.testFields || [];
+                const companyTypes = c[1]?.companyTypes || [];
+                const hasFood = testFields.some(f => f.includes('식품'));
+                const isFoodCompany = companyTypes.some(t => t === '식품' || t === '식품,축산' || t.includes('식품'));
+                if (!hasFood || !isFoodCompany) return;
+
                 // 시도 추출 (JavaScript 버전)
                 const sidoPatterns = {
                     '서울특별시': '서울', '서울시': '서울', '서울': '서울',
@@ -19955,6 +19974,13 @@ HTML_TEMPLATE = '''
 
                 const addr = c[1]?.address || '';
                 if (!addr) return;
+
+                // 축산물가공업 필터: 시험분야=축산 AND 업체분류=축산 OR 식품,축산
+                const testFields = c[1]?.testFields || [];
+                const companyTypes = c[1]?.companyTypes || [];
+                const hasLivestock = testFields.some(f => f.includes('축산'));
+                const isLivestockCompany = companyTypes.some(t => t === '축산' || t === '식품,축산' || t.includes('축산'));
+                if (!hasLivestock || !isLivestockCompany) return;
 
                 const sidoPatterns = {
                     '서울특별시': '서울', '서울시': '서울', '서울': '서울',
