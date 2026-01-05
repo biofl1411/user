@@ -22822,6 +22822,12 @@ def get_collection_data():
     try:
         # 데이터 로드
         data = load_excel_data(year)
+
+        # 디버그: 첫 번째 row의 키 출력
+        if data:
+            print(f"[수금API] 첫 row 키: {list(data[0].keys())[:20]}")
+            print(f"[수금API] 총금액: {data[0].get('총금액')}, 입금여부: {data[0].get('입금여부')}, 입금일: {data[0].get('입금일')}")
+
         today = date.today()
         total_sales = 0
         paid_amount = 0
@@ -22833,7 +22839,7 @@ def get_collection_data():
         unpaid_list = []
 
         for row in data:
-            sales = row.get('공급가액', 0) or 0
+            sales = row.get('총금액', 0) or 0
             if isinstance(sales, str):
                 sales = float(sales.replace(',', '').replace('원', '')) if sales else 0
 
