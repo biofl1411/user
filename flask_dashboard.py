@@ -7369,6 +7369,21 @@ HTML_TEMPLATE = '''
     </main>
 
     <script>
+        // 디버깅: 스크립트 시작 로그
+        console.log('[DEBUG] Main script starting...');
+
+        // 전역 오류 핸들러
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error('[GLOBAL ERROR]', message, 'at', source, 'line:', lineno, 'col:', colno);
+            // 오류 발생 시 로딩중 표시 변경
+            const userInfo = document.getElementById('userInfo');
+            if (userInfo && userInfo.textContent === '로딩중...') {
+                userInfo.textContent = '오류 발생';
+                userInfo.style.color = '#ef4444';
+            }
+            return false;
+        };
+
         // 전역 변수
         let charts = {};
         let currentData = null;
@@ -20106,7 +20121,7 @@ HTML_TEMPLATE = '''
                 let sigungu = null;
 
                 // 패턴: ~구, ~시, ~군 찾기
-                const match = address.match(/([가-힣]+(?:구|시|군))/g);
+                const match = address.match(/([가-힣]+[구시군])/g);
                 if (match) {
                     for (const m of match) {
                         // 광역시/특별시/도 제외
@@ -23370,24 +23385,31 @@ HTML_TEMPLATE = '''
 
         // 세션 정보 로드
         async function loadSessionInfo() {
+            console.log('[DEBUG] loadSessionInfo() called');
             try {
                 const response = await fetch('/api/auth/session');
                 const data = await response.json();
+                console.log('[DEBUG] Session data:', data);
                 if (data.logged_in) {
                     document.getElementById('userInfo').textContent = (data.user.name || data.user.username) + '님';
                     if (data.user.role === 'admin') {
                         document.getElementById('adminBtn').style.display = 'inline-block';
                     }
+                } else {
+                    document.getElementById('userInfo').textContent = '로그인 필요';
                 }
             } catch (e) {
-                console.error('Session load error:', e);
+                console.error('[DEBUG] Session load error:', e);
+                document.getElementById('userInfo').textContent = '세션 오류';
             }
         }
 
         // 초기화
+        console.log('[DEBUG] Initializing...');
         loadTokenUsage();
         loadSessionInfo();
         showToast('조회 버튼을 클릭하세요.', 'loading', 3000);
+        console.log('[DEBUG] Main script completed successfully');
     </script>
 </body>
 </html>
