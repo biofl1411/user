@@ -5989,51 +5989,7 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
-            <!-- 비밀번호 변경 모달 -->
-            <div id="passwordModal" class="modal-overlay" style="display: none;">
-                <div class="modal-content" style="max-width: 420px;">
-                    <div class="modal-header">
-                        <h3>🔐 비밀번호 변경</h3>
-                        <button class="modal-close" onclick="closePasswordModal()">✕</button>
-                    </div>
-                    <div class="modal-body" style="padding: 24px;">
-                        <form id="passwordForm" onsubmit="return changePassword(event)">
-                            <div style="margin-bottom: 20px;">
-                                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">현재 비밀번호</label>
-                                <input type="password" id="currentPassword" required autocomplete="current-password"
-                                    style="width: 100%; padding: 12px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
-                                    placeholder="현재 비밀번호를 입력하세요">
-                            </div>
-                            <div style="margin-bottom: 20px;">
-                                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">새 비밀번호</label>
-                                <input type="password" id="newPassword" required minlength="4" autocomplete="new-password"
-                                    style="width: 100%; padding: 12px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
-                                    placeholder="새 비밀번호 (4자 이상)">
-                            </div>
-                            <div style="margin-bottom: 24px;">
-                                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">새 비밀번호 확인</label>
-                                <input type="password" id="confirmPassword" required minlength="4" autocomplete="new-password"
-                                    style="width: 100%; padding: 12px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
-                                    placeholder="새 비밀번호를 다시 입력하세요">
-                            </div>
-                            <div id="passwordError" style="display: none; margin-bottom: 16px; padding: 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #dc2626; font-size: 13px;"></div>
-                            <div id="passwordSuccess" style="display: none; margin-bottom: 16px; padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #16a34a; font-size: 13px;"></div>
-                            <div style="display: flex; gap: 12px;">
-                                <button type="button" onclick="closePasswordModal()"
-                                    style="flex: 1; padding: 12px; border: 1px solid #d1d5db; background: white; border-radius: 8px; font-size: 14px; cursor: pointer;">
-                                    취소
-                                </button>
-                                <button type="submit" id="passwordSubmitBtn"
-                                    style="flex: 1; padding: 12px; border: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                                    변경하기
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 담당자 상세 모달 -->
+<!-- 담당자 상세 모달 -->
             <div id="managerModal" class="modal-overlay" style="display: none;">
                 <div class="modal-content">
                     <div class="modal-header">
@@ -7708,6 +7664,50 @@ HTML_TEMPLATE = '''
             </div>
         </div>
     </main>
+
+    <!-- 비밀번호 변경 모달 (전역 위치) -->
+    <div id="passwordModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h3>🔐 비밀번호 변경</h3>
+                <button class="modal-close" onclick="closePasswordModal()">✕</button>
+            </div>
+            <div class="modal-body" style="padding: 24px;">
+                <form id="passwordForm" onsubmit="return changePassword(event)">
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">현재 비밀번호</label>
+                        <input type="password" id="currentPassword" required autocomplete="current-password"
+                            style="width: 100%; padding: 12px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
+                            placeholder="현재 비밀번호를 입력하세요">
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">새 비밀번호</label>
+                        <input type="password" id="newPassword" required minlength="4" autocomplete="new-password"
+                            style="width: 100%; padding: 12px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
+                            placeholder="새 비밀번호 (4자 이상)">
+                    </div>
+                    <div style="margin-bottom: 24px;">
+                        <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #374151;">새 비밀번호 확인</label>
+                        <input type="password" id="confirmPassword" required minlength="4" autocomplete="new-password"
+                            style="width: 100%; padding: 12px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;"
+                            placeholder="새 비밀번호를 다시 입력하세요">
+                    </div>
+                    <div id="passwordError" style="display: none; margin-bottom: 16px; padding: 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #dc2626; font-size: 13px;"></div>
+                    <div id="passwordSuccess" style="display: none; margin-bottom: 16px; padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; color: #16a34a; font-size: 13px;"></div>
+                    <div style="display: flex; gap: 12px;">
+                        <button type="button" onclick="closePasswordModal()"
+                            style="flex: 1; padding: 12px; border: 1px solid #d1d5db; background: white; border-radius: 8px; font-size: 14px; cursor: pointer;">
+                            취소
+                        </button>
+                        <button type="submit" id="passwordSubmitBtn"
+                            style="flex: 1; padding: 12px; border: none; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                            변경하기
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <script>
         // 디버깅: 스크립트 시작 로그
