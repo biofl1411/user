@@ -2381,81 +2381,104 @@ LOGIN_TEMPLATE = '''
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Malgun Gothic', sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            background: linear-gradient(135deg, #667eea 0%, #a8b5d6 50%, #c5a8d6 100%);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
         }
         .login-container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
+            background: white;
+            border-radius: 16px;
             padding: 50px 40px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
             text-align: center;
-            max-width: 400px;
+            max-width: 420px;
             width: 90%;
         }
         .logo-container {
-            margin-bottom: 30px;
+            margin-bottom: 10px;
         }
-        .logo-container img {
-            max-width: 200px;
-            height: auto;
+        .logo-text {
+            font-size: 48px;
+            font-weight: bold;
+            color: #00a0a0;
+            letter-spacing: 2px;
+        }
+        .logo-anniversary {
+            font-size: 14px;
+            color: #e07040;
+            margin-top: 5px;
         }
         .program-title {
-            font-size: 28px;
+            font-size: 24px;
             font-weight: bold;
-            color: #1a1a2e;
-            margin-bottom: 30px;
+            color: #333;
+            margin: 25px 0 5px 0;
+        }
+        .program-subtitle {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 25px;
         }
         .login-form { width: 100%; }
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 18px;
             text-align: left;
         }
         .form-group label {
             display: block;
             margin-bottom: 8px;
-            color: #333;
+            color: #555;
+            font-size: 14px;
             font-weight: 500;
         }
         .form-group input {
             width: 100%;
-            padding: 15px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 16px;
-            transition: border-color 0.3s;
+            padding: 14px 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 15px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+            background: #fff;
         }
         .form-group input:focus {
             outline: none;
-            border-color: #0f3460;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         .login-btn {
             width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+            padding: 14px;
+            background: linear-gradient(135deg, #5b7bd5 0%, #8b5e9e 100%);
             color: white;
             border: none;
-            border-radius: 10px;
-            font-size: 18px;
-            font-weight: bold;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 5px;
         }
         .login-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(15, 52, 96, 0.4);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
         }
         .error-msg {
-            color: #e74c3c;
-            margin-top: 15px;
+            background: #fff0f0;
+            color: #e05050;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
             display: none;
         }
+        .error-msg.show {
+            display: block;
+        }
         .copyright {
-            margin-top: 40px;
-            color: #888;
+            margin-top: 30px;
+            color: #aaa;
             font-size: 12px;
         }
     </style>
@@ -2463,12 +2486,15 @@ LOGIN_TEMPLATE = '''
 <body>
     <div class="login-container">
         <div class="logo-container">
-            <img src="https://www.biofl.co.kr/wp-content/uploads/2024/01/logo-10th-bfl.png" alt="BFL Logo" onerror="this.style.display='none'">
+            <div class="logo-text">BFL</div>
+            <div class="logo-anniversary">10th Anniversary</div>
         </div>
         <h1 class="program-title">실적 분석 시스템</h1>
+        <p class="program-subtitle">Business Performance Analytics</p>
         <form class="login-form" onsubmit="return handleLogin(event)">
+            <div class="error-msg" id="errorMsg"></div>
             <div class="form-group">
-                <label for="username">사용자 ID</label>
+                <label for="username">아이디</label>
                 <input type="text" id="username" name="username" required autocomplete="username">
             </div>
             <div class="form-group">
@@ -2476,9 +2502,8 @@ LOGIN_TEMPLATE = '''
                 <input type="password" id="password" name="password" required autocomplete="current-password">
             </div>
             <button type="submit" class="login-btn">로그인</button>
-            <p class="error-msg" id="errorMsg"></p>
         </form>
-        <p class="copyright">© 2026 HS.KIM. All rights reserved.</p>
+        <p class="copyright">© 2026 HS.KIM. All rights reserved</p>
     </div>
     <script>
         async function handleLogin(e) {
@@ -2499,11 +2524,11 @@ LOGIN_TEMPLATE = '''
                     window.location.href = '/';
                 } else {
                     errorMsg.textContent = data.error || '로그인 실패';
-                    errorMsg.style.display = 'block';
+                    errorMsg.classList.add('show');
                 }
             } catch (err) {
-                errorMsg.textContent = '서버 연결 오류';
-                errorMsg.style.display = 'block';
+                errorMsg.textContent = '서버 연결에 실패했습니다.';
+                errorMsg.classList.add('show');
             }
             return false;
         }
