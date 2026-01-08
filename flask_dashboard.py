@@ -3388,7 +3388,7 @@ ADMIN_TEMPLATE = '''
                             <tr style="background: #f1f5f9;">
                                 <td style="padding: 12px; font-weight: bold;">매출액</td>
                                 <td style="padding: 12px; text-align: right;">
-                                    <input type="number" class="form-control" id="fsRevenue" style="width: 200px; text-align: right;" placeholder="0">
+                                    <input type="text" class="form-control fs-money-input" id="fsRevenue" style="width: 200px; text-align: right;" placeholder="0">
                                 </td>
                                 <td style="padding: 12px; color: #64748b;">원</td>
                                 <td style="padding: 12px; color: #64748b; width: 100px;">100%</td>
@@ -3396,7 +3396,7 @@ ADMIN_TEMPLATE = '''
                             <tr>
                                 <td style="padding: 12px;">(-) 매출원가</td>
                                 <td style="padding: 12px; text-align: right;">
-                                    <input type="number" class="form-control" id="fsCostOfSales" style="width: 200px; text-align: right;" placeholder="0">
+                                    <input type="text" class="form-control fs-money-input" id="fsCostOfSales" style="width: 200px; text-align: right;" placeholder="0">
                                 </td>
                                 <td style="padding: 12px; color: #64748b;">원</td>
                                 <td style="padding: 12px;">
@@ -3416,7 +3416,7 @@ ADMIN_TEMPLATE = '''
                             <tr>
                                 <td style="padding: 12px;">(-) 판매비와관리비</td>
                                 <td style="padding: 12px; text-align: right;">
-                                    <input type="number" class="form-control" id="fsSgaExpense" style="width: 200px; text-align: right;" placeholder="0">
+                                    <input type="text" class="form-control fs-money-input" id="fsSgaExpense" style="width: 200px; text-align: right;" placeholder="0">
                                 </td>
                                 <td style="padding: 12px; color: #64748b;">원</td>
                                 <td style="padding: 12px;">
@@ -3436,7 +3436,7 @@ ADMIN_TEMPLATE = '''
                             <tr>
                                 <td style="padding: 12px;">(+/-) 영업외손익</td>
                                 <td style="padding: 12px; text-align: right;">
-                                    <input type="number" class="form-control" id="fsNonOperating" style="width: 200px; text-align: right;" placeholder="0">
+                                    <input type="text" class="form-control fs-money-input" id="fsNonOperating" style="width: 200px; text-align: right;" placeholder="0">
                                 </td>
                                 <td style="padding: 12px; color: #64748b;">원</td>
                                 <td style="padding: 12px; color: #64748b;">-</td>
@@ -4315,6 +4315,41 @@ ADMIN_TEMPLATE = '''
         // ============ 손익계산서 설정 함수들 ============
         let financialDetailsCache = [];
 
+        // 콤마 포맷 헬퍼 함수
+        function formatMoneyInput(num) {
+            return Math.round(num || 0).toLocaleString('ko-KR');
+        }
+
+        function parseMoneyInput(str) {
+            if (!str) return 0;
+            return parseFloat(String(str).replace(/,/g, '')) || 0;
+        }
+
+        function setMoneyInputValue(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.value = formatMoneyInput(value);
+        }
+
+        function getMoneyInputValue(id) {
+            const el = document.getElementById(id);
+            return el ? parseMoneyInput(el.value) : 0;
+        }
+
+        // 입력 시 자동 콤마 포맷
+        document.addEventListener('input', function(e) {
+            if (e.target.classList.contains('fs-money-input')) {
+                const val = parseMoneyInput(e.target.value);
+                const cursorPos = e.target.selectionStart;
+                const oldLen = e.target.value.length;
+                e.target.value = formatMoneyInput(val);
+                const newLen = e.target.value.length;
+                // 커서 위치 조정
+                const newPos = cursorPos + (newLen - oldLen);
+                e.target.setSelectionRange(newPos, newPos);
+                calculateFinancialSummary();
+            }
+        });
+
         async function loadFinancialSettings() {
             const year = document.getElementById('financialYear')?.value || '2025';
             try {
@@ -4323,17 +4358,17 @@ ADMIN_TEMPLATE = '''
 
                 if (data.settings) {
                     const s = data.settings;
-                    document.getElementById('fsRevenue').value = s.revenue || 0;
-                    document.getElementById('fsCostOfSales').value = s.cost_of_sales || 0;
-                    document.getElementById('fsSgaExpense').value = s.sga_expense || 0;
-                    document.getElementById('fsNonOperating').value = s.non_operating_income || 0;
+                    setMoneyInputValue('fsRevenue', s.revenue || 0);
+                    setMoneyInputValue('fsCostOfSales', s.cost_of_sales || 0);
+                    setMoneyInputValue('fsSgaExpense', s.sga_expense || 0);
+                    setMoneyInputValue('fsNonOperating', s.non_operating_income || 0);
                     document.getElementById('fsNotes').value = s.notes || '';
                 } else {
                     // 데이터가 없으면 초기화
-                    document.getElementById('fsRevenue').value = 0;
-                    document.getElementById('fsCostOfSales').value = 0;
-                    document.getElementById('fsSgaExpense').value = 0;
-                    document.getElementById('fsNonOperating').value = 0;
+                    setMoneyInputValue('fsRevenue', 0);
+                    setMoneyInputValue('fsCostOfSales', 0);
+                    setMoneyInputValue('fsSgaExpense', 0);
+                    setMoneyInputValue('fsNonOperating', 0);
                     document.getElementById('fsNotes').value = '';
                 }
 
@@ -4346,10 +4381,10 @@ ADMIN_TEMPLATE = '''
         }
 
         function calculateFinancialSummary() {
-            const revenue = parseFloat(document.getElementById('fsRevenue').value) || 0;
-            const costOfSales = parseFloat(document.getElementById('fsCostOfSales').value) || 0;
-            const sgaExpense = parseFloat(document.getElementById('fsSgaExpense').value) || 0;
-            const nonOperating = parseFloat(document.getElementById('fsNonOperating').value) || 0;
+            const revenue = getMoneyInputValue('fsRevenue');
+            const costOfSales = getMoneyInputValue('fsCostOfSales');
+            const sgaExpense = getMoneyInputValue('fsSgaExpense');
+            const nonOperating = getMoneyInputValue('fsNonOperating');
 
             const grossProfit = revenue - costOfSales;
             const operatingProfit = grossProfit - sgaExpense;
@@ -4386,12 +4421,6 @@ ADMIN_TEMPLATE = '''
             }
             return n.toLocaleString('ko-KR');
         }
-
-        // input 이벤트 리스너 추가
-        ['fsRevenue', 'fsCostOfSales', 'fsSgaExpense', 'fsNonOperating'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.addEventListener('input', calculateFinancialSummary);
-        });
 
         function renderFinancialDetailsTable() {
             const tbody = document.getElementById('financialDetailsTable');
@@ -4437,10 +4466,10 @@ ADMIN_TEMPLATE = '''
 
         async function saveFinancialSettings() {
             const year = parseInt(document.getElementById('financialYear').value);
-            const revenue = parseFloat(document.getElementById('fsRevenue').value) || 0;
-            const costOfSales = parseFloat(document.getElementById('fsCostOfSales').value) || 0;
-            const sgaExpense = parseFloat(document.getElementById('fsSgaExpense').value) || 0;
-            const nonOperating = parseFloat(document.getElementById('fsNonOperating').value) || 0;
+            const revenue = getMoneyInputValue('fsRevenue');
+            const costOfSales = getMoneyInputValue('fsCostOfSales');
+            const sgaExpense = getMoneyInputValue('fsSgaExpense');
+            const nonOperating = getMoneyInputValue('fsNonOperating');
             const notes = document.getElementById('fsNotes').value;
 
             const costRate = revenue > 0 ? (costOfSales / revenue * 100) : 0;
