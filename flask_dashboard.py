@@ -3412,19 +3412,25 @@ ADMIN_TEMPLATE = '''
 
     <!-- 원가-매출 매핑 모달 -->
     <div class="modal" id="mappingModal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
                 <h3>원가-매출 항목 매핑</h3>
                 <button class="modal-close" onclick="closeModal('mappingModal')">&times;</button>
             </div>
             <div class="form-group">
                 <label>매출 항목명</label>
-                <input type="text" class="form-control" id="mappingSalesItem" placeholder="매출 항목명 입력">
+                <input type="text" class="form-control" id="mappingSalesItem" placeholder="매출 항목명 입력" readonly style="background: #f1f5f9;">
             </div>
             <div class="form-group">
-                <label>원가 항목명</label>
-                <input type="text" class="form-control" id="mappingCostItem" placeholder="원가 항목명 입력 (원가 데이터와 일치해야 함)">
-                <small style="color: #64748b;">원가 데이터에 등록된 항목명과 정확히 일치해야 합니다</small>
+                <label>원가 항목 선택</label>
+                <input type="text" class="form-control" id="mappingCostSearch" placeholder="원가 항목 검색..." oninput="searchCostItems()">
+            </div>
+            <div id="costSuggestions" style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 15px;">
+                <div style="padding: 20px; text-align: center; color: #64748b;">추천 항목을 불러오는 중...</div>
+            </div>
+            <div class="form-group">
+                <label>선택된 원가 항목</label>
+                <input type="text" class="form-control" id="mappingCostItem" readonly style="background: #ecfdf5; border-color: #10b981;">
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn" onclick="closeModal('mappingModal')">취소</button>
@@ -3733,6 +3739,13 @@ ADMIN_TEMPLATE = '''
         // 항목 매핑 로드
         async function loadCostMapping() {
             try {
+                // 원가 데이터도 함께 로드 (추천 기능에 필요)
+                if (!costDataCache.length) {
+                    const costRes = await fetch('/api/admin/cost-data');
+                    const costData = await costRes.json();
+                    costDataCache = costData.data || [];
+                }
+
                 const [mappingRes, profitRes] = await Promise.all([
                     fetch('/api/admin/cost-mapping'),
                     fetch('/api/cost/profit-analysis?year=2025')
@@ -3780,13 +3793,90 @@ ADMIN_TEMPLATE = '''
         function quickMapping(salesItem) {
             document.getElementById('mappingSalesItem').value = salesItem;
             document.getElementById('mappingCostItem').value = '';
+            document.getElementById('mappingCostSearch').value = '';
             document.getElementById('mappingModal').classList.add('show');
+            // 유사 항목 자동 검색
+            showCostSuggestions(salesItem);
         }
 
         function showMappingModal() {
             document.getElementById('mappingSalesItem').value = '';
             document.getElementById('mappingCostItem').value = '';
+            document.getElementById('mappingCostSearch').value = '';
+            document.getElementById('costSuggestions').innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">매출 항목을 선택하세요</div>';
             document.getElementById('mappingModal').classList.add('show');
+        }
+
+        function showCostSuggestions(salesItem) {
+            if (!costDataCache.length) {
+                document.getElementById('costSuggestions').innerHTML = '<div style="padding: 20px; text-align: center; color: #ef4444;">원가 데이터가 없습니다. 먼저 원가 데이터를 로드하세요.</div>';
+                return;
+            }
+
+            // 유사도 기반 정렬
+            const scored = costDataCache.map(c => {
+                let score = 0;
+                const costName = (c.item_name || '').toLowerCase();
+                const salesName = salesItem.toLowerCase();
+
+                // 정확히 일치
+                if (costName === salesName) score = 100;
+                // 포함 관계
+                else if (costName.includes(salesName) || salesName.includes(costName)) score = 80;
+                // 부분 일치 (첫 글자들)
+                else if (costName.substring(0, 3) === salesName.substring(0, 3)) score = 60;
+                // 공통 문자 수
+                else {
+                    const common = [...salesName].filter(ch => costName.includes(ch)).length;
+                    score = Math.min(50, common * 10);
+                }
+                return { ...c, score };
+            }).filter(c => c.score > 0).sort((a, b) => b.score - a.score).slice(0, 20);
+
+            renderCostSuggestions(scored, salesItem);
+        }
+
+        function searchCostItems() {
+            const search = document.getElementById('mappingCostSearch').value.toLowerCase().trim();
+            if (!search) {
+                const salesItem = document.getElementById('mappingSalesItem').value;
+                if (salesItem) showCostSuggestions(salesItem);
+                return;
+            }
+
+            const filtered = costDataCache.filter(c =>
+                (c.item_name || '').toLowerCase().includes(search)
+            ).slice(0, 20);
+
+            renderCostSuggestions(filtered.map(c => ({ ...c, score: 50 })), '');
+        }
+
+        function renderCostSuggestions(items, salesItem) {
+            if (!items.length) {
+                document.getElementById('costSuggestions').innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">일치하는 원가 항목이 없습니다</div>';
+                return;
+            }
+
+            document.getElementById('costSuggestions').innerHTML = items.map(c => `
+                <div onclick="selectCostItem('${c.item_name.replace(/'/g, "\\\\'")}')"
+                     style="padding: 10px 15px; cursor: pointer; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;"
+                     onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'">
+                    <div>
+                        <div style="font-weight: 500;">${c.item_name}</div>
+                        <div style="font-size: 12px; color: #64748b;">${c.category || ''} | 총원가: ${formatNumber(c.total_cost)}원</div>
+                    </div>
+                    ${c.score >= 80 ? '<span style="background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">추천</span>' :
+                      c.score >= 50 ? '<span style="background: #f59e0b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">유사</span>' : ''}
+                </div>
+            `).join('');
+        }
+
+        function selectCostItem(itemName) {
+            document.getElementById('mappingCostItem').value = itemName;
+            // 선택된 항목 하이라이트
+            document.querySelectorAll('#costSuggestions > div').forEach(div => {
+                div.style.background = div.textContent.includes(itemName) ? '#ecfdf5' : 'white';
+            });
         }
 
         async function saveMapping() {
