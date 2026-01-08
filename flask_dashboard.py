@@ -681,7 +681,11 @@ def init_sqlite_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_year ON food_item_data(year)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_manager ON food_item_data(영업담당)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_purpose ON food_item_data(검사목적)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_item ON food_item_data(항목명)')
+    # 항목명 컬럼이 있을 때만 인덱스 생성 (Colab 변환 DB 호환)
+    try:
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_item ON food_item_data(항목명)')
+    except:
+        pass
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_token_yearmonth ON token_usage(year_month)')
 
     # 기존 DB에 새 컬럼 추가 (마이그레이션)
