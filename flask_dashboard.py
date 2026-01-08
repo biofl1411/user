@@ -1224,10 +1224,10 @@ def get_ai_data_summary(force_refresh=False):
     # 요약 통계 계산
     summary = {
         '2024': {'total_count': 0, 'total_fee': 0, 'by_purpose': {}, 'by_sample_type': {},
-                 'by_manager': {}, 'by_item': {}, 'monthly': {}},
+                 'by_manager': {}, 'by_item': {}, 'monthly': {}, 'by_client': {}},
         '2025': {'total_count': 0, 'total_fee': 0, 'by_purpose': {}, 'by_sample_type': {},
-                 'by_manager': {}, 'by_item': {}, 'monthly': {}},
-        'filter_values': {'purposes': set(), 'sample_types': set(), 'items': set(), 'managers': set()}
+                 'by_manager': {}, 'by_item': {}, 'monthly': {}, 'by_client': {}},
+        'filter_values': {'purposes': set(), 'sample_types': set(), 'items': set(), 'managers': set(), 'clients': set()}
     }
 
     for year, data in [('2024', food_2024), ('2025', food_2025)]:
@@ -1236,6 +1236,7 @@ def get_ai_data_summary(force_refresh=False):
             sample_type = str(row.get('검체유형', '') or '').strip()
             item_name = str(row.get('항목명', '') or '').strip()
             manager = str(row.get('영업담당', '') or '').strip() or '미지정'
+            client = str(row.get('업체명', '') or '').strip() or '미지정'
             fee = row.get('항목수수료', 0) or 0
             date = row.get('접수일자')
 
@@ -1284,6 +1285,18 @@ def get_ai_data_summary(force_refresh=False):
                 summary[year]['monthly'][m]['count'] += 1
                 summary[year]['monthly'][m]['fee'] += fee
 
+            # 고객(업체)별
+            if client and client != '미지정':
+                if client not in summary[year]['by_client']:
+                    summary[year]['by_client'][client] = {'count': 0, 'fee': 0, 'purposes': set(), 'months': set()}
+                summary[year]['by_client'][client]['count'] += 1
+                summary[year]['by_client'][client]['fee'] += fee
+                if purpose:
+                    summary[year]['by_client'][client]['purposes'].add(purpose)
+                if date and hasattr(date, 'month'):
+                    summary[year]['by_client'][client]['months'].add(date.month)
+                summary['filter_values']['clients'].add(client)
+
     # set을 sorted list로 변환
     summary['filter_values']['purposes'] = sorted(summary['filter_values']['purposes'])
     summary['filter_values']['sample_types'] = sorted(summary['filter_values']['sample_types'])
@@ -1296,6 +1309,23 @@ def get_ai_data_summary(force_refresh=False):
         sorted_items = sorted(summary[year]['by_item'].items(),
                              key=lambda x: x[1]['fee'], reverse=True)[:50]
         summary[year]['by_item'] = dict(sorted_items)
+
+    # 고객별 데이터 정렬 (상위 100개만 유지) + set을 list로 변환
+    for year in ['2024', '2025']:
+        sorted_clients = sorted(summary[year]['by_client'].items(),
+                               key=lambda x: x[1]['fee'], reverse=True)[:100]
+        summary[year]['by_client'] = {
+            k: {
+                'count': v['count'],
+                'fee': v['fee'],
+                'purposes': list(v['purposes']),
+                'months': sorted(list(v['months']))
+            }
+            for k, v in sorted_clients
+        }
+
+    # 고객사 필터 값 정렬
+    summary['filter_values']['clients'] = sorted(summary['filter_values']['clients'])[:200]
 
     elapsed = time.time() - start_time
     print(f"[AI-CACHE] 요약 생성 완료: {elapsed:.1f}초 소요")
@@ -23628,23 +23658,11 @@ HTML_TEMPLATE = '''
             content.innerHTML = '';
             result.classList.add('show');
 
-            // 현재 탭과 필터 정보 수집
-            const currentFilters = {
-                tab: currentTab,
-                year: document.getElementById('yearSelect')?.value || '2025',
-                purpose: document.getElementById('monthlySalesPurposeFilter')?.value ||
-                         document.getElementById('managerChartPurposeFilter')?.value ||
-                         document.getElementById('branchChartPurposeFilter')?.value || '전체',
-                manager: document.getElementById('monthlySalesManagerFilter')?.value || '전체',
-                sampleType: document.getElementById('sampleTypePurposeFilter')?.value || '전체',
-                branch: document.getElementById('branchChartFilter')?.value || '전체'
-            };
-
             try {
                 const res = await fetch('/api/ai/analyze', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query, filters: currentFilters })
+                    body: JSON.stringify({ query })
                 });
                 const data = await res.json();
 
@@ -23657,14 +23675,6 @@ HTML_TEMPLATE = '''
                     // 새로운 경영 분석 응답 처리
                     const markdown = data.response;
                     let html = formatMarkdownToHtml(markdown);
-
-                    // 현재 분석 컨텍스트 표시
-                    if (data.current_context) {
-                        const ctx = data.current_context;
-                        html = `<div class="ai-context" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px;">
-                            <strong>🎯 분석 기준</strong>: ${ctx.tab_name} | ${ctx.year}년 | 필터: ${ctx.filters}
-                        </div>` + html;
-                    }
 
                     // 데이터 요약 표시
                     if (data.data_summary) {
@@ -25339,26 +25349,14 @@ def get_company_context():
 
 @app.route('/api/ai/analyze', methods=['POST'])
 def ai_analyze():
-    """AI 경영 분석 API - Claude를 사용한 경영 판단 지원 (탭/필터 반영 + 확장 컨텍스트)"""
+    """AI 경영 분석 API - Claude를 사용한 경영 판단 지원"""
     import urllib.request
     import urllib.error
     import time
 
     query = request.json.get('query', '')
-    filters = request.json.get('filters', {})
-
-    # 필터 정보 추출
-    current_tab = filters.get('tab', 'main')
-    selected_year = filters.get('year', '2025')
-    purpose_filter = filters.get('purpose', '전체')
-    manager_filter = filters.get('manager', '전체')
-    sample_type_filter = filters.get('sampleType', '전체')
-    branch_filter = filters.get('branch', '전체')
-
     print(f"[AI] === 경영 분석 요청 시작 ===")
     print(f"[AI] 질문: {query}")
-    print(f"[AI] 현재 탭: {current_tab}, 연도: {selected_year}")
-    print(f"[AI] 필터 - 목적:{purpose_filter}, 담당:{manager_filter}, 유형:{sample_type_filter}")
 
     if not query:
         return jsonify({'error': '질문을 입력해주세요.'})
@@ -25367,151 +25365,126 @@ def ai_analyze():
     data_summary = get_ai_data_summary()
     stats_2024 = data_summary['2024']
     stats_2025 = data_summary['2025']
-    current_stats = stats_2025 if selected_year == '2025' else stats_2024
-    compare_stats = stats_2024 if selected_year == '2025' else stats_2025
 
     # 2024년 vs 2025년 비교 데이터 계산
     growth_rate = ((stats_2025['total_fee'] - stats_2024['total_fee']) / stats_2024['total_fee'] * 100) if stats_2024['total_fee'] > 0 else 0
     count_growth = ((stats_2025['total_count'] - stats_2024['total_count']) / stats_2024['total_count'] * 100) if stats_2024['total_count'] > 0 else 0
 
     # TOP 분석
-    top_purposes = sorted(current_stats['by_purpose'].items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
-    top_managers = sorted(current_stats['by_manager'].items(), key=lambda x: x[1]['fee'], reverse=True)[:15]
-    top_sample_types = sorted(current_stats['by_sample_type'].items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
-    top_items = sorted(current_stats['by_item'].items(), key=lambda x: x[1]['fee'], reverse=True)[:20]
+    top_purposes_2025 = sorted(stats_2025['by_purpose'].items(), key=lambda x: x[1]['fee'], reverse=True)[:7]
+    top_purposes_2024 = sorted(stats_2024['by_purpose'].items(), key=lambda x: x[1]['fee'], reverse=True)[:7]
+    top_managers_2025 = sorted(stats_2025['by_manager'].items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
+    top_managers_2024 = sorted(stats_2024['by_manager'].items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
 
-    # 월별 추이
-    monthly_data = current_stats.get('monthly', {})
+    # 월별 추이 (2025년)
+    monthly_2025 = stats_2025.get('monthly', {})
     monthly_trend = []
     for m in range(1, 13):
-        if m in monthly_data:
-            monthly_trend.append(f"{m}월: {monthly_data[m]['fee']/100000000:.2f}억({monthly_data[m]['count']:,}건)")
+        if m in monthly_2025:
+            monthly_trend.append(f"{m}월: {monthly_2025[m]['fee']/100000000:.2f}억")
 
     # 영업담당별 상세 분석
     manager_analysis = []
-    for name, data in top_managers:
-        prev = compare_stats['by_manager'].get(name, {'fee': 0, 'count': 0})
+    for name, data in top_managers_2025:
+        prev = stats_2024['by_manager'].get(name, {'fee': 0, 'count': 0})
         growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 0
-        avg_per_case = data['fee'] / data['count'] if data['count'] > 0 else 0
-        manager_analysis.append(f"{name}: {data['fee']/100000000:.2f}억({data['count']:,}건, 건당 {avg_per_case/10000:.1f}만원, 전년비 {growth:+.1f}%)")
+        manager_analysis.append(f"{name}: {data['fee']/100000000:.2f}억(전년비 {growth:+.1f}%)")
 
     # 검사목적별 성장률 분석
-    purpose_analysis = []
-    for name, data in top_purposes:
-        prev = compare_stats['by_purpose'].get(name, {'fee': 0, 'count': 0})
+    purpose_growth = []
+    for name, data in top_purposes_2025:
+        prev = stats_2024['by_purpose'].get(name, {'fee': 0})
         growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 0
-        purpose_analysis.append(f"{name}: {data['fee']/100000000:.2f}억({data['count']:,}건, 전년비 {growth:+.1f}%)")
+        purpose_growth.append(f"{name}: {data['fee']/100000000:.2f}억(전년비 {growth:+.1f}%)")
 
-    # 검체유형별 분석
-    sample_type_analysis = []
-    for name, data in top_sample_types:
-        prev = compare_stats['by_sample_type'].get(name, {'fee': 0, 'count': 0})
-        growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 0
-        sample_type_analysis.append(f"{name}: {data['fee']/100000000:.2f}억({data['count']:,}건, 전년비 {growth:+.1f}%)")
+    # 고객(업체) 분석 추가
+    top_clients_2025 = sorted(stats_2025.get('by_client', {}).items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
 
-    # 항목별 상세 분석
-    item_analysis = []
-    for name, data in top_items:
-        prev = compare_stats['by_item'].get(name, {'fee': 0, 'count': 0})
-        growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 0
-        item_analysis.append(f"{name}: {data['fee']/10000:.0f}만원({data['count']:,}건, 전년비 {growth:+.1f}%)")
+    # 고객별 상세 분석
+    client_analysis = []
+    for name, data in top_clients_2025:
+        prev = stats_2024.get('by_client', {}).get(name, {'fee': 0, 'count': 0})
+        growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 100
+        months_active = len(data.get('months', []))
+        client_analysis.append(f"{name}: {data['fee']/100000000:.2f}억({data['count']}건, {months_active}개월 거래, 전년비 {growth:+.1f}%)")
+
+    # 신규/이탈 고객 분석
+    clients_2024_set = set(stats_2024.get('by_client', {}).keys())
+    clients_2025_set = set(stats_2025.get('by_client', {}).keys())
+    new_clients = clients_2025_set - clients_2024_set
+    lost_clients = clients_2024_set - clients_2025_set
+    retained_clients = clients_2024_set & clients_2025_set
+
+    new_client_revenue = sum(stats_2025.get('by_client', {}).get(c, {}).get('fee', 0) for c in new_clients)
+    lost_client_revenue = sum(stats_2024.get('by_client', {}).get(c, {}).get('fee', 0) for c in lost_clients)
+    retention_rate = (len(retained_clients) / len(clients_2024_set) * 100) if clients_2024_set else 0
+
+    avg_revenue_per_client_2025 = (stats_2025['total_fee'] / len(clients_2025_set)) if clients_2025_set else 0
+    avg_revenue_per_client_2024 = (stats_2024['total_fee'] / len(clients_2024_set)) if clients_2024_set else 0
+
+    # 핵심 KPI 계산
+    months_with_data_2025 = len([m for m in monthly_2025.values() if m['fee'] > 0])
+    months_with_data_2024 = len([m for m in stats_2024.get('monthly', {}).values() if m['fee'] > 0])
+
+    monthly_avg_2025 = (stats_2025['total_fee'] / months_with_data_2025) if months_with_data_2025 > 0 else 0
+    monthly_avg_2024 = (stats_2024['total_fee'] / months_with_data_2024) if months_with_data_2024 > 0 else 0
+    avg_price_per_case_2025 = (stats_2025['total_fee'] / stats_2025['total_count']) if stats_2025['total_count'] > 0 else 0
+    avg_price_per_case_2024 = (stats_2024['total_fee'] / stats_2024['total_count']) if stats_2024['total_count'] > 0 else 0
+    monthly_avg_count_2025 = (stats_2025['total_count'] / months_with_data_2025) if months_with_data_2025 > 0 else 0
+
+    # 전월 대비 성장률
+    sorted_months = sorted(monthly_2025.keys())
+    if len(sorted_months) >= 2:
+        latest_month = sorted_months[-1]
+        prev_month = sorted_months[-2]
+        mom_growth = ((monthly_2025[latest_month]['fee'] - monthly_2025[prev_month]['fee']) / monthly_2025[prev_month]['fee'] * 100) if monthly_2025[prev_month]['fee'] > 0 else 0
+        mom_text = f"- 전월 대비 성장률: {mom_growth:+.1f}% ({prev_month}월→{latest_month}월)"
+    else:
+        mom_text = ""
 
     # 기업 정보 컨텍스트
     company_context = get_company_context()
 
-    # 탭별 한글명 매핑
-    tab_names = {
-        'main': '메인(종합현황)',
-        'personal': '개인별 실적',
-        'team': '팀별 실적',
-        'monthly': '월별 추이',
-        'client': '고객 분석',
-        'region': '지역/지사별',
-        'purpose': '검사목적별',
-        'sampleType': '검체유형별',
-        'defect': '부적합 현황',
-        'foodItem': '검사항목별',
-        'collection': '수거 현황',
-        'aiAnalysis': 'AI 분석'
-    }
-    current_tab_name = tab_names.get(current_tab, current_tab)
-
-    # 필터 적용 상태 텍스트
-    active_filters = []
-    if purpose_filter != '전체':
-        active_filters.append(f"검사목적={purpose_filter}")
-    if manager_filter != '전체':
-        active_filters.append(f"영업담당={manager_filter}")
-    if sample_type_filter != '전체':
-        active_filters.append(f"검체유형={sample_type_filter}")
-    if branch_filter != '전체':
-        active_filters.append(f"지사={branch_filter}")
-    filter_text = ', '.join(active_filters) if active_filters else '전체 데이터'
-
-    # 탭별 상세 컨텍스트 생성
-    tab_specific_context = ""
-    if current_tab == 'purpose':
-        tab_specific_context = f"""
-[현재 보고 있는 탭: 검사목적별 분석]
-검사목적별 전체 현황 (상위 10개):
-{chr(10).join(purpose_analysis)}
-"""
-    elif current_tab == 'sampleType':
-        tab_specific_context = f"""
-[현재 보고 있는 탭: 검체유형별 분석]
-검체유형별 전체 현황 (상위 10개):
-{chr(10).join(sample_type_analysis)}
-"""
-    elif current_tab == 'personal' or current_tab == 'manager':
-        tab_specific_context = f"""
-[현재 보고 있는 탭: 영업담당별 분석]
-영업담당별 상세 현황 (상위 15명):
-{chr(10).join(manager_analysis)}
-"""
-    elif current_tab == 'monthly':
-        tab_specific_context = f"""
-[현재 보고 있는 탭: 월별 추이 분석]
-{selected_year}년 월별 상세 현황:
-{chr(10).join(monthly_trend) if monthly_trend else '데이터 없음'}
-"""
-    elif current_tab == 'foodItem':
-        tab_specific_context = f"""
-[현재 보고 있는 탭: 검사항목별 분석]
-검사항목별 상세 현황 (상위 20개):
-{chr(10).join(item_analysis)}
-"""
-
     # 종합 데이터 컨텍스트 생성
     comprehensive_context = f"""
 === 경영 데이터 현황 ===
-사용자가 현재 보고 있는 화면: {current_tab_name}
-적용된 필터: {filter_text}
-분석 기준 연도: {selected_year}년
 
-[{selected_year}년 실적]
-- 총 매출: {current_stats['total_fee']/100000000:.2f}억원
-- 총 건수: {current_stats['total_count']:,}건
-- 건당 평균 수수료: {current_stats['total_fee']/current_stats['total_count']/10000:.1f}만원
+[2025년 실적]
+- 총 매출: {stats_2025['total_fee']/100000000:.2f}억원 (전년비 {growth_rate:+.1f}%)
+- 총 건수: {stats_2025['total_count']:,}건 (전년비 {count_growth:+.1f}%)
 
-[전년 대비 성장률]
-- 매출 성장률: {growth_rate:+.1f}%
-- 건수 성장률: {count_growth:+.1f}%
+[2024년 실적]
+- 총 매출: {stats_2024['total_fee']/100000000:.2f}억원
+- 총 건수: {stats_2024['total_count']:,}건
 
-[월별 매출 추이 ({selected_year}년)]
+[핵심 경영 지표 (KPI)]
+- 월평균 매출: {monthly_avg_2025/100000000:.2f}억원 (전년 {monthly_avg_2024/100000000:.2f}억)
+- 건당 평균 단가: {avg_price_per_case_2025:,.0f}원 (전년 {avg_price_per_case_2024:,.0f}원)
+- 월평균 검사 건수: {monthly_avg_count_2025:,.0f}건
+{mom_text}
+
+[2025년 월별 매출 추이]
 {', '.join(monthly_trend) if monthly_trend else '데이터 없음'}
 
-[영업담당별 실적 TOP 15]
+[영업담당별 실적 (2025년 TOP 10)]
 {chr(10).join(manager_analysis)}
 
-[검사목적별 매출 TOP 10]
-{chr(10).join(purpose_analysis)}
+[검사목적별 매출 (2025년)]
+{chr(10).join(purpose_growth)}
 
-[검체유형별 매출 TOP 10]
-{chr(10).join(sample_type_analysis)}
+[검체유형 TOP 5 (2025년)]
+{', '.join([f"{k}({v['fee']/100000000:.2f}억)" for k, v in sorted(stats_2025['by_sample_type'].items(), key=lambda x: x[1]['fee'], reverse=True)[:5]])}
 
-[검사항목별 매출 TOP 20]
-{chr(10).join(item_analysis)}
-{tab_specific_context}
+[고객(업체) 분석]
+- 총 거래처 수: 2025년 {len(clients_2025_set):,}개 / 2024년 {len(clients_2024_set):,}개
+- 고객 유지율: {retention_rate:.1f}% (유지 {len(retained_clients):,}개 / 전년 {len(clients_2024_set):,}개)
+- 신규 고객: {len(new_clients):,}개 (매출 {new_client_revenue/100000000:.2f}억)
+- 이탈 고객: {len(lost_clients):,}개 (전년 매출 {lost_client_revenue/100000000:.2f}억)
+- 평균 객단가: 2025년 {avg_revenue_per_client_2025/10000:.0f}만원 / 2024년 {avg_revenue_per_client_2024/10000:.0f}만원
+
+[TOP 10 고객사 (2025년)]
+{chr(10).join(client_analysis)}
+
 {company_context if company_context else ''}
 """
 
@@ -25521,12 +25494,11 @@ def ai_analyze():
 {comprehensive_context}
 
 응답 지침:
-1. 사용자가 현재 '{current_tab_name}' 탭을 보고 있으며, 해당 탭과 관련된 분석을 우선적으로 제공하세요
-2. 적용된 필터({filter_text})를 고려하여 맥락에 맞는 분석을 하세요
-3. 반드시 다음 구조로 답변하세요:
+1. 질문에 대해 데이터 기반의 명확한 분석을 제공하세요
+2. 반드시 다음 구조로 답변하세요:
 
 ## 📊 현황 분석
-(데이터에 기반한 현재 상황 설명 - 현재 탭의 데이터를 중심으로)
+(데이터에 기반한 현재 상황 설명)
 
 ## ✅ 장점 (강점)
 - 구체적인 수치와 함께 긍정적인 측면 나열
@@ -25542,12 +25514,11 @@ def ai_analyze():
 
 중요:
 - 모든 분석은 제공된 데이터의 구체적인 수치를 인용하세요
-- 현재 탭({current_tab_name})과 필터({filter_text})에 맞는 맞춤형 분석을 제공하세요
 - 추측이나 일반론이 아닌 데이터 기반 인사이트를 제공하세요
 - 경영자가 바로 활용할 수 있는 실용적인 제안을 하세요"""
 
     print(f"[AI] Claude API 호출 중...")
-    claude_result = call_claude_api(f"질문: {query}", system_prompt=system_prompt, max_tokens=2500)
+    claude_result = call_claude_api(f"질문: {query}", system_prompt=system_prompt, max_tokens=2000)
 
     if claude_result['success']:
         ai_response = claude_result['text']
@@ -25564,12 +25535,6 @@ def ai_analyze():
             'analysis_type': 'management_insight',
             'response': ai_response,
             'ai_model': 'Claude Sonnet 4',
-            'current_context': {
-                'tab': current_tab,
-                'tab_name': current_tab_name,
-                'year': selected_year,
-                'filters': filter_text
-            },
             'data_summary': {
                 'total_sales_2025': stats_2025['total_fee'],
                 'total_sales_2024': stats_2024['total_fee'],
