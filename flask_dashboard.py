@@ -2823,6 +2823,12 @@ ADMIN_TEMPLATE = '''
                 <div class="sidebar-item" onclick="showPanel('settings')">⚙️ 시스템 설정</div>
                 <div class="sidebar-item" onclick="showPanel('aiLogs')">🤖 AI 분석 로그</div>
             </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">원가 관리</div>
+                <div class="sidebar-item" onclick="showPanel('costData')">💰 원가 데이터</div>
+                <div class="sidebar-item" onclick="showPanel('costMapping')">🔗 항목 매핑</div>
+                <div class="sidebar-item" onclick="showPanel('profitAnalysis')">📈 손익 분석</div>
+            </div>
         </div>
 
         <div class="admin-content">
@@ -3086,6 +3092,168 @@ ADMIN_TEMPLATE = '''
                     </table>
                 </div>
             </div>
+
+            <!-- 원가 데이터 패널 -->
+            <div id="costDataPanel" class="admin-panel">
+                <div class="panel-header">
+                    <h2>💰 원가 데이터</h2>
+                    <button class="btn btn-primary" onclick="reloadCostData()">📥 엑셀에서 로드</button>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="costDataCount">0</div>
+                        <div class="stat-label">총 원가 항목</div>
+                    </div>
+                    <div class="stat-card blue">
+                        <div class="stat-value" id="costDataPhysical">0</div>
+                        <div class="stat-label">이화학 검사</div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="stat-value" id="costDataMicro">0</div>
+                        <div class="stat-label">미생물 검사</div>
+                    </div>
+                </div>
+                <div class="search-box">
+                    <input type="text" class="form-control" placeholder="원가 항목 검색..." id="costSearch" onkeyup="filterCostData()">
+                    <select class="form-control" style="width: 150px;" id="costCategoryFilter" onchange="filterCostData()">
+                        <option value="">전체 카테고리</option>
+                        <option value="이화학">이화학</option>
+                        <option value="미생물">미생물</option>
+                    </select>
+                </div>
+                <div class="card">
+                    <div class="card-title">원가 데이터 목록</div>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>항목명</th>
+                                    <th>카테고리</th>
+                                    <th>재료비</th>
+                                    <th>노무비</th>
+                                    <th>경비</th>
+                                    <th>직접비 계</th>
+                                    <th>간접비 계</th>
+                                    <th>총원가</th>
+                                </tr>
+                            </thead>
+                            <tbody id="costDataTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 항목 매핑 패널 -->
+            <div id="costMappingPanel" class="admin-panel">
+                <div class="panel-header">
+                    <h2>🔗 원가-매출 항목 매핑</h2>
+                    <button class="btn btn-primary" onclick="showMappingModal()">+ 매핑 추가</button>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="mappingCount">0</div>
+                        <div class="stat-label">매핑된 항목</div>
+                    </div>
+                    <div class="stat-card blue">
+                        <div class="stat-value" id="unmappedCount">0</div>
+                        <div class="stat-label">미매핑 항목</div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="card" style="flex: 1;">
+                        <div class="card-title">현재 매핑 목록</div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>원가 항목</th>
+                                    <th>매출 항목</th>
+                                    <th>관리</th>
+                                </tr>
+                            </thead>
+                            <tbody id="costMappingTable"></tbody>
+                        </table>
+                    </div>
+                    <div class="card" style="flex: 1;">
+                        <div class="card-title">미매핑 매출 항목 (상위 50개)</div>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>매출 항목명</th>
+                                        <th>건수</th>
+                                        <th>매핑</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="unmappedItemsTable"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 손익 분석 패널 -->
+            <div id="profitAnalysisPanel" class="admin-panel">
+                <div class="panel-header">
+                    <h2>📈 손익 분석</h2>
+                    <select class="form-control" style="width: 120px;" id="profitYear" onchange="loadProfitAnalysis()">
+                        <option value="2026">2026년</option>
+                        <option value="2025" selected>2025년</option>
+                        <option value="2024">2024년</option>
+                    </select>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalRevenue">0원</div>
+                        <div class="stat-label">총 매출</div>
+                    </div>
+                    <div class="stat-card orange">
+                        <div class="stat-value" id="totalCostSum">0원</div>
+                        <div class="stat-label">총 원가</div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="stat-value" id="totalProfit">0원</div>
+                        <div class="stat-label">총 이익</div>
+                    </div>
+                    <div class="stat-card blue">
+                        <div class="stat-value" id="profitRate">0%</div>
+                        <div class="stat-label">이익률</div>
+                    </div>
+                </div>
+                <div class="stat-grid" style="margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalItems">0</div>
+                        <div class="stat-label">총 항목수</div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="stat-value" id="matchedItems">0</div>
+                        <div class="stat-label">매칭된 항목</div>
+                    </div>
+                    <div class="stat-card orange">
+                        <div class="stat-value" id="matchRate">0%</div>
+                        <div class="stat-label">매칭률</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">항목별 손익 분석 (상위 100개)</div>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>항목명</th>
+                                    <th>건수</th>
+                                    <th>매출액</th>
+                                    <th>단가원가</th>
+                                    <th>총원가</th>
+                                    <th>이익</th>
+                                    <th>이익률</th>
+                                    <th>매칭</th>
+                                </tr>
+                            </thead>
+                            <tbody id="profitAnalysisTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -3242,6 +3410,29 @@ ADMIN_TEMPLATE = '''
         </div>
     </div>
 
+    <!-- 원가-매출 매핑 모달 -->
+    <div class="modal" id="mappingModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>원가-매출 항목 매핑</h3>
+                <button class="modal-close" onclick="closeModal('mappingModal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>매출 항목명</label>
+                <input type="text" class="form-control" id="mappingSalesItem" placeholder="매출 항목명 입력">
+            </div>
+            <div class="form-group">
+                <label>원가 항목명</label>
+                <input type="text" class="form-control" id="mappingCostItem" placeholder="원가 항목명 입력 (원가 데이터와 일치해야 함)">
+                <small style="color: #64748b;">원가 데이터에 등록된 항목명과 정확히 일치해야 합니다</small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" onclick="closeModal('mappingModal')">취소</button>
+                <button type="button" class="btn btn-primary" onclick="saveMapping()">저장</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 사용자 추가/수정 모달 -->
     <div class="modal" id="userModal">
         <div class="modal-content">
@@ -3311,6 +3502,9 @@ ADMIN_TEMPLATE = '''
             else if (panel === 'permissions') loadPermissions();
             else if (panel === 'settings') loadSettings();
             else if (panel === 'aiLogs') loadAiLogs();
+            else if (panel === 'costData') loadCostData();
+            else if (panel === 'costMapping') loadCostMapping();
+            else if (panel === 'profitAnalysis') loadProfitAnalysis();
         }
 
         // 목표 탭 전환
@@ -3464,6 +3658,208 @@ ADMIN_TEMPLATE = '''
                     <td>${l.tokens_used || 0}</td>
                 </tr>
             `).join('');
+        }
+
+        // ============ 원가 관리 함수들 ============
+        let costDataCache = [];
+        let costMappingCache = [];
+
+        // 원가 데이터 로드
+        async function loadCostData() {
+            try {
+                const response = await fetch('/api/admin/cost-data');
+                const data = await response.json();
+                costDataCache = data.data || [];
+
+                // 통계 업데이트
+                document.getElementById('costDataCount').textContent = costDataCache.length;
+                const physical = costDataCache.filter(c => c.category === '이화학').length;
+                const micro = costDataCache.filter(c => c.category === '미생물').length;
+                document.getElementById('costDataPhysical').textContent = physical;
+                document.getElementById('costDataMicro').textContent = micro;
+
+                renderCostDataTable();
+            } catch (e) {
+                console.error('원가 데이터 로드 실패:', e);
+            }
+        }
+
+        function renderCostDataTable() {
+            const search = document.getElementById('costSearch')?.value?.toLowerCase() || '';
+            const category = document.getElementById('costCategoryFilter')?.value || '';
+
+            let filtered = costDataCache;
+            if (search) {
+                filtered = filtered.filter(c => c.item_name?.toLowerCase().includes(search));
+            }
+            if (category) {
+                filtered = filtered.filter(c => c.category === category);
+            }
+
+            document.getElementById('costDataTable').innerHTML = filtered.slice(0, 200).map(c => `
+                <tr>
+                    <td>${c.item_name || '-'}</td>
+                    <td>${c.category || '-'}</td>
+                    <td style="text-align: right;">${formatNumber(c.material_cost)}</td>
+                    <td style="text-align: right;">${formatNumber(c.labor_cost)}</td>
+                    <td style="text-align: right;">${formatNumber(c.expense)}</td>
+                    <td style="text-align: right;">${formatNumber(c.direct_cost)}</td>
+                    <td style="text-align: right;">${formatNumber(c.indirect_cost)}</td>
+                    <td style="text-align: right; font-weight: bold;">${formatNumber(c.total_cost)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="8" style="text-align:center;">원가 데이터가 없습니다</td></tr>';
+        }
+
+        function filterCostData() {
+            renderCostDataTable();
+        }
+
+        async function reloadCostData() {
+            if (!confirm('엑셀 파일에서 원가 데이터를 다시 로드하시겠습니까?\\n기존 데이터가 덮어씌워집니다.')) return;
+            try {
+                const response = await fetch('/api/admin/cost-data/reload', { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    alert('원가 데이터 로드 완료: ' + result.count + '개 항목');
+                    loadCostData();
+                } else {
+                    alert('로드 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('로드 실패: ' + e.message);
+            }
+        }
+
+        // 항목 매핑 로드
+        async function loadCostMapping() {
+            try {
+                const [mappingRes, profitRes] = await Promise.all([
+                    fetch('/api/admin/cost-mapping'),
+                    fetch('/api/cost/profit-analysis?year=2025')
+                ]);
+                const mappingData = await mappingRes.json();
+                const profitData = await profitRes.json();
+
+                costMappingCache = mappingData.mappings || [];
+                document.getElementById('mappingCount').textContent = costMappingCache.length;
+
+                // 매핑 테이블 렌더링
+                document.getElementById('costMappingTable').innerHTML = costMappingCache.map(m => `
+                    <tr>
+                        <td>${m.cost_item_name}</td>
+                        <td>${m.sales_item_name}</td>
+                        <td><button class="btn btn-sm" style="background:#ef4444; color:#fff;" onclick="deleteMapping(${m.id})">삭제</button></td>
+                    </tr>
+                `).join('') || '<tr><td colspan="3" style="text-align:center;">매핑된 항목이 없습니다</td></tr>';
+
+                // 미매핑 항목 표시
+                const unmapped = (profitData.data || []).filter(p => !p.matched);
+                document.getElementById('unmappedCount').textContent = unmapped.length;
+                document.getElementById('unmappedItemsTable').innerHTML = unmapped.slice(0, 50).map(p => `
+                    <tr>
+                        <td>${p.item_name}</td>
+                        <td>${p.count}</td>
+                        <td><button class="btn btn-sm btn-primary" onclick="quickMapping('${p.item_name.replace(/'/g, "\\\\'")}')">매핑</button></td>
+                    </tr>
+                `).join('') || '<tr><td colspan="3" style="text-align:center;">모든 항목이 매핑되었습니다</td></tr>';
+            } catch (e) {
+                console.error('매핑 데이터 로드 실패:', e);
+            }
+        }
+
+        async function deleteMapping(id) {
+            if (!confirm('이 매핑을 삭제하시겠습니까?')) return;
+            try {
+                await fetch('/api/admin/cost-mapping/' + id, { method: 'DELETE' });
+                loadCostMapping();
+            } catch (e) {
+                alert('삭제 실패: ' + e.message);
+            }
+        }
+
+        function quickMapping(salesItem) {
+            document.getElementById('mappingSalesItem').value = salesItem;
+            document.getElementById('mappingCostItem').value = '';
+            document.getElementById('mappingModal').classList.add('show');
+        }
+
+        function showMappingModal() {
+            document.getElementById('mappingSalesItem').value = '';
+            document.getElementById('mappingCostItem').value = '';
+            document.getElementById('mappingModal').classList.add('show');
+        }
+
+        async function saveMapping() {
+            const costItem = document.getElementById('mappingCostItem').value.trim();
+            const salesItem = document.getElementById('mappingSalesItem').value.trim();
+            if (!costItem || !salesItem) {
+                alert('원가 항목과 매출 항목을 모두 입력하세요');
+                return;
+            }
+            try {
+                const response = await fetch('/api/admin/cost-mapping', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cost_item_name: costItem, sales_item_name: salesItem })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    closeModal('mappingModal');
+                    loadCostMapping();
+                    loadProfitAnalysis();
+                } else {
+                    alert('저장 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('저장 실패: ' + e.message);
+            }
+        }
+
+        // 손익 분석 로드
+        async function loadProfitAnalysis() {
+            const year = document.getElementById('profitYear')?.value || '2025';
+            try {
+                const response = await fetch('/api/cost/profit-analysis?year=' + year);
+                const data = await response.json();
+                const summary = data.summary || {};
+
+                document.getElementById('totalRevenue').textContent = formatCurrency(summary.total_revenue || 0);
+                document.getElementById('totalCostSum').textContent = formatCurrency(summary.total_cost || 0);
+                document.getElementById('totalProfit').textContent = formatCurrency(summary.total_profit || 0);
+                document.getElementById('profitRate').textContent = (summary.profit_rate || 0).toFixed(1) + '%';
+                document.getElementById('totalItems').textContent = summary.total_items || 0;
+                document.getElementById('matchedItems').textContent = summary.matched_items || 0;
+                document.getElementById('matchRate').textContent = (summary.match_rate || 0).toFixed(1) + '%';
+
+                document.getElementById('profitAnalysisTable').innerHTML = (data.data || []).map(p => `
+                    <tr style="${p.matched ? '' : 'background: #fef3c7;'}">
+                        <td>${p.item_name}</td>
+                        <td style="text-align: right;">${p.count}</td>
+                        <td style="text-align: right;">${formatCurrency(p.revenue)}</td>
+                        <td style="text-align: right;">${formatNumber(p.unit_cost)}</td>
+                        <td style="text-align: right;">${formatCurrency(p.total_cost)}</td>
+                        <td style="text-align: right; color: ${p.profit >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(p.profit)}</td>
+                        <td style="text-align: right;">${p.profit_rate.toFixed(1)}%</td>
+                        <td style="text-align: center;">${p.matched ? '✅' : '❌'}</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="8" style="text-align:center;">데이터가 없습니다</td></tr>';
+            } catch (e) {
+                console.error('손익 분석 로드 실패:', e);
+            }
+        }
+
+        function formatNumber(num) {
+            return Math.round(num || 0).toLocaleString('ko-KR');
+        }
+
+        function formatCurrency(num) {
+            const n = Math.round(num || 0);
+            if (Math.abs(n) >= 100000000) {
+                return (n / 100000000).toFixed(1) + '억원';
+            } else if (Math.abs(n) >= 10000) {
+                return Math.round(n / 10000).toLocaleString('ko-KR') + '만원';
+            }
+            return n.toLocaleString('ko-KR') + '원';
         }
 
         // 설정 로드
