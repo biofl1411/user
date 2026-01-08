@@ -24155,6 +24155,9 @@ def api_admin_delete_user(user_id):
 @app.route('/api/admin/activity')
 @admin_required
 def api_admin_activity():
+    from datetime import timezone, timedelta
+    KST = timezone(timedelta(hours=9))
+
     conn = get_user_db()
     cursor = conn.cursor()
     cursor.execute('''
@@ -24162,13 +24165,27 @@ def api_admin_activity():
         LEFT JOIN users u ON a.user_id = u.id
         ORDER BY a.created_at DESC LIMIT 100
     ''')
-    activities = [dict(row) for row in cursor.fetchall()]
+    activities = []
+    for row in cursor.fetchall():
+        activity = dict(row)
+        # UTC -> KST 변환
+        if activity.get('created_at'):
+            try:
+                utc_time = datetime.strptime(activity['created_at'], '%Y-%m-%d %H:%M:%S')
+                kst_time = utc_time.replace(tzinfo=timezone.utc).astimezone(KST)
+                activity['created_at'] = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                pass
+        activities.append(activity)
     conn.close()
     return jsonify({'activities': activities})
 
 @app.route('/api/admin/ai-logs')
 @admin_required
 def api_admin_ai_logs():
+    from datetime import timezone, timedelta
+    KST = timezone(timedelta(hours=9))
+
     conn = get_user_db()
     cursor = conn.cursor()
     cursor.execute('''
@@ -24176,7 +24193,18 @@ def api_admin_ai_logs():
         LEFT JOIN users u ON l.user_id = u.id
         ORDER BY l.created_at DESC LIMIT 100
     ''')
-    logs = [dict(row) for row in cursor.fetchall()]
+    logs = []
+    for row in cursor.fetchall():
+        log = dict(row)
+        # UTC -> KST 변환
+        if log.get('created_at'):
+            try:
+                utc_time = datetime.strptime(log['created_at'], '%Y-%m-%d %H:%M:%S')
+                kst_time = utc_time.replace(tzinfo=timezone.utc).astimezone(KST)
+                log['created_at'] = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                pass
+        logs.append(log)
     conn.close()
     return jsonify({'logs': logs})
 
