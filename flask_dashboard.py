@@ -26438,7 +26438,7 @@ COST_RATE = 0.697  # 원가율 69.7%
 def api_profit_summary():
     """손익 요약 API (원가율 기반)"""
     year = request.args.get('year', '2025')
-    data = load_data(year)
+    data = load_excel_data(year)
 
     total_normal_price = 0  # 정상가 합계
     total_actual_sales = 0  # 실제 매출
@@ -26479,7 +26479,7 @@ def api_profit_summary():
 def api_profit_by_purpose():
     """검사목적별 손익 분석"""
     year = request.args.get('year', '2025')
-    data = load_data(year)
+    data = load_excel_data(year)
 
     purpose_stats = {}
     for row in data:
@@ -26526,7 +26526,7 @@ def api_profit_by_purpose():
 def api_profit_by_manager():
     """담당자별 손익 분석"""
     year = request.args.get('year', '2025')
-    data = load_data(year)
+    data = load_excel_data(year)
 
     manager_stats = {}
     for row in data:
@@ -26573,7 +26573,7 @@ def api_profit_by_manager():
 def api_profit_by_month():
     """월별 손익 분석"""
     year = request.args.get('year', '2025')
-    data = load_data(year)
+    data = load_excel_data(year)
 
     month_stats = {m: {'count': 0, 'normal_price': 0, 'actual_sales': 0} for m in range(1, 13)}
 
