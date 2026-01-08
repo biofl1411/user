@@ -9401,7 +9401,12 @@ HTML_TEMPLATE = '''
 
         // 데이터 로드 (실제 API 호출)
         async function loadData() {
+            console.log('[DEBUG] loadData() 시작');
             const btn = document.getElementById('btnSearch');
+            if (!btn) {
+                console.error('[DEBUG] btnSearch 버튼을 찾을 수 없음');
+                return;
+            }
             btn.disabled = true;
             btn.innerHTML = '⏳ 로딩중...';
             showToast('데이터를 불러오는 중...', 'loading');
@@ -9413,13 +9418,17 @@ HTML_TEMPLATE = '''
                 const purpose = document.getElementById('purposeSelect').value;
                 const compareCheck = document.getElementById('compareCheck').checked;
                 const compareYear = document.getElementById('compareYearSelect').value;
+                console.log('[DEBUG] 조회 조건:', { year, month, purpose, compareCheck, compareYear });
 
                 let url = `/api/data?year=${year}`;
                 if (month) url += `&month=${month}`;
                 if (purpose !== '전체') url += `&purpose=${encodeURIComponent(purpose)}`;
+                console.log('[DEBUG] API URL:', url);
 
                 const res = await fetch(url);
+                console.log('[DEBUG] API 응답 상태:', res.status);
                 currentData = await res.json();
+                console.log('[DEBUG] currentData 로드됨, 키:', Object.keys(currentData));
                 currentData.year = year;
 
                 // 비교 데이터 로드
@@ -9438,12 +9447,14 @@ HTML_TEMPLATE = '''
                 hideToast();
                 showToast(`${year}년 데이터 로드 완료`, 'success');
             } catch (e) {
+                console.error('[DEBUG] loadData 에러:', e);
                 hideToast();
                 showToast('데이터 로드 실패: ' + e.message, 'error');
             }
 
             btn.disabled = false;
             btn.innerHTML = '🔍 조회하기';
+            console.log('[DEBUG] loadData() 완료');
         }
 
         function updateAll() {
