@@ -26498,9 +26498,9 @@ def api_profit_summary():
     # 1. 실제 매출 데이터 가져오기 (Excel 데이터에서)
     data = load_excel_data(year)
 
-    total_sales = 0  # 실제 매출액 (총금액 합계)
+    total_sales = 0  # 실제 매출액 (공급가액 합계)
     for row in data:
-        fee = row.get('총금액', 0) or 0
+        fee = row.get('공급가액', 0) or 0
         if isinstance(fee, str):
             fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
         total_sales += fee
@@ -26574,8 +26574,8 @@ def api_profit_by_purpose():
 
         purpose_stats[purpose]['count'] += 1
 
-        # 총금액 사용
-        fee = row.get('총금액', 0) or 0
+        # 공급가액 사용
+        fee = row.get('공급가액', 0) or 0
         if isinstance(fee, str):
             fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
         purpose_stats[purpose]['sales'] += fee
@@ -26627,8 +26627,8 @@ def api_profit_by_manager():
 
         manager_stats[manager]['count'] += 1
 
-        # 총금액 사용
-        fee = row.get('총금액', 0) or 0
+        # 공급가액 사용
+        fee = row.get('공급가액', 0) or 0
         if isinstance(fee, str):
             fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
         manager_stats[manager]['sales'] += fee
@@ -26688,8 +26688,8 @@ def api_profit_by_month():
         if 1 <= month <= 12:
             month_stats[month]['count'] += 1
 
-            # 총금액 사용
-            fee = row.get('총금액', 0) or 0
+            # 공급가액 사용
+            fee = row.get('공급가액', 0) or 0
             if isinstance(fee, str):
                 fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
             month_stats[month]['sales'] += fee
