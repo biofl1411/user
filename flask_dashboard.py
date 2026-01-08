@@ -235,6 +235,50 @@ def init_user_db():
     except:
         pass
 
+    # 손익계산서 설정 테이블
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS financial_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL,
+            revenue REAL DEFAULT 0,
+            cost_of_sales REAL DEFAULT 0,
+            sga_expense REAL DEFAULT 0,
+            non_operating_income REAL DEFAULT 0,
+            cost_rate REAL DEFAULT 0,
+            sga_rate REAL DEFAULT 0,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(year)
+        )
+    ''')
+
+    # 손익계산서 세부 항목 테이블 (추가 비용 항목)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS financial_details (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            item_name TEXT NOT NULL,
+            amount REAL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (year) REFERENCES financial_settings(year)
+        )
+    ''')
+
+    # 사용자별 탭 접근 권한 테이블
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_tab_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            tab_name TEXT NOT NULL,
+            can_access INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            UNIQUE(user_id, tab_name)
+        )
+    ''')
+
     # 기존 users 테이블에 team_id, email 컬럼 추가 (마이그레이션)
     try:
         cursor.execute('ALTER TABLE users ADD COLUMN team_id INTEGER')
@@ -294,6 +338,26 @@ def init_user_db():
             "INSERT INTO users (username, password_hash, name, role) VALUES (?, ?, ?, ?)",
             ("admin", admin_password, "관리자", "admin")
         )
+
+    # 2025년 기본 손익계산서 설정 (없는 경우만)
+    cursor.execute("SELECT id FROM financial_settings WHERE year = 2025")
+    if not cursor.fetchone():
+        # 분석사업 기준 (11월 누계 데이터 기반)
+        # 매출: 51.98억, 원가: 36.22억 (69.7%), 판관비: 30.34억 (58.4%), 영업외손익: +4.0억
+        cursor.execute('''
+            INSERT INTO financial_settings
+            (year, revenue, cost_of_sales, sga_expense, non_operating_income, cost_rate, sga_rate, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            2025,
+            5198000000,    # 51.98억 (매출)
+            3622000000,    # 36.22억 (매출원가)
+            3034000000,    # 30.34억 (판관비)
+            400000000,     # 4.0억 (영업외손익)
+            69.7,          # 원가율 %
+            58.4,          # 판관비율 %
+            '분석사업 기준 (11월 누계 데이터)'
+        ))
 
     conn.commit()
     conn.close()
@@ -2836,6 +2900,10 @@ ADMIN_TEMPLATE = '''
                 <div class="sidebar-item" onclick="showPanel('costMapping')">🔗 항목 매핑</div>
                 <div class="sidebar-item" onclick="showPanel('profitAnalysis')">📈 손익 분석</div>
             </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">재무 설정</div>
+                <div class="sidebar-item" onclick="showPanel('financialSettings')">📊 손익계산서 설정</div>
+            </div>
         </div>
 
         <div class="admin-content">
@@ -3002,6 +3070,35 @@ ADMIN_TEMPLATE = '''
                 <div class="panel-header">
                     <h2>🔐 사용자 권한</h2>
                 </div>
+
+                <!-- 사용자별 탭 접근 권한 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-title">📱 사용자별 탭 접근 권한</div>
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>사용자 선택</label>
+                        <select class="form-control" id="permUserSelect" onchange="loadUserTabPermissions()" style="max-width: 300px;">
+                            <option value="">-- 사용자 선택 --</option>
+                        </select>
+                    </div>
+                    <div id="tabPermissionsContainer" style="display: none;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>탭 이름</th>
+                                    <th style="width: 100px; text-align: center;">접근 허용</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabPermissionsTable"></tbody>
+                        </table>
+                        <div style="margin-top: 15px;">
+                            <button class="btn btn-primary" onclick="saveUserTabPermissions()">💾 권한 저장</button>
+                            <label style="margin-left: 20px;">
+                                <input type="checkbox" id="permAdminAccess" onchange="toggleAdminAccess()"> 관리자 대시보드 접근
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="form-row">
                     <div class="card">
                         <div class="card-title">권한 그룹</div>
@@ -3263,6 +3360,124 @@ ADMIN_TEMPLATE = '''
                             <tbody id="profitAnalysisTable"></tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+
+            <!-- 손익계산서 설정 패널 -->
+            <div id="financialSettingsPanel" class="admin-panel">
+                <div class="panel-header">
+                    <h2>📊 손익계산서 설정</h2>
+                    <button class="btn btn-primary" onclick="saveFinancialSettings()">💾 저장</button>
+                </div>
+                <div class="form-row" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label>연도</label>
+                        <select class="form-control" id="financialYear" onchange="loadFinancialSettings()">
+                            <option value="2026">2026년</option>
+                            <option value="2025" selected>2025년</option>
+                            <option value="2024">2024년</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 손익계산서 구조 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-title">📋 손익계산서 입력</div>
+                    <table style="width: 100%;">
+                        <tbody>
+                            <tr style="background: #f1f5f9;">
+                                <td style="padding: 12px; font-weight: bold;">매출액</td>
+                                <td style="padding: 12px; text-align: right;">
+                                    <input type="number" class="form-control" id="fsRevenue" style="width: 200px; text-align: right;" placeholder="0">
+                                </td>
+                                <td style="padding: 12px; color: #64748b;">원</td>
+                                <td style="padding: 12px; color: #64748b; width: 100px;">100%</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px;">(-) 매출원가</td>
+                                <td style="padding: 12px; text-align: right;">
+                                    <input type="number" class="form-control" id="fsCostOfSales" style="width: 200px; text-align: right;" placeholder="0">
+                                </td>
+                                <td style="padding: 12px; color: #64748b;">원</td>
+                                <td style="padding: 12px;">
+                                    <span id="fsCostRate" style="color: #ef4444;">0%</span>
+                                </td>
+                            </tr>
+                            <tr style="background: #ecfdf5;">
+                                <td style="padding: 12px; font-weight: bold; color: #10b981;">= 매출총이익</td>
+                                <td style="padding: 12px; text-align: right; font-weight: bold; color: #10b981;">
+                                    <span id="fsGrossProfit">0</span>
+                                </td>
+                                <td style="padding: 12px; color: #10b981;">원</td>
+                                <td style="padding: 12px;">
+                                    <span id="fsGrossProfitRate" style="color: #10b981;">0%</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px;">(-) 판매비와관리비</td>
+                                <td style="padding: 12px; text-align: right;">
+                                    <input type="number" class="form-control" id="fsSgaExpense" style="width: 200px; text-align: right;" placeholder="0">
+                                </td>
+                                <td style="padding: 12px; color: #64748b;">원</td>
+                                <td style="padding: 12px;">
+                                    <span id="fsSgaRate" style="color: #f59e0b;">0%</span>
+                                </td>
+                            </tr>
+                            <tr style="background: #fef3c7;">
+                                <td style="padding: 12px; font-weight: bold; color: #f59e0b;">= 영업이익</td>
+                                <td style="padding: 12px; text-align: right; font-weight: bold; color: #f59e0b;">
+                                    <span id="fsOperatingProfit">0</span>
+                                </td>
+                                <td style="padding: 12px; color: #f59e0b;">원</td>
+                                <td style="padding: 12px;">
+                                    <span id="fsOperatingProfitRate" style="color: #f59e0b;">0%</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px;">(+/-) 영업외손익</td>
+                                <td style="padding: 12px; text-align: right;">
+                                    <input type="number" class="form-control" id="fsNonOperating" style="width: 200px; text-align: right;" placeholder="0">
+                                </td>
+                                <td style="padding: 12px; color: #64748b;">원</td>
+                                <td style="padding: 12px; color: #64748b;">-</td>
+                            </tr>
+                            <tr style="background: #dbeafe;">
+                                <td style="padding: 12px; font-weight: bold; color: #3b82f6;">= 세전이익</td>
+                                <td style="padding: 12px; text-align: right; font-weight: bold; color: #3b82f6;">
+                                    <span id="fsPreTaxProfit">0</span>
+                                </td>
+                                <td style="padding: 12px; color: #3b82f6;">원</td>
+                                <td style="padding: 12px;">
+                                    <span id="fsPreTaxProfitRate" style="color: #3b82f6;">0%</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 세부 비용 항목 -->
+                <div class="card">
+                    <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>📝 세부 비용 항목</span>
+                        <button class="btn btn-sm btn-primary" onclick="addFinancialDetail()">+ 항목 추가</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>구분</th>
+                                <th>항목명</th>
+                                <th style="text-align: right;">금액</th>
+                                <th style="width: 80px;">관리</th>
+                            </tr>
+                        </thead>
+                        <tbody id="financialDetailsTable"></tbody>
+                    </table>
+                </div>
+
+                <!-- 메모 -->
+                <div class="card" style="margin-top: 20px;">
+                    <div class="card-title">📝 메모</div>
+                    <textarea class="form-control" id="fsNotes" rows="3" placeholder="손익계산서 관련 메모..."></textarea>
                 </div>
             </div>
         </div>
@@ -3553,6 +3768,7 @@ ADMIN_TEMPLATE = '''
             else if (panel === 'costData') loadCostData();
             else if (panel === 'costMapping') loadCostMapping();
             else if (panel === 'profitAnalysis') loadProfitAnalysis();
+            else if (panel === 'financialSettings') loadFinancialSettings();
         }
 
         // 목표 탭 전환
@@ -4096,6 +4312,167 @@ ADMIN_TEMPLATE = '''
             }
         }
 
+        // ============ 손익계산서 설정 함수들 ============
+        let financialDetailsCache = [];
+
+        async function loadFinancialSettings() {
+            const year = document.getElementById('financialYear')?.value || '2025';
+            try {
+                const response = await fetch('/api/admin/financial-settings?year=' + year);
+                const data = await response.json();
+
+                if (data.settings) {
+                    const s = data.settings;
+                    document.getElementById('fsRevenue').value = s.revenue || 0;
+                    document.getElementById('fsCostOfSales').value = s.cost_of_sales || 0;
+                    document.getElementById('fsSgaExpense').value = s.sga_expense || 0;
+                    document.getElementById('fsNonOperating').value = s.non_operating_income || 0;
+                    document.getElementById('fsNotes').value = s.notes || '';
+                } else {
+                    // 데이터가 없으면 초기화
+                    document.getElementById('fsRevenue').value = 0;
+                    document.getElementById('fsCostOfSales').value = 0;
+                    document.getElementById('fsSgaExpense').value = 0;
+                    document.getElementById('fsNonOperating').value = 0;
+                    document.getElementById('fsNotes').value = '';
+                }
+
+                financialDetailsCache = data.details || [];
+                renderFinancialDetailsTable();
+                calculateFinancialSummary();
+            } catch (e) {
+                console.error('손익계산서 설정 로드 실패:', e);
+            }
+        }
+
+        function calculateFinancialSummary() {
+            const revenue = parseFloat(document.getElementById('fsRevenue').value) || 0;
+            const costOfSales = parseFloat(document.getElementById('fsCostOfSales').value) || 0;
+            const sgaExpense = parseFloat(document.getElementById('fsSgaExpense').value) || 0;
+            const nonOperating = parseFloat(document.getElementById('fsNonOperating').value) || 0;
+
+            const grossProfit = revenue - costOfSales;
+            const operatingProfit = grossProfit - sgaExpense;
+            const preTaxProfit = operatingProfit + nonOperating;
+
+            const costRate = revenue > 0 ? (costOfSales / revenue * 100) : 0;
+            const grossProfitRate = revenue > 0 ? (grossProfit / revenue * 100) : 0;
+            const sgaRate = revenue > 0 ? (sgaExpense / revenue * 100) : 0;
+            const operatingProfitRate = revenue > 0 ? (operatingProfit / revenue * 100) : 0;
+            const preTaxProfitRate = revenue > 0 ? (preTaxProfit / revenue * 100) : 0;
+
+            document.getElementById('fsCostRate').textContent = costRate.toFixed(1) + '%';
+            document.getElementById('fsGrossProfit').textContent = formatFinancialNumber(grossProfit);
+            document.getElementById('fsGrossProfitRate').textContent = grossProfitRate.toFixed(1) + '%';
+            document.getElementById('fsSgaRate').textContent = sgaRate.toFixed(1) + '%';
+            document.getElementById('fsOperatingProfit').textContent = formatFinancialNumber(operatingProfit);
+            document.getElementById('fsOperatingProfitRate').textContent = operatingProfitRate.toFixed(1) + '%';
+            document.getElementById('fsPreTaxProfit').textContent = formatFinancialNumber(preTaxProfit);
+            document.getElementById('fsPreTaxProfitRate').textContent = preTaxProfitRate.toFixed(1) + '%';
+
+            // 색상 업데이트
+            const opColor = operatingProfit >= 0 ? '#f59e0b' : '#ef4444';
+            const ptColor = preTaxProfit >= 0 ? '#3b82f6' : '#ef4444';
+            document.getElementById('fsOperatingProfit').style.color = opColor;
+            document.getElementById('fsOperatingProfitRate').style.color = opColor;
+            document.getElementById('fsPreTaxProfit').style.color = ptColor;
+            document.getElementById('fsPreTaxProfitRate').style.color = ptColor;
+        }
+
+        function formatFinancialNumber(num) {
+            const n = Math.round(num);
+            if (Math.abs(n) >= 100000000) {
+                return (n / 100000000).toFixed(2) + '억';
+            }
+            return n.toLocaleString('ko-KR');
+        }
+
+        // input 이벤트 리스너 추가
+        ['fsRevenue', 'fsCostOfSales', 'fsSgaExpense', 'fsNonOperating'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', calculateFinancialSummary);
+        });
+
+        function renderFinancialDetailsTable() {
+            const tbody = document.getElementById('financialDetailsTable');
+            if (!tbody) return;
+
+            tbody.innerHTML = financialDetailsCache.map((d, idx) => `
+                <tr>
+                    <td>
+                        <select class="form-control form-control-sm" onchange="updateFinancialDetail(${idx}, 'category', this.value)">
+                            <option value="원가" ${d.category === '원가' ? 'selected' : ''}>원가</option>
+                            <option value="판관비" ${d.category === '판관비' ? 'selected' : ''}>판관비</option>
+                            <option value="영업외" ${d.category === '영업외' ? 'selected' : ''}>영업외</option>
+                        </select>
+                    </td>
+                    <td><input type="text" class="form-control form-control-sm" value="${d.item_name || ''}" onchange="updateFinancialDetail(${idx}, 'item_name', this.value)"></td>
+                    <td><input type="number" class="form-control form-control-sm" style="text-align: right;" value="${d.amount || 0}" onchange="updateFinancialDetail(${idx}, 'amount', this.value)"></td>
+                    <td style="text-align: center;">
+                        <button class="btn btn-sm" style="color: #ef4444;" onclick="removeFinancialDetail(${idx})">🗑️</button>
+                    </td>
+                </tr>
+            `).join('') || '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">세부 항목이 없습니다</td></tr>';
+        }
+
+        function addFinancialDetail() {
+            financialDetailsCache.push({
+                category: '원가',
+                item_name: '',
+                amount: 0
+            });
+            renderFinancialDetailsTable();
+        }
+
+        function updateFinancialDetail(idx, field, value) {
+            if (financialDetailsCache[idx]) {
+                financialDetailsCache[idx][field] = field === 'amount' ? parseFloat(value) || 0 : value;
+            }
+        }
+
+        function removeFinancialDetail(idx) {
+            financialDetailsCache.splice(idx, 1);
+            renderFinancialDetailsTable();
+        }
+
+        async function saveFinancialSettings() {
+            const year = parseInt(document.getElementById('financialYear').value);
+            const revenue = parseFloat(document.getElementById('fsRevenue').value) || 0;
+            const costOfSales = parseFloat(document.getElementById('fsCostOfSales').value) || 0;
+            const sgaExpense = parseFloat(document.getElementById('fsSgaExpense').value) || 0;
+            const nonOperating = parseFloat(document.getElementById('fsNonOperating').value) || 0;
+            const notes = document.getElementById('fsNotes').value;
+
+            const costRate = revenue > 0 ? (costOfSales / revenue * 100) : 0;
+            const sgaRate = revenue > 0 ? (sgaExpense / revenue * 100) : 0;
+
+            try {
+                const response = await fetch('/api/admin/financial-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year,
+                        revenue,
+                        cost_of_sales: costOfSales,
+                        sga_expense: sgaExpense,
+                        non_operating_income: nonOperating,
+                        cost_rate: costRate,
+                        sga_rate: sgaRate,
+                        notes,
+                        details: financialDetailsCache
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert('손익계산서 설정이 저장되었습니다.');
+                } else {
+                    alert('저장 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('저장 실패: ' + e.message);
+            }
+        }
+
         function formatNumber(num) {
             return Math.round(num || 0).toLocaleString('ko-KR');
         }
@@ -4127,6 +4504,20 @@ ADMIN_TEMPLATE = '''
 
         // 권한 로드
         async function loadPermissions() {
+            // 사용자 목록 로드
+            try {
+                const usersRes = await fetch('/api/admin/users');
+                const usersJson = await usersRes.json();
+                const users = usersJson.users || [];
+                const select = document.getElementById('permUserSelect');
+                if (select) {
+                    select.innerHTML = '<option value="">-- 사용자 선택 --</option>' +
+                        users.map(u => `<option value="${u.id}">${u.name} (${u.username})</option>`).join('');
+                }
+            } catch (e) {
+                console.error('사용자 목록 로드 실패:', e);
+            }
+
             const response = await fetch('/api/admin/permission-groups');
             const data = await response.json();
             document.getElementById('permissionGroups').innerHTML = (data.groups || []).map(g => `
@@ -4137,6 +4528,95 @@ ADMIN_TEMPLATE = '''
                     <div style="font-size: 12px; color: #64748b;">${g.description}</div>
                 </div>
             `).join('');
+        }
+
+        // 탭 목록 정의
+        const TAB_LIST = [
+            { id: 'overview', name: '대시보드', icon: '📊' },
+            { id: 'detail', name: '상세분석', icon: '📈' },
+            { id: 'collection', name: '수금', icon: '💰' },
+            { id: 'profitAnalysis', name: '손익분석', icon: '📊' },
+            { id: 'aiAnalysis', name: 'AI분석', icon: '🤖' },
+            { id: 'reports', name: '보고서', icon: '📑' },
+            { id: 'organization', name: '조직', icon: '🏢' }
+        ];
+
+        let currentPermUserId = null;
+        let currentTabPermissions = {};
+
+        async function loadUserTabPermissions() {
+            const userId = document.getElementById('permUserSelect').value;
+            const container = document.getElementById('tabPermissionsContainer');
+
+            if (!userId) {
+                container.style.display = 'none';
+                return;
+            }
+
+            currentPermUserId = userId;
+            container.style.display = 'block';
+
+            try {
+                const response = await fetch('/api/admin/user-tab-permissions?user_id=' + userId);
+                const data = await response.json();
+                currentTabPermissions = data.permissions || {};
+
+                // 관리자 접근 권한 체크박스
+                document.getElementById('permAdminAccess').checked = data.is_admin || false;
+
+                // 탭 권한 테이블 렌더링
+                const tbody = document.getElementById('tabPermissionsTable');
+                tbody.innerHTML = TAB_LIST.map(tab => `
+                    <tr>
+                        <td>${tab.icon} ${tab.name}</td>
+                        <td style="text-align: center;">
+                            <input type="checkbox" class="tab-perm-checkbox"
+                                data-tab="${tab.id}"
+                                ${currentTabPermissions[tab.id] !== false ? 'checked' : ''}>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('탭 권한 로드 실패:', e);
+            }
+        }
+
+        async function saveUserTabPermissions() {
+            if (!currentPermUserId) {
+                alert('사용자를 선택하세요.');
+                return;
+            }
+
+            const permissions = {};
+            document.querySelectorAll('.tab-perm-checkbox').forEach(cb => {
+                permissions[cb.dataset.tab] = cb.checked;
+            });
+
+            const isAdmin = document.getElementById('permAdminAccess').checked;
+
+            try {
+                const response = await fetch('/api/admin/user-tab-permissions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentPermUserId,
+                        permissions: permissions,
+                        is_admin: isAdmin
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert('권한이 저장되었습니다.');
+                } else {
+                    alert('저장 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('저장 실패: ' + e.message);
+            }
+        }
+
+        function toggleAdminAccess() {
+            // 관리자 권한 토글 시 추가 작업 필요하면 여기에
         }
 
         // 모달
@@ -26100,6 +26580,188 @@ def api_profit_by_month():
         })
 
     return jsonify({'success': True, 'data': result})
+
+# ============ 손익계산서 설정 API ============
+@app.route('/api/admin/financial-settings')
+@admin_required
+def api_admin_get_financial_settings():
+    """손익계산서 설정 조회"""
+    year = request.args.get('year', 2025, type=int)
+
+    conn = get_user_db()
+    cursor = conn.cursor()
+
+    # 설정 조회
+    cursor.execute('SELECT * FROM financial_settings WHERE year = ?', (year,))
+    row = cursor.fetchone()
+    settings = dict(row) if row else None
+
+    # 세부 항목 조회
+    cursor.execute('SELECT * FROM financial_details WHERE year = ? ORDER BY category, item_name', (year,))
+    details = [dict(r) for r in cursor.fetchall()]
+
+    conn.close()
+
+    return jsonify({
+        'success': True,
+        'year': year,
+        'settings': settings,
+        'details': details
+    })
+
+@app.route('/api/admin/financial-settings', methods=['POST'])
+@admin_required
+def api_admin_save_financial_settings():
+    """손익계산서 설정 저장"""
+    data = request.json
+    year = data.get('year', 2025)
+
+    try:
+        conn = get_user_db()
+        cursor = conn.cursor()
+
+        # 기존 설정 업데이트 또는 삽입
+        cursor.execute('SELECT id FROM financial_settings WHERE year = ?', (year,))
+        existing = cursor.fetchone()
+
+        if existing:
+            cursor.execute('''
+                UPDATE financial_settings SET
+                    revenue = ?,
+                    cost_of_sales = ?,
+                    sga_expense = ?,
+                    non_operating_income = ?,
+                    cost_rate = ?,
+                    sga_rate = ?,
+                    notes = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE year = ?
+            ''', (
+                data.get('revenue', 0),
+                data.get('cost_of_sales', 0),
+                data.get('sga_expense', 0),
+                data.get('non_operating_income', 0),
+                data.get('cost_rate', 0),
+                data.get('sga_rate', 0),
+                data.get('notes', ''),
+                year
+            ))
+        else:
+            cursor.execute('''
+                INSERT INTO financial_settings
+                (year, revenue, cost_of_sales, sga_expense, non_operating_income, cost_rate, sga_rate, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                year,
+                data.get('revenue', 0),
+                data.get('cost_of_sales', 0),
+                data.get('sga_expense', 0),
+                data.get('non_operating_income', 0),
+                data.get('cost_rate', 0),
+                data.get('sga_rate', 0),
+                data.get('notes', '')
+            ))
+
+        # 세부 항목 저장 (기존 삭제 후 다시 삽입)
+        cursor.execute('DELETE FROM financial_details WHERE year = ?', (year,))
+
+        details = data.get('details', [])
+        for detail in details:
+            if detail.get('item_name'):  # 항목명이 있는 경우만
+                cursor.execute('''
+                    INSERT INTO financial_details (year, category, item_name, amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (
+                    year,
+                    detail.get('category', '원가'),
+                    detail.get('item_name', ''),
+                    detail.get('amount', 0)
+                ))
+
+        conn.commit()
+        conn.close()
+
+        # COST_RATE 글로벌 변수 업데이트 (해당 연도가 현재 연도인 경우)
+        global COST_RATE
+        if year == 2025:
+            new_rate = data.get('cost_rate', 69.7)
+            COST_RATE = new_rate / 100
+
+        return jsonify({'success': True, 'message': '손익계산서 설정이 저장되었습니다.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+# ============ 사용자 탭 권한 API ============
+@app.route('/api/admin/user-tab-permissions')
+@admin_required
+def api_admin_get_user_tab_permissions():
+    """사용자별 탭 접근 권한 조회"""
+    user_id = request.args.get('user_id', type=int)
+
+    if not user_id:
+        return jsonify({'success': False, 'error': '사용자 ID가 필요합니다'})
+
+    conn = get_user_db()
+    cursor = conn.cursor()
+
+    # 사용자 정보 조회 (관리자 여부)
+    cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
+    user = cursor.fetchone()
+    is_admin = user['role'] == 'admin' if user else False
+
+    # 탭 권한 조회
+    cursor.execute('SELECT tab_name, can_access FROM user_tab_permissions WHERE user_id = ?', (user_id,))
+    rows = cursor.fetchall()
+
+    permissions = {}
+    for row in rows:
+        permissions[row['tab_name']] = bool(row['can_access'])
+
+    conn.close()
+
+    return jsonify({
+        'success': True,
+        'user_id': user_id,
+        'is_admin': is_admin,
+        'permissions': permissions
+    })
+
+@app.route('/api/admin/user-tab-permissions', methods=['POST'])
+@admin_required
+def api_admin_save_user_tab_permissions():
+    """사용자별 탭 접근 권한 저장"""
+    data = request.json
+    user_id = data.get('user_id')
+    permissions = data.get('permissions', {})
+    is_admin = data.get('is_admin', False)
+
+    if not user_id:
+        return jsonify({'success': False, 'error': '사용자 ID가 필요합니다'})
+
+    try:
+        conn = get_user_db()
+        cursor = conn.cursor()
+
+        # 관리자 역할 업데이트
+        new_role = 'admin' if is_admin else 'user'
+        cursor.execute('UPDATE users SET role = ? WHERE id = ?', (new_role, user_id))
+
+        # 기존 권한 삭제
+        cursor.execute('DELETE FROM user_tab_permissions WHERE user_id = ?', (user_id,))
+
+        # 새 권한 삽입
+        for tab_name, can_access in permissions.items():
+            cursor.execute('''
+                INSERT INTO user_tab_permissions (user_id, tab_name, can_access)
+                VALUES (?, ?, ?)
+            ''', (user_id, tab_name, 1 if can_access else 0))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True, 'message': '권한이 저장되었습니다.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 # ============ 메인 페이지 ============
 @app.route('/')
