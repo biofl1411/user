@@ -1095,24 +1095,37 @@ def convert_excel_to_sqlite():
 
 
 def load_excel_data_sqlite(year):
-    """SQLite에서 데이터 로드 (빠름)"""
+    """SQLite에서 데이터 로드 (빠름) - Colab DB 호환"""
     import sqlite3
     import time
 
     start_time = time.time()
 
     conn = sqlite3.connect(str(SQLITE_DB))
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute('SELECT raw_data FROM excel_data WHERE year = ?', (str(year),))
-    rows = cursor.fetchall()
+    # 테이블 컬럼 확인
+    cursor.execute("PRAGMA table_info(excel_data)")
+    columns = [col[1] for col in cursor.fetchall()]
 
     data = []
-    for row in rows:
-        try:
-            data.append(json.loads(row[0]))
-        except:
-            pass
+
+    # raw_data 컬럼이 있으면 기존 방식 (JSON 파싱)
+    if 'raw_data' in columns:
+        cursor.execute('SELECT raw_data FROM excel_data WHERE year = ?', (str(year),))
+        rows = cursor.fetchall()
+        for row in rows:
+            try:
+                if row[0]:
+                    data.append(json.loads(row[0]))
+            except:
+                pass
+    else:
+        # Colab DB 방식: 컬럼에서 직접 로드
+        cursor.execute('SELECT * FROM excel_data WHERE year = ?', (str(year),))
+        rows = cursor.fetchall()
+        data = [dict(row) for row in rows]
 
     conn.close()
 
@@ -1123,7 +1136,7 @@ def load_excel_data_sqlite(year):
 
 
 def load_food_item_data_sqlite(year):
-    """SQLite에서 food_item 데이터 로드 (빠름)"""
+    """SQLite에서 food_item 데이터 로드 (빠름) - Colab DB 호환"""
     import sqlite3
     import time
 
@@ -1133,12 +1146,15 @@ def load_food_item_data_sqlite(year):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute('''
-        SELECT 접수일자, 발행일, 검체유형, 업체명, 의뢰인명, 업체주소, 항목명, 규격,
-               항목담당, 결과입력자, 입력일, 분석일, 항목단위, 시험결과, 시험치,
-               성적서결과, 판정, 검사목적, 긴급여부, 항목수수료, 영업담당
-        FROM food_item_data WHERE year = ?
-    ''', (str(year),))
+    # 테이블 존재 여부 확인
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='food_item_data'")
+    if not cursor.fetchone():
+        conn.close()
+        print(f"[SQLITE] food_item_data 테이블 없음")
+        return []
+
+    # Colab DB 호환: 모든 컬럼 로드
+    cursor.execute('SELECT * FROM food_item_data WHERE year = ?', (str(year),))
 
     rows = cursor.fetchall()
     data = [dict(row) for row in rows]
@@ -27425,6 +27441,71 @@ def get_columns():
         })
     except Exception as e:
         return jsonify({'error': str(e), 'columns': []})
+
+@app.route('/api/upload-db', methods=['POST'])
+def upload_db():
+    """Colab에서 생성된 DB 파일 업로드 API"""
+    import shutil
+
+    # 간단한 API 키 인증 (환경변수 또는 기본값)
+    api_key = request.headers.get('X-API-Key', '')
+    expected_key = os.environ.get('DB_UPLOAD_KEY', 'biofl1411-upload-key')
+
+    if api_key != expected_key:
+        return jsonify({'error': '인증 실패'}), 401
+
+    if 'file' not in request.files:
+        return jsonify({'error': '파일이 없습니다'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': '파일명이 없습니다'}), 400
+
+    try:
+        # 기존 DB 백업
+        if SQLITE_DB.exists():
+            backup_path = SQLITE_DB.with_suffix('.db.backup')
+            shutil.copy(str(SQLITE_DB), str(backup_path))
+            print(f"[DB] 기존 DB 백업: {backup_path}")
+
+        # 새 DB 저장
+        file.save(str(SQLITE_DB))
+        print(f"[DB] 새 DB 업로드 완료: {SQLITE_DB}")
+
+        # DB 검증 - 테이블 및 행 수 확인
+        import sqlite3
+        conn = sqlite3.connect(str(SQLITE_DB))
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+
+        table_info = {}
+        for table in tables:
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            count = cursor.fetchone()[0]
+            table_info[table] = count
+
+        conn.close()
+
+        # 캐시 초기화
+        global DATA_CACHE, CACHE_TIME, AI_SUMMARY_CACHE, FILE_MTIME
+        DATA_CACHE = {}
+        CACHE_TIME = {}
+        AI_SUMMARY_CACHE = {}
+        FILE_MTIME = {}
+        print("[DB] 캐시 초기화 완료")
+
+        return jsonify({
+            'status': 'ok',
+            'message': 'DB 업로드 성공',
+            'tables': table_info
+        })
+
+    except Exception as e:
+        print(f"[DB ERROR] 업로드 실패: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/cache/refresh')
 def refresh_cache():
