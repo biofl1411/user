@@ -865,6 +865,20 @@ def check_sqlite_needs_update():
         conn = sqlite3.connect(str(SQLITE_DB))
         cursor = conn.cursor()
 
+        # 테이블이 비어있는지 확인
+        for year in ['2024', '2025']:
+            cursor.execute('SELECT COUNT(*) FROM excel_data WHERE year = ?', (year,))
+            if cursor.fetchone()[0] == 0:
+                conn.close()
+                print(f"[SQLITE] 업데이트 필요: {year}년 excel_data 비어있음")
+                return True
+
+            cursor.execute('SELECT COUNT(*) FROM food_item_data WHERE year = ?', (year,))
+            if cursor.fetchone()[0] == 0:
+                conn.close()
+                print(f"[SQLITE] 업데이트 필요: {year}년 food_item_data 비어있음")
+                return True
+
         # 모든 Excel 파일의 현재 mtime 확인
         for year in ['2024', '2025']:
             # 기본 데이터
