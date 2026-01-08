@@ -924,17 +924,27 @@ def convert_excel_to_sqlite():
         # 기본 데이터 변환
         data_path = DATA_DIR / str(year)
         if data_path.exists():
+            # 해당 연도 데이터가 비어있는지 확인
+            cursor.execute('SELECT COUNT(*) FROM excel_data WHERE year = ?', (year,))
+            existing_count = cursor.fetchone()[0]
+            force_convert = existing_count == 0
+
+            if force_convert:
+                print(f"[SQLITE] {year}년 excel_data 비어있음 - 강제 변환")
+
             # 먼저 변환이 필요한 파일 목록 확인
             files_to_convert = []
             for f in sorted(data_path.glob("*.xlsx")):
                 file_path = str(f)
                 current_mtime = f.stat().st_mtime
 
-                cursor.execute('SELECT mtime FROM file_metadata WHERE file_path = ?', (file_path,))
-                row = cursor.fetchone()
-                if row and row[0] >= current_mtime:
-                    print(f"[SQLITE] {f.name} 스킵 (이미 최신)")
-                    continue
+                # 강제 변환 모드가 아닐 때만 스킵 체크
+                if not force_convert:
+                    cursor.execute('SELECT mtime FROM file_metadata WHERE file_path = ?', (file_path,))
+                    row = cursor.fetchone()
+                    if row and row[0] >= current_mtime:
+                        print(f"[SQLITE] {f.name} 스킵 (이미 최신)")
+                        continue
                 files_to_convert.append((f, file_path, current_mtime))
 
             # 변환할 파일이 있으면 해당 연도 데이터 전체 삭제 후 재로드
@@ -998,17 +1008,27 @@ def convert_excel_to_sqlite():
         # food_item 데이터 변환
         food_path = DATA_DIR / "food_item" / str(year)
         if food_path.exists():
+            # 해당 연도 데이터가 비어있는지 확인
+            cursor.execute('SELECT COUNT(*) FROM food_item_data WHERE year = ?', (year,))
+            existing_count = cursor.fetchone()[0]
+            force_convert = existing_count == 0
+
+            if force_convert:
+                print(f"[SQLITE] {year}년 food_item_data 비어있음 - 강제 변환")
+
             # 변환이 필요한 파일 목록 수집
             files_to_convert = []
             for f in sorted(food_path.glob("*.xlsx")):
                 file_path = str(f)
                 current_mtime = f.stat().st_mtime
 
-                cursor.execute('SELECT mtime FROM file_metadata WHERE file_path = ?', (file_path,))
-                row = cursor.fetchone()
-                if row and row[0] >= current_mtime:
-                    print(f"[SQLITE] food_item {f.name} 스킵 (이미 최신)")
-                    continue
+                # 강제 변환 모드가 아닐 때만 스킵 체크
+                if not force_convert:
+                    cursor.execute('SELECT mtime FROM file_metadata WHERE file_path = ?', (file_path,))
+                    row = cursor.fetchone()
+                    if row and row[0] >= current_mtime:
+                        print(f"[SQLITE] food_item {f.name} 스킵 (이미 최신)")
+                        continue
                 files_to_convert.append((f, file_path, current_mtime))
 
             # 변환할 파일이 있으면 해당 연도 데이터 삭제 후 전체 재로드
