@@ -10976,7 +10976,7 @@ HTML_TEMPLATE = '''
                         if (!info) return;
 
                         const isComparison = ds.isComparison;
-                        const managerName = ds.label.replace(/ [(]\d{4}[)]$/, '');
+                        const managerName = ds.label.replace(/ [(]\\d{4}[)]$/, '');
                         const isIncrease = !isComparison && ds.ownAvg && info.sales >= ds.ownAvg;
                         const borderColor = isIncrease ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.8)';
                         tooltipEl.style.border = `2px solid ${borderColor}`;
@@ -11379,7 +11379,7 @@ HTML_TEMPLATE = '''
                             if (!info) return;
 
                             const isComparison = ds.isComparison;
-                            const managerName = ds.label.replace(/ [(]\d{4}[)]$/, '');
+                            const managerName = ds.label.replace(/ [(]\\d{4}[)]$/, '');
                             const isIncrease = !isComparison && ds.ownAvg && info.sales >= ds.ownAvg;
                             const borderColor = isIncrease ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.8)';
                             tooltipEl.style.border = `2px solid ${borderColor}`;
