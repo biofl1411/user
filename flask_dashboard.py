@@ -6959,8 +6959,7 @@ HTML_TEMPLATE = '''
                     📅
                     <span class="filter-label">조회기간</span>
                     <select id="yearSelect" class="filter-select">
-                        <option value="2025">2025년</option>
-                        <option value="2024">2024년</option>
+                        <!-- 연도 목록은 API에서 동적으로 로드됨 -->
                     </select>
                     <select id="monthSelect" class="filter-select">
                         <option value="">전체</option>
@@ -6988,8 +6987,7 @@ HTML_TEMPLATE = '''
 
                 <div class="filter-group" id="compareYearGroup" style="display: none;">
                     <select id="compareYearSelect" class="filter-select">
-                        <option value="2024">2024년</option>
-                        <option value="2023">2023년</option>
+                        <!-- 비교 연도 목록은 API에서 동적으로 로드됨 -->
                     </select>
                 </div>
 
@@ -9309,7 +9307,7 @@ HTML_TEMPLATE = '''
         let managerTableSort = { column: null, direction: 'desc' };
         let branchTableSort = { column: null, direction: 'desc' };
         let clientChartFiltersInitialized = false;  // 거래처 차트 필터 초기화 여부
-        const availableYears = [2025, 2024];  // 사용 가능한 연도 목록
+        let availableYears = [];  // 사용 가능한 연도 목록 (API에서 동적 로드)
 
         // 담당자-팀 매핑 (JavaScript용)
         const MANAGER_TO_BRANCH_JS = {
@@ -9466,6 +9464,52 @@ HTML_TEMPLATE = '''
             } catch (e) { console.log('토큰 로드 실패', e); }
         }
 
+        // 사용 가능한 연도 목록 로드 및 드롭다운 초기화
+        async function initializeYearSelects() {
+            try {
+                const res = await fetch('/api/available-years');
+                const data = await res.json();
+                availableYears = data.years || [2025, 2024];
+                console.log('[DEBUG] 사용 가능한 연도:', availableYears);
+
+                // 연도 드롭다운 채우기
+                const yearSelect = document.getElementById('yearSelect');
+                const compareYearSelect = document.getElementById('compareYearSelect');
+
+                if (yearSelect && availableYears.length > 0) {
+                    yearSelect.innerHTML = availableYears.map((y, i) =>
+                        `<option value="${y}" ${i === 0 ? 'selected' : ''}>${y}년</option>`
+                    ).join('');
+                }
+
+                if (compareYearSelect && availableYears.length > 0) {
+                    // 비교 연도는 두 번째 연도부터 (현재 연도 제외)
+                    const compareYears = availableYears.slice(1);
+                    if (compareYears.length > 0) {
+                        compareYearSelect.innerHTML = compareYears.map((y, i) =>
+                            `<option value="${y}" ${i === 0 ? 'selected' : ''}>${y}년</option>`
+                        ).join('');
+                    } else {
+                        // 비교할 연도가 없으면 현재 연도 -1 추가
+                        const prevYear = availableYears[0] - 1;
+                        compareYearSelect.innerHTML = `<option value="${prevYear}">${prevYear}년</option>`;
+                    }
+                }
+            } catch (e) {
+                console.error('[DEBUG] 연도 목록 로드 실패:', e);
+                // 실패 시 기본값 사용
+                availableYears = [2025, 2024];
+                const yearSelect = document.getElementById('yearSelect');
+                const compareYearSelect = document.getElementById('compareYearSelect');
+                if (yearSelect) {
+                    yearSelect.innerHTML = '<option value="2025" selected>2025년</option><option value="2024">2024년</option>';
+                }
+                if (compareYearSelect) {
+                    compareYearSelect.innerHTML = '<option value="2024" selected>2024년</option>';
+                }
+            }
+        }
+
         // 데이터 로드 (실제 API 호출)
         async function loadData() {
             console.log('[DEBUG] loadData() 시작');
@@ -9478,6 +9522,11 @@ HTML_TEMPLATE = '''
             btn.innerHTML = '⏳ 로딩중...';
             showToast('데이터를 불러오는 중...', 'loading');
             clientChartFiltersInitialized = false;  // 필터 초기화 플래그 리셋
+
+            // 연도 목록이 비어있으면 먼저 초기화
+            if (availableYears.length === 0) {
+                await initializeYearSelects();
+            }
 
             try {
                 const year = document.getElementById('yearSelect').value;
@@ -25741,6 +25790,7 @@ HTML_TEMPLATE = '''
         console.log('[DEBUG] Initializing...');
         loadTokenUsage();
         loadSessionInfo();
+        initializeYearSelects();  // 연도 드롭다운 동적 로드
         showToast('조회 버튼을 클릭하세요.', 'loading', 3000);
         console.log('[DEBUG] Main script completed successfully');
     </script>
@@ -26083,6 +26133,28 @@ def api_purposes():
         return jsonify({'purposes': purposes})
     except Exception as e:
         return jsonify({'purposes': [], 'error': str(e)})
+
+@app.route('/api/available-years')
+@login_required
+def api_available_years():
+    """DB에서 사용 가능한 연도 목록 반환"""
+    try:
+        conn = sqlite3.connect(str(SQLITE_DB))
+        cursor = conn.cursor()
+
+        # excel_data 테이블에서 연도 목록 조회
+        cursor.execute('SELECT DISTINCT year FROM excel_data ORDER BY year DESC')
+        years = [row[0] for row in cursor.fetchall()]
+
+        conn.close()
+
+        # 연도가 없으면 기본값
+        if not years:
+            years = [2025, 2024]
+
+        return jsonify({'years': years})
+    except Exception as e:
+        return jsonify({'years': [2025, 2024], 'error': str(e)})
 
 @app.route('/api/admin/teams', methods=['GET', 'POST'])
 @admin_required
