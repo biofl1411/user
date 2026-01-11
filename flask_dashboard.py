@@ -26137,16 +26137,34 @@ def api_purposes():
 @app.route('/api/available-years')
 @login_required
 def api_available_years():
-    """DB에서 사용 가능한 연도 목록 반환"""
+    """DB와 데이터 폴더에서 사용 가능한 연도 목록 반환"""
     try:
-        conn = sqlite3.connect(str(SQLITE_DB))
-        cursor = conn.cursor()
+        years_set = set()
 
-        # excel_data 테이블에서 연도 목록 조회
-        cursor.execute('SELECT DISTINCT year FROM excel_data ORDER BY year DESC')
-        years = [row[0] for row in cursor.fetchall()]
+        # 1. DB에서 연도 조회
+        try:
+            conn = sqlite3.connect(str(SQLITE_DB))
+            cursor = conn.cursor()
+            cursor.execute('SELECT DISTINCT year FROM excel_data ORDER BY year DESC')
+            db_years = [row[0] for row in cursor.fetchall()]
+            years_set.update(db_years)
+            conn.close()
+        except:
+            pass
 
-        conn.close()
+        # 2. 데이터 폴더에서 연도 조회 (data/2024, data/2025, data/2026 등)
+        try:
+            for item in DATA_DIR.iterdir():
+                if item.is_dir() and item.name.isdigit():
+                    year = int(item.name)
+                    # 2020~2030 범위의 연도만 인식
+                    if 2020 <= year <= 2030:
+                        years_set.add(year)
+        except:
+            pass
+
+        # 내림차순 정렬
+        years = sorted(list(years_set), reverse=True)
 
         # 연도가 없으면 기본값
         if not years:
