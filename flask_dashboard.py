@@ -29214,4 +29214,5 @@ def terminal_exec():
 if __name__ == '__main__':
     # 서버 시작 시 데이터 미리 로드
     preload_data()
-    app.run(host='0.0.0.0', port=6001, debug=False)
+    port = int(os.environ.get('PORT', 6001))
+    app.run(host='0.0.0.0', port=port, debug=False)
