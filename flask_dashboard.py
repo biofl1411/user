@@ -176,6 +176,7 @@ def init_user_db():
             user_id INTEGER,
             menu_name TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            exit_at TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     ''')
@@ -190,6 +191,91 @@ def init_user_db():
             tokens_used INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
+    # 원가 데이터 테이블
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cost_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_name TEXT NOT NULL,
+            category TEXT,
+            classification TEXT,
+            material_cost REAL DEFAULT 0,
+            labor_cost REAL DEFAULT 0,
+            expense REAL DEFAULT 0,
+            direct_cost REAL DEFAULT 0,
+            indirect_labor REAL DEFAULT 0,
+            indirect_expense REAL DEFAULT 0,
+            indirect_cost REAL DEFAULT 0,
+            test_cost REAL DEFAULT 0,
+            admin_cost REAL DEFAULT 0,
+            profit REAL DEFAULT 0,
+            total_cost REAL DEFAULT 0,
+            fee REAL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # 원가-매출 항목 매핑 테이블
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cost_mapping (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cost_item_name TEXT NOT NULL,
+            sales_item_name TEXT NOT NULL,
+            group_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(cost_item_name, sales_item_name)
+        )
+    ''')
+
+    # group_name 컬럼 추가 (마이그레이션)
+    try:
+        cursor.execute('ALTER TABLE cost_mapping ADD COLUMN group_name TEXT')
+    except:
+        pass
+
+    # 손익계산서 설정 테이블
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS financial_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL,
+            revenue REAL DEFAULT 0,
+            cost_of_sales REAL DEFAULT 0,
+            sga_expense REAL DEFAULT 0,
+            non_operating_income REAL DEFAULT 0,
+            cost_rate REAL DEFAULT 0,
+            sga_rate REAL DEFAULT 0,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(year)
+        )
+    ''')
+
+    # 손익계산서 세부 항목 테이블 (추가 비용 항목)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS financial_details (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            item_name TEXT NOT NULL,
+            amount REAL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (year) REFERENCES financial_settings(year)
+        )
+    ''')
+
+    # 사용자별 탭 접근 권한 테이블
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_tab_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            tab_name TEXT NOT NULL,
+            can_access INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            UNIQUE(user_id, tab_name)
         )
     ''')
 
@@ -252,6 +338,26 @@ def init_user_db():
             "INSERT INTO users (username, password_hash, name, role) VALUES (?, ?, ?, ?)",
             ("admin", admin_password, "관리자", "admin")
         )
+
+    # 2025년 기본 손익계산서 설정 (없는 경우만)
+    cursor.execute("SELECT id FROM financial_settings WHERE year = 2025")
+    if not cursor.fetchone():
+        # 분석사업 기준 (11월 누계 데이터 기반)
+        # 매출: 51.98억, 원가: 36.22억 (69.7%), 판관비: 30.34억 (58.4%), 영업외손익: +4.0억
+        cursor.execute('''
+            INSERT INTO financial_settings
+            (year, revenue, cost_of_sales, sga_expense, non_operating_income, cost_rate, sga_rate, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            2025,
+            5198000000,    # 51.98억 (매출)
+            3622000000,    # 36.22억 (매출원가)
+            3034000000,    # 30.34억 (판관비)
+            400000000,     # 4.0억 (영업외손익)
+            69.7,          # 원가율 %
+            58.4,          # 판관비율 %
+            '분석사업 기준 (11월 누계 데이터)'
+        ))
 
     conn.commit()
     conn.close()
@@ -316,10 +422,16 @@ def log_user_activity(user_id, action, details=None, ip_address=None):
         print(f"Activity log error: {e}")
 
 def log_menu_access(user_id, menu_name):
-    """메뉴 접근 기록"""
+    """메뉴 접근 기록 - 이전 탭 종료시간 업데이트 후 새 기록 생성"""
     try:
         conn = get_user_db()
         cursor = conn.cursor()
+        # 이전 탭의 종료시간 업데이트 (exit_at이 NULL인 가장 최근 기록)
+        cursor.execute('''
+            UPDATE menu_logs SET exit_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND exit_at IS NULL
+        ''', (user_id,))
+        # 새 탭 진입 기록
         cursor.execute(
             "INSERT INTO menu_logs (user_id, menu_name) VALUES (?, ?)",
             (user_id, menu_name)
@@ -342,6 +454,106 @@ def log_ai_analysis(user_id, prompt, response_length=0, tokens_used=0):
         conn.close()
     except Exception as e:
         print(f"AI log error: {e}")
+
+def load_cost_data_from_excel(file_path=None):
+    """엑셀에서 원가 데이터 로드"""
+    import pandas as pd
+    import os
+
+    if file_path is None:
+        file_path = os.path.expanduser('~/gdrive_data/cost_data/식품_원가산출표.xls')
+
+    if not os.path.exists(file_path):
+        print(f"[COST] 원가 파일 없음: {file_path}")
+        return {'success': False, 'error': '파일 없음'}
+
+    try:
+        conn = get_user_db()
+        cursor = conn.cursor()
+
+        # 기존 데이터 삭제
+        cursor.execute('DELETE FROM cost_data')
+
+        total_count = 0
+        sheets = ['이화학적검사 집계', '미생물학적검사 집계']
+
+        for sheet_name in sheets:
+            try:
+                df = pd.read_excel(file_path, sheet_name=sheet_name, header=1)
+                category = '이화학' if '이화학' in sheet_name else '미생물'
+
+                for _, row in df.iterrows():
+                    item_name = str(row.get('구분', '')).strip()
+                    if not item_name or item_name == 'nan':
+                        continue
+
+                    cursor.execute('''
+                        INSERT INTO cost_data (item_name, category, classification,
+                            material_cost, labor_cost, expense, direct_cost,
+                            indirect_labor, indirect_expense, indirect_cost,
+                            test_cost, admin_cost, profit, total_cost, fee)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        item_name,
+                        category,
+                        str(row.get('분류', '')),
+                        float(row.get('재료비', 0) or 0),
+                        float(row.get('노무비', 0) or 0),
+                        float(row.get('경비', 0) or 0),
+                        float(row.get('직접비 계', 0) or 0),
+                        float(row.get('간접노무비', row.get('간 접노무비', 0)) or 0),
+                        float(row.get('간접경비', 0) or 0),
+                        float(row.get('간접비 계', 0) or 0),
+                        float(row.get('시험원가', 0) or 0),
+                        float(row.get('일반관리비', 0) or 0),
+                        float(row.get('이윤', 0) or 0),
+                        float(row.get('총원가', 0) or 0),
+                        float(row.get('수수료', 0) or 0)
+                    ))
+                    total_count += 1
+
+                print(f"[COST] {sheet_name}: {total_count}개 로드")
+            except Exception as e:
+                print(f"[COST] {sheet_name} 처리 오류: {e}")
+
+        conn.commit()
+        conn.close()
+        print(f"[COST] 총 {total_count}개 원가 데이터 로드 완료")
+        return {'success': True, 'count': total_count}
+
+    except Exception as e:
+        print(f"[COST] 원가 데이터 로드 오류: {e}")
+        return {'success': False, 'error': str(e)}
+
+def get_cost_data():
+    """원가 데이터 조회"""
+    conn = get_user_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM cost_data ORDER BY category, item_name')
+    data = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return data
+
+def get_cost_by_item_name(item_name):
+    """항목명으로 원가 조회 (매핑 테이블 우선, 없으면 직접 매칭)"""
+    conn = get_user_db()
+    cursor = conn.cursor()
+
+    # 매핑 테이블에서 검색
+    cursor.execute('''
+        SELECT c.* FROM cost_data c
+        JOIN cost_mapping m ON c.item_name = m.cost_item_name
+        WHERE m.sales_item_name = ?
+    ''', (item_name,))
+    row = cursor.fetchone()
+
+    if not row:
+        # 직접 매칭 시도
+        cursor.execute('SELECT * FROM cost_data WHERE item_name = ?', (item_name,))
+        row = cursor.fetchone()
+
+    conn.close()
+    return dict(row) if row else None
 
 # 터미널 인증 설정
 TERMINAL_PASSWORD = "biofl2024"  # 터미널 접속 비밀번호
@@ -469,7 +681,11 @@ def init_sqlite_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_year ON food_item_data(year)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_manager ON food_item_data(영업담당)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_purpose ON food_item_data(검사목적)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_item ON food_item_data(항목명)')
+    # 항목명 컬럼이 있을 때만 인덱스 생성 (Colab 변환 DB 호환)
+    try:
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_food_item ON food_item_data(항목명)')
+    except:
+        pass
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_token_yearmonth ON token_usage(year_month)')
 
     # 기존 DB에 새 컬럼 추가 (마이그레이션)
@@ -477,7 +693,20 @@ def init_sqlite_db():
     for col in new_columns:
         try:
             cursor.execute(f'ALTER TABLE excel_data ADD COLUMN {col} TEXT')
-            print(f"[SQLITE] 컬럼 추가: {col}")
+            print(f"[SQLITE] excel_data 컬럼 추가: {col}")
+        except:
+            pass  # 이미 존재하면 무시
+
+    # food_item_data 마이그레이션
+    food_item_columns = ['접수일자', '발행일', '검체유형', '업체명', '의뢰인명', '업체주소',
+                         '항목명', '규격', '항목담당', '결과입력자', '입력일', '분석일',
+                         '항목단위', '시험결과', '시험치', '성적서결과', '판정', '검사목적',
+                         '긴급여부', '항목수수료', '영업담당']
+    for col in food_item_columns:
+        try:
+            col_type = 'REAL' if col == '항목수수료' else 'TEXT'
+            cursor.execute(f'ALTER TABLE food_item_data ADD COLUMN {col} {col_type}')
+            print(f"[SQLITE] food_item_data 컬럼 추가: {col}")
         except:
             pass  # 이미 존재하면 무시
 
@@ -649,6 +878,20 @@ def check_sqlite_needs_update():
         conn = sqlite3.connect(str(SQLITE_DB))
         cursor = conn.cursor()
 
+        # 테이블이 비어있는지 확인
+        for year in ['2024', '2025']:
+            cursor.execute('SELECT COUNT(*) FROM excel_data WHERE year = ?', (year,))
+            if cursor.fetchone()[0] == 0:
+                conn.close()
+                print(f"[SQLITE] 업데이트 필요: {year}년 excel_data 비어있음")
+                return True
+
+            cursor.execute('SELECT COUNT(*) FROM food_item_data WHERE year = ?', (year,))
+            if cursor.fetchone()[0] == 0:
+                conn.close()
+                print(f"[SQLITE] 업데이트 필요: {year}년 food_item_data 비어있음")
+                return True
+
         # 모든 Excel 파일의 현재 mtime 확인
         for year in ['2024', '2025']:
             # 기본 데이터
@@ -708,17 +951,27 @@ def convert_excel_to_sqlite():
         # 기본 데이터 변환
         data_path = DATA_DIR / str(year)
         if data_path.exists():
+            # 해당 연도 데이터가 비어있는지 확인
+            cursor.execute('SELECT COUNT(*) FROM excel_data WHERE year = ?', (year,))
+            existing_count = cursor.fetchone()[0]
+            force_convert = existing_count == 0
+
+            if force_convert:
+                print(f"[SQLITE] {year}년 excel_data 비어있음 - 강제 변환")
+
             # 먼저 변환이 필요한 파일 목록 확인
             files_to_convert = []
             for f in sorted(data_path.glob("*.xlsx")):
                 file_path = str(f)
                 current_mtime = f.stat().st_mtime
 
-                cursor.execute('SELECT mtime FROM file_metadata WHERE file_path = ?', (file_path,))
-                row = cursor.fetchone()
-                if row and row[0] >= current_mtime:
-                    print(f"[SQLITE] {f.name} 스킵 (이미 최신)")
-                    continue
+                # 강제 변환 모드가 아닐 때만 스킵 체크
+                if not force_convert:
+                    cursor.execute('SELECT mtime FROM file_metadata WHERE file_path = ?', (file_path,))
+                    row = cursor.fetchone()
+                    if row and row[0] >= current_mtime:
+                        print(f"[SQLITE] {f.name} 스킵 (이미 최신)")
+                        continue
                 files_to_convert.append((f, file_path, current_mtime))
 
             # 변환할 파일이 있으면 해당 연도 데이터 전체 삭제 후 재로드
@@ -782,17 +1035,27 @@ def convert_excel_to_sqlite():
         # food_item 데이터 변환
         food_path = DATA_DIR / "food_item" / str(year)
         if food_path.exists():
+            # 해당 연도 데이터가 비어있는지 확인
+            cursor.execute('SELECT COUNT(*) FROM food_item_data WHERE year = ?', (year,))
+            existing_count = cursor.fetchone()[0]
+            force_convert = existing_count == 0
+
+            if force_convert:
+                print(f"[SQLITE] {year}년 food_item_data 비어있음 - 강제 변환")
+
             # 변환이 필요한 파일 목록 수집
             files_to_convert = []
             for f in sorted(food_path.glob("*.xlsx")):
                 file_path = str(f)
                 current_mtime = f.stat().st_mtime
 
-                cursor.execute('SELECT mtime FROM file_metadata WHERE file_path = ?', (file_path,))
-                row = cursor.fetchone()
-                if row and row[0] >= current_mtime:
-                    print(f"[SQLITE] food_item {f.name} 스킵 (이미 최신)")
-                    continue
+                # 강제 변환 모드가 아닐 때만 스킵 체크
+                if not force_convert:
+                    cursor.execute('SELECT mtime FROM file_metadata WHERE file_path = ?', (file_path,))
+                    row = cursor.fetchone()
+                    if row and row[0] >= current_mtime:
+                        print(f"[SQLITE] food_item {f.name} 스킵 (이미 최신)")
+                        continue
                 files_to_convert.append((f, file_path, current_mtime))
 
             # 변환할 파일이 있으면 해당 연도 데이터 삭제 후 전체 재로드
@@ -879,24 +1142,37 @@ def convert_excel_to_sqlite():
 
 
 def load_excel_data_sqlite(year):
-    """SQLite에서 데이터 로드 (빠름)"""
+    """SQLite에서 데이터 로드 (빠름) - Colab DB 호환"""
     import sqlite3
     import time
 
     start_time = time.time()
 
     conn = sqlite3.connect(str(SQLITE_DB))
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute('SELECT raw_data FROM excel_data WHERE year = ?', (str(year),))
-    rows = cursor.fetchall()
+    # 테이블 컬럼 확인
+    cursor.execute("PRAGMA table_info(excel_data)")
+    columns = [col[1] for col in cursor.fetchall()]
 
     data = []
-    for row in rows:
-        try:
-            data.append(json.loads(row[0]))
-        except:
-            pass
+
+    # raw_data 컬럼이 있으면 기존 방식 (JSON 파싱)
+    if 'raw_data' in columns:
+        cursor.execute('SELECT raw_data FROM excel_data WHERE year = ?', (str(year),))
+        rows = cursor.fetchall()
+        for row in rows:
+            try:
+                if row[0]:
+                    data.append(json.loads(row[0]))
+            except:
+                pass
+    else:
+        # Colab DB 방식: 컬럼에서 직접 로드
+        cursor.execute('SELECT * FROM excel_data WHERE year = ?', (str(year),))
+        rows = cursor.fetchall()
+        data = [dict(row) for row in rows]
 
     conn.close()
 
@@ -907,7 +1183,7 @@ def load_excel_data_sqlite(year):
 
 
 def load_food_item_data_sqlite(year):
-    """SQLite에서 food_item 데이터 로드 (빠름)"""
+    """SQLite에서 food_item 데이터 로드 (빠름) - Colab DB 호환"""
     import sqlite3
     import time
 
@@ -917,12 +1193,15 @@ def load_food_item_data_sqlite(year):
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute('''
-        SELECT 접수일자, 발행일, 검체유형, 업체명, 의뢰인명, 업체주소, 항목명, 규격,
-               항목담당, 결과입력자, 입력일, 분석일, 항목단위, 시험결과, 시험치,
-               성적서결과, 판정, 검사목적, 긴급여부, 항목수수료, 영업담당
-        FROM food_item_data WHERE year = ?
-    ''', (str(year),))
+    # 테이블 존재 여부 확인
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='food_item_data'")
+    if not cursor.fetchone():
+        conn.close()
+        print(f"[SQLITE] food_item_data 테이블 없음")
+        return []
+
+    # Colab DB 호환: 모든 컬럼 로드
+    cursor.execute('SELECT * FROM food_item_data WHERE year = ?', (str(year),))
 
     rows = cursor.fetchall()
     data = [dict(row) for row in rows]
@@ -1224,10 +1503,10 @@ def get_ai_data_summary(force_refresh=False):
     # 요약 통계 계산
     summary = {
         '2024': {'total_count': 0, 'total_fee': 0, 'by_purpose': {}, 'by_sample_type': {},
-                 'by_manager': {}, 'by_item': {}, 'monthly': {}},
+                 'by_manager': {}, 'by_item': {}, 'monthly': {}, 'by_client': {}},
         '2025': {'total_count': 0, 'total_fee': 0, 'by_purpose': {}, 'by_sample_type': {},
-                 'by_manager': {}, 'by_item': {}, 'monthly': {}},
-        'filter_values': {'purposes': set(), 'sample_types': set(), 'items': set(), 'managers': set()}
+                 'by_manager': {}, 'by_item': {}, 'monthly': {}, 'by_client': {}},
+        'filter_values': {'purposes': set(), 'sample_types': set(), 'items': set(), 'managers': set(), 'clients': set()}
     }
 
     for year, data in [('2024', food_2024), ('2025', food_2025)]:
@@ -1236,6 +1515,7 @@ def get_ai_data_summary(force_refresh=False):
             sample_type = str(row.get('검체유형', '') or '').strip()
             item_name = str(row.get('항목명', '') or '').strip()
             manager = str(row.get('영업담당', '') or '').strip() or '미지정'
+            client = str(row.get('업체명', '') or '').strip() or '미지정'
             fee = row.get('항목수수료', 0) or 0
             date = row.get('접수일자')
 
@@ -1284,6 +1564,18 @@ def get_ai_data_summary(force_refresh=False):
                 summary[year]['monthly'][m]['count'] += 1
                 summary[year]['monthly'][m]['fee'] += fee
 
+            # 고객(업체)별
+            if client and client != '미지정':
+                if client not in summary[year]['by_client']:
+                    summary[year]['by_client'][client] = {'count': 0, 'fee': 0, 'purposes': set(), 'months': set()}
+                summary[year]['by_client'][client]['count'] += 1
+                summary[year]['by_client'][client]['fee'] += fee
+                if purpose:
+                    summary[year]['by_client'][client]['purposes'].add(purpose)
+                if date and hasattr(date, 'month'):
+                    summary[year]['by_client'][client]['months'].add(date.month)
+                summary['filter_values']['clients'].add(client)
+
     # set을 sorted list로 변환
     summary['filter_values']['purposes'] = sorted(summary['filter_values']['purposes'])
     summary['filter_values']['sample_types'] = sorted(summary['filter_values']['sample_types'])
@@ -1296,6 +1588,23 @@ def get_ai_data_summary(force_refresh=False):
         sorted_items = sorted(summary[year]['by_item'].items(),
                              key=lambda x: x[1]['fee'], reverse=True)[:50]
         summary[year]['by_item'] = dict(sorted_items)
+
+    # 고객별 데이터 정렬 (상위 100개만 유지) + set을 list로 변환
+    for year in ['2024', '2025']:
+        sorted_clients = sorted(summary[year]['by_client'].items(),
+                               key=lambda x: x[1]['fee'], reverse=True)[:100]
+        summary[year]['by_client'] = {
+            k: {
+                'count': v['count'],
+                'fee': v['fee'],
+                'purposes': list(v['purposes']),
+                'months': sorted(list(v['months']))
+            }
+            for k, v in sorted_clients
+        }
+
+    # 고객사 필터 값 정렬
+    summary['filter_values']['clients'] = sorted(summary['filter_values']['clients'])[:200]
 
     elapsed = time.time() - start_time
     print(f"[AI-CACHE] 요약 생성 완료: {elapsed:.1f}초 소요")
@@ -2652,6 +2961,16 @@ ADMIN_TEMPLATE = '''
                 <div class="sidebar-item" onclick="showPanel('settings')">⚙️ 시스템 설정</div>
                 <div class="sidebar-item" onclick="showPanel('aiLogs')">🤖 AI 분석 로그</div>
             </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">원가 관리</div>
+                <div class="sidebar-item" onclick="showPanel('costData')">💰 원가 데이터</div>
+                <div class="sidebar-item" onclick="showPanel('costMapping')">🔗 항목 매핑</div>
+                <div class="sidebar-item" onclick="showPanel('profitAnalysis')">📈 손익 분석</div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-title">재무 설정</div>
+                <div class="sidebar-item" onclick="showPanel('financialSettings')">📊 손익계산서 설정</div>
+            </div>
         </div>
 
         <div class="admin-content">
@@ -2782,9 +3101,10 @@ ADMIN_TEMPLATE = '''
                     <table>
                         <thead>
                             <tr>
-                                <th>시간</th>
                                 <th>사용자</th>
                                 <th>메뉴</th>
+                                <th>진입시간</th>
+                                <th>종료시간</th>
                             </tr>
                         </thead>
                         <tbody id="menuLogsTable"></tbody>
@@ -2817,6 +3137,35 @@ ADMIN_TEMPLATE = '''
                 <div class="panel-header">
                     <h2>🔐 사용자 권한</h2>
                 </div>
+
+                <!-- 사용자별 탭 접근 권한 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-title">📱 사용자별 탭 접근 권한</div>
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>사용자 선택</label>
+                        <select class="form-control" id="permUserSelect" onchange="loadUserTabPermissions()" style="max-width: 300px;">
+                            <option value="">-- 사용자 선택 --</option>
+                        </select>
+                    </div>
+                    <div id="tabPermissionsContainer" style="display: none;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>탭 이름</th>
+                                    <th style="width: 100px; text-align: center;">접근 허용</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabPermissionsTable"></tbody>
+                        </table>
+                        <div style="margin-top: 15px;">
+                            <button class="btn btn-primary" onclick="saveUserTabPermissions()">💾 권한 저장</button>
+                            <label style="margin-left: 20px;">
+                                <input type="checkbox" id="permAdminAccess" onchange="toggleAdminAccess()"> 관리자 대시보드 접근
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="form-row">
                     <div class="card">
                         <div class="card-title">권한 그룹</div>
@@ -2912,6 +3261,290 @@ ADMIN_TEMPLATE = '''
                         </thead>
                         <tbody id="aiLogsTable"></tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- 원가 데이터 패널 -->
+            <div id="costDataPanel" class="admin-panel">
+                <div class="panel-header">
+                    <h2>💰 원가 데이터</h2>
+                    <button class="btn btn-primary" onclick="reloadCostData()">📥 엑셀에서 로드</button>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="costDataCount">0</div>
+                        <div class="stat-label">총 원가 항목</div>
+                    </div>
+                    <div class="stat-card blue">
+                        <div class="stat-value" id="costDataPhysical">0</div>
+                        <div class="stat-label">이화학 검사</div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="stat-value" id="costDataMicro">0</div>
+                        <div class="stat-label">미생물 검사</div>
+                    </div>
+                </div>
+                <div class="search-box">
+                    <input type="text" class="form-control" placeholder="원가 항목 검색..." id="costSearch" onkeyup="filterCostData()">
+                    <select class="form-control" style="width: 150px;" id="costCategoryFilter" onchange="filterCostData()">
+                        <option value="">전체 카테고리</option>
+                        <option value="이화학">이화학</option>
+                        <option value="미생물">미생물</option>
+                    </select>
+                </div>
+                <div class="card">
+                    <div class="card-title">원가 데이터 목록</div>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>항목명</th>
+                                    <th>카테고리</th>
+                                    <th>재료비</th>
+                                    <th>노무비</th>
+                                    <th>경비</th>
+                                    <th>직접비 계</th>
+                                    <th>간접비 계</th>
+                                    <th>총원가</th>
+                                </tr>
+                            </thead>
+                            <tbody id="costDataTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 항목 매핑 패널 -->
+            <div id="costMappingPanel" class="admin-panel">
+                <div class="panel-header">
+                    <h2>🔗 원가-매출 항목 매핑</h2>
+                    <button class="btn btn-primary" onclick="showMappingModal()">+ 매핑 추가</button>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="mappingCount">0</div>
+                        <div class="stat-label">매핑된 항목</div>
+                    </div>
+                    <div class="stat-card blue">
+                        <div class="stat-value" id="unmappedCount">0</div>
+                        <div class="stat-label">미매핑 항목</div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="card" style="flex: 1;">
+                        <div class="card-title">현재 매핑 목록</div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>원가 항목</th>
+                                    <th>매출 항목</th>
+                                    <th>관리</th>
+                                </tr>
+                            </thead>
+                            <tbody id="costMappingTable"></tbody>
+                        </table>
+                    </div>
+                    <div class="card" style="flex: 1;">
+                        <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>미매핑 매출 항목 (상위 50개)</span>
+                            <button class="btn btn-sm btn-primary" onclick="showBatchMappingModal()">선택 항목 일괄 매핑</button>
+                        </div>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="width: 30px;"><input type="checkbox" id="selectAllUnmapped" onchange="toggleAllUnmapped()"></th>
+                                        <th>매출 항목명</th>
+                                        <th>건수</th>
+                                        <th>매핑</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="unmappedItemsTable"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 손익 분석 패널 -->
+            <div id="profitAnalysisPanel" class="admin-panel">
+                <div class="panel-header">
+                    <h2>📈 손익 분석</h2>
+                    <select class="form-control" style="width: 120px;" id="profitYear" onchange="loadProfitAnalysis()">
+                        <option value="2026">2026년</option>
+                        <option value="2025" selected>2025년</option>
+                        <option value="2024">2024년</option>
+                    </select>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalRevenue">0원</div>
+                        <div class="stat-label">총 매출</div>
+                    </div>
+                    <div class="stat-card orange">
+                        <div class="stat-value" id="totalCostSum">0원</div>
+                        <div class="stat-label">총 원가</div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="stat-value" id="totalProfit">0원</div>
+                        <div class="stat-label">총 이익</div>
+                    </div>
+                    <div class="stat-card blue">
+                        <div class="stat-value" id="profitRate">0%</div>
+                        <div class="stat-label">이익률</div>
+                    </div>
+                </div>
+                <div class="stat-grid" style="margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalItems">0</div>
+                        <div class="stat-label">총 항목수</div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="stat-value" id="matchedItems">0</div>
+                        <div class="stat-label">매칭된 항목</div>
+                    </div>
+                    <div class="stat-card orange">
+                        <div class="stat-value" id="matchRate">0%</div>
+                        <div class="stat-label">매칭률</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">항목별 손익 분석 (상위 100개)</div>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>항목명</th>
+                                    <th>건수</th>
+                                    <th>매출액</th>
+                                    <th>단가원가</th>
+                                    <th>총원가</th>
+                                    <th>이익</th>
+                                    <th>이익률</th>
+                                    <th>매칭</th>
+                                </tr>
+                            </thead>
+                            <tbody id="profitAnalysisTable"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 손익계산서 설정 패널 -->
+            <div id="financialSettingsPanel" class="admin-panel">
+                <div class="panel-header">
+                    <h2>📊 손익계산서 설정</h2>
+                    <button class="btn btn-primary" onclick="saveFinancialSettings()">💾 저장</button>
+                </div>
+                <div class="form-row" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label>연도</label>
+                        <select class="form-control" id="financialYear" onchange="loadFinancialSettings()">
+                            <option value="2026">2026년</option>
+                            <option value="2025" selected>2025년</option>
+                            <option value="2024">2024년</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 손익계산서 구조 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-title">📋 손익계산서 입력</div>
+                    <table style="width: 100%;">
+                        <tbody>
+                            <tr style="background: #f1f5f9;">
+                                <td style="padding: 12px; font-weight: bold;">매출액</td>
+                                <td style="padding: 12px; text-align: right;">
+                                    <input type="text" class="form-control fs-money-input" id="fsRevenue" style="width: 200px; text-align: right;" placeholder="0">
+                                </td>
+                                <td style="padding: 12px; color: #64748b;">원</td>
+                                <td style="padding: 12px; color: #64748b; width: 100px;">100%</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px;">(-) 매출원가</td>
+                                <td style="padding: 12px; text-align: right;">
+                                    <input type="text" class="form-control fs-money-input" id="fsCostOfSales" style="width: 200px; text-align: right;" placeholder="0">
+                                </td>
+                                <td style="padding: 12px; color: #64748b;">원</td>
+                                <td style="padding: 12px;">
+                                    <span id="fsCostRate" style="color: #ef4444;">0%</span>
+                                </td>
+                            </tr>
+                            <tr style="background: #ecfdf5;">
+                                <td style="padding: 12px; font-weight: bold; color: #10b981;">= 매출총이익</td>
+                                <td style="padding: 12px; text-align: right; font-weight: bold; color: #10b981;">
+                                    <span id="fsGrossProfit">0</span>
+                                </td>
+                                <td style="padding: 12px; color: #10b981;">원</td>
+                                <td style="padding: 12px;">
+                                    <span id="fsGrossProfitRate" style="color: #10b981;">0%</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px;">(-) 판매비와관리비</td>
+                                <td style="padding: 12px; text-align: right;">
+                                    <input type="text" class="form-control fs-money-input" id="fsSgaExpense" style="width: 200px; text-align: right;" placeholder="0">
+                                </td>
+                                <td style="padding: 12px; color: #64748b;">원</td>
+                                <td style="padding: 12px;">
+                                    <span id="fsSgaRate" style="color: #f59e0b;">0%</span>
+                                </td>
+                            </tr>
+                            <tr style="background: #fef3c7;">
+                                <td style="padding: 12px; font-weight: bold; color: #f59e0b;">= 영업이익</td>
+                                <td style="padding: 12px; text-align: right; font-weight: bold; color: #f59e0b;">
+                                    <span id="fsOperatingProfit">0</span>
+                                </td>
+                                <td style="padding: 12px; color: #f59e0b;">원</td>
+                                <td style="padding: 12px;">
+                                    <span id="fsOperatingProfitRate" style="color: #f59e0b;">0%</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px;">(+/-) 영업외손익</td>
+                                <td style="padding: 12px; text-align: right;">
+                                    <input type="text" class="form-control fs-money-input" id="fsNonOperating" style="width: 200px; text-align: right;" placeholder="0">
+                                </td>
+                                <td style="padding: 12px; color: #64748b;">원</td>
+                                <td style="padding: 12px; color: #64748b;">-</td>
+                            </tr>
+                            <tr style="background: #dbeafe;">
+                                <td style="padding: 12px; font-weight: bold; color: #3b82f6;">= 세전이익</td>
+                                <td style="padding: 12px; text-align: right; font-weight: bold; color: #3b82f6;">
+                                    <span id="fsPreTaxProfit">0</span>
+                                </td>
+                                <td style="padding: 12px; color: #3b82f6;">원</td>
+                                <td style="padding: 12px;">
+                                    <span id="fsPreTaxProfitRate" style="color: #3b82f6;">0%</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 세부 비용 항목 -->
+                <div class="card">
+                    <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>📝 세부 비용 항목</span>
+                        <button class="btn btn-sm btn-primary" onclick="addFinancialDetail()">+ 항목 추가</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>구분</th>
+                                <th>항목명</th>
+                                <th style="text-align: right;">금액</th>
+                                <th style="width: 80px;">관리</th>
+                            </tr>
+                        </thead>
+                        <tbody id="financialDetailsTable"></tbody>
+                    </table>
+                </div>
+
+                <!-- 메모 -->
+                <div class="card" style="margin-top: 20px;">
+                    <div class="card-title">📝 메모</div>
+                    <textarea class="form-control" id="fsNotes" rows="3" placeholder="손익계산서 관련 메모..."></textarea>
                 </div>
             </div>
         </div>
@@ -3070,6 +3703,66 @@ ADMIN_TEMPLATE = '''
         </div>
     </div>
 
+    <!-- 원가-매출 매핑 모달 -->
+    <div class="modal" id="mappingModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>원가-매출 항목 매핑</h3>
+                <button class="modal-close" onclick="closeModal('mappingModal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>매출 항목명</label>
+                <input type="text" class="form-control" id="mappingSalesItem" placeholder="매출 항목명 입력" readonly style="background: #f1f5f9;">
+            </div>
+            <div class="form-group">
+                <label>원가 항목 선택</label>
+                <input type="text" class="form-control" id="mappingCostSearch" placeholder="원가 항목 검색..." oninput="searchCostItems()">
+            </div>
+            <div id="costSuggestions" style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 15px;">
+                <div style="padding: 20px; text-align: center; color: #64748b;">추천 항목을 불러오는 중...</div>
+            </div>
+            <div class="form-group">
+                <label>선택된 원가 항목</label>
+                <input type="text" class="form-control" id="mappingCostItem" readonly style="background: #ecfdf5; border-color: #10b981;">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" onclick="closeModal('mappingModal')">취소</button>
+                <button type="button" class="btn btn-primary" onclick="saveMapping()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 일괄 매핑 모달 -->
+    <div class="modal" id="batchMappingModal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>일괄 매핑 (그룹)</h3>
+                <button class="modal-close" onclick="closeModal('batchMappingModal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>선택된 매출 항목 (<span id="selectedCount">0</span>개)</label>
+                <div id="selectedItemsList" style="max-height: 150px; overflow-y: auto; background: #f1f5f9; padding: 10px; border-radius: 8px; font-size: 13px;"></div>
+            </div>
+            <div class="form-group">
+                <label>그룹명 (같은 그룹은 원가를 1번만 계산)</label>
+                <input type="text" class="form-control" id="batchGroupName" placeholder="예: 영양성분검사">
+            </div>
+            <div class="form-group">
+                <label>원가 항목 검색</label>
+                <input type="text" class="form-control" id="batchCostSearch" placeholder="원가 항목 검색..." oninput="searchBatchCostItems()">
+            </div>
+            <div id="batchCostSuggestions" style="max-height: 200px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 15px;"></div>
+            <div class="form-group">
+                <label>선택된 원가 항목</label>
+                <input type="text" class="form-control" id="batchCostItem" readonly style="background: #ecfdf5; border-color: #10b981;">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn" onclick="closeModal('batchMappingModal')">취소</button>
+                <button type="button" class="btn btn-primary" onclick="saveBatchMapping()">일괄 매핑 저장</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 사용자 추가/수정 모달 -->
     <div class="modal" id="userModal">
         <div class="modal-content">
@@ -3139,6 +3832,10 @@ ADMIN_TEMPLATE = '''
             else if (panel === 'permissions') loadPermissions();
             else if (panel === 'settings') loadSettings();
             else if (panel === 'aiLogs') loadAiLogs();
+            else if (panel === 'costData') loadCostData();
+            else if (panel === 'costMapping') loadCostMapping();
+            else if (panel === 'profitAnalysis') loadProfitAnalysis();
+            else if (panel === 'financialSettings') loadFinancialSettings();
         }
 
         // 목표 탭 전환
@@ -3257,9 +3954,10 @@ ADMIN_TEMPLATE = '''
             const data = await response.json();
             document.getElementById('menuLogsTable').innerHTML = (data.logs || []).map(l => `
                 <tr>
-                    <td>${l.created_at}</td>
-                    <td>${l.username || 'Unknown'}</td>
-                    <td>${l.menu_name}</td>
+                    <td>${l.display_name || l.username || '알 수 없음'}</td>
+                    <td>${l.menu_name_kr || l.menu_name}</td>
+                    <td>${l.entry_time || l.created_at}</td>
+                    <td>${l.exit_time || '-'}</td>
                 </tr>
             `).join('');
         }
@@ -3293,6 +3991,598 @@ ADMIN_TEMPLATE = '''
             `).join('');
         }
 
+        // ============ 원가 관리 함수들 ============
+        let costDataCache = [];
+        let costMappingCache = [];
+        let unmappedItemsCache = [];
+
+        // 원가 데이터 로드
+        async function loadCostData() {
+            try {
+                const response = await fetch('/api/admin/cost-data');
+                const data = await response.json();
+                costDataCache = data.data || [];
+
+                // 통계 업데이트
+                document.getElementById('costDataCount').textContent = costDataCache.length;
+                const physical = costDataCache.filter(c => c.category === '이화학').length;
+                const micro = costDataCache.filter(c => c.category === '미생물').length;
+                document.getElementById('costDataPhysical').textContent = physical;
+                document.getElementById('costDataMicro').textContent = micro;
+
+                renderCostDataTable();
+            } catch (e) {
+                console.error('원가 데이터 로드 실패:', e);
+            }
+        }
+
+        function renderCostDataTable() {
+            const search = document.getElementById('costSearch')?.value?.toLowerCase() || '';
+            const category = document.getElementById('costCategoryFilter')?.value || '';
+
+            let filtered = costDataCache;
+            if (search) {
+                filtered = filtered.filter(c => c.item_name?.toLowerCase().includes(search));
+            }
+            if (category) {
+                filtered = filtered.filter(c => c.category === category);
+            }
+
+            document.getElementById('costDataTable').innerHTML = filtered.slice(0, 200).map(c => `
+                <tr>
+                    <td>${c.item_name || '-'}</td>
+                    <td>${c.category || '-'}</td>
+                    <td style="text-align: right;">${formatNumber(c.material_cost)}</td>
+                    <td style="text-align: right;">${formatNumber(c.labor_cost)}</td>
+                    <td style="text-align: right;">${formatNumber(c.expense)}</td>
+                    <td style="text-align: right;">${formatNumber(c.direct_cost)}</td>
+                    <td style="text-align: right;">${formatNumber(c.indirect_cost)}</td>
+                    <td style="text-align: right; font-weight: bold;">${formatNumber(c.total_cost)}</td>
+                </tr>
+            `).join('') || '<tr><td colspan="8" style="text-align:center;">원가 데이터가 없습니다</td></tr>';
+        }
+
+        function filterCostData() {
+            renderCostDataTable();
+        }
+
+        async function reloadCostData() {
+            if (!confirm('엑셀 파일에서 원가 데이터를 다시 로드하시겠습니까?\\n기존 데이터가 덮어씌워집니다.')) return;
+            try {
+                const response = await fetch('/api/admin/cost-data/reload', { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    alert('원가 데이터 로드 완료: ' + result.count + '개 항목');
+                    loadCostData();
+                } else {
+                    alert('로드 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('로드 실패: ' + e.message);
+            }
+        }
+
+        // 항목 매핑 로드
+        async function loadCostMapping() {
+            try {
+                // 원가 데이터도 함께 로드 (추천 기능에 필요)
+                if (!costDataCache.length) {
+                    const costRes = await fetch('/api/admin/cost-data');
+                    const costData = await costRes.json();
+                    costDataCache = costData.data || [];
+                }
+
+                const [mappingRes, profitRes] = await Promise.all([
+                    fetch('/api/admin/cost-mapping'),
+                    fetch('/api/cost/profit-analysis?year=2025')
+                ]);
+                const mappingData = await mappingRes.json();
+                const profitData = await profitRes.json();
+
+                costMappingCache = mappingData.mappings || [];
+                document.getElementById('mappingCount').textContent = costMappingCache.length;
+
+                // 매핑 테이블 렌더링 (그룹명 표시)
+                document.getElementById('costMappingTable').innerHTML = costMappingCache.map(m => `
+                    <tr>
+                        <td>${m.cost_item_name}${m.group_name ? '<br><small style="color:#64748b;">그룹: ' + m.group_name + '</small>' : ''}</td>
+                        <td>${m.sales_item_name}</td>
+                        <td><button class="btn btn-sm" style="background:#ef4444; color:#fff;" onclick="deleteMapping(${m.id})">삭제</button></td>
+                    </tr>
+                `).join('') || '<tr><td colspan="3" style="text-align:center;">매핑된 항목이 없습니다</td></tr>';
+
+                // 미매핑 항목 표시 (체크박스 포함)
+                const unmapped = (profitData.data || []).filter(p => !p.matched);
+                unmappedItemsCache = unmapped;
+                document.getElementById('unmappedCount').textContent = unmapped.length;
+                document.getElementById('unmappedItemsTable').innerHTML = unmapped.slice(0, 50).map((p, idx) => `
+                    <tr>
+                        <td><input type="checkbox" class="unmapped-checkbox" data-item="${p.item_name.replace(/"/g, '&quot;')}"></td>
+                        <td>${p.item_name}</td>
+                        <td>${p.count}</td>
+                        <td><button class="btn btn-sm btn-primary" onclick="quickMapping('${p.item_name.replace(/'/g, "\\\\'")}')">매핑</button></td>
+                    </tr>
+                `).join('') || '<tr><td colspan="4" style="text-align:center;">모든 항목이 매핑되었습니다</td></tr>';
+                document.getElementById('selectAllUnmapped').checked = false;
+            } catch (e) {
+                console.error('매핑 데이터 로드 실패:', e);
+            }
+        }
+
+        async function deleteMapping(id) {
+            if (!confirm('이 매핑을 삭제하시겠습니까?')) return;
+            try {
+                await fetch('/api/admin/cost-mapping/' + id, { method: 'DELETE' });
+                loadCostMapping();
+            } catch (e) {
+                alert('삭제 실패: ' + e.message);
+            }
+        }
+
+        function quickMapping(salesItem) {
+            document.getElementById('mappingSalesItem').value = salesItem;
+            document.getElementById('mappingCostItem').value = '';
+            document.getElementById('mappingCostSearch').value = '';
+            document.getElementById('mappingModal').classList.add('show');
+            // 유사 항목 자동 검색
+            showCostSuggestions(salesItem);
+        }
+
+        function showMappingModal() {
+            document.getElementById('mappingSalesItem').value = '';
+            document.getElementById('mappingCostItem').value = '';
+            document.getElementById('mappingCostSearch').value = '';
+            document.getElementById('costSuggestions').innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">매출 항목을 선택하세요</div>';
+            document.getElementById('mappingModal').classList.add('show');
+        }
+
+        function showCostSuggestions(salesItem) {
+            if (!costDataCache.length) {
+                document.getElementById('costSuggestions').innerHTML = '<div style="padding: 20px; text-align: center; color: #ef4444;">원가 데이터가 없습니다. 먼저 원가 데이터를 로드하세요.</div>';
+                return;
+            }
+
+            // 유사도 기반 정렬
+            const scored = costDataCache.map(c => {
+                let score = 0;
+                const costName = (c.item_name || '').toLowerCase();
+                const salesName = salesItem.toLowerCase();
+
+                // 정확히 일치
+                if (costName === salesName) score = 100;
+                // 포함 관계
+                else if (costName.includes(salesName) || salesName.includes(costName)) score = 80;
+                // 부분 일치 (첫 글자들)
+                else if (costName.substring(0, 3) === salesName.substring(0, 3)) score = 60;
+                // 공통 문자 수
+                else {
+                    const common = [...salesName].filter(ch => costName.includes(ch)).length;
+                    score = Math.min(50, common * 10);
+                }
+                return { ...c, score };
+            }).filter(c => c.score > 0).sort((a, b) => b.score - a.score).slice(0, 20);
+
+            renderCostSuggestions(scored, salesItem);
+        }
+
+        function searchCostItems() {
+            const search = document.getElementById('mappingCostSearch').value.toLowerCase().trim();
+            if (!search) {
+                const salesItem = document.getElementById('mappingSalesItem').value;
+                if (salesItem) showCostSuggestions(salesItem);
+                return;
+            }
+
+            const filtered = costDataCache.filter(c =>
+                (c.item_name || '').toLowerCase().includes(search)
+            ).slice(0, 20);
+
+            renderCostSuggestions(filtered.map(c => ({ ...c, score: 50 })), '');
+        }
+
+        function renderCostSuggestions(items, salesItem) {
+            if (!items.length) {
+                document.getElementById('costSuggestions').innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">일치하는 원가 항목이 없습니다</div>';
+                return;
+            }
+
+            document.getElementById('costSuggestions').innerHTML = items.map(c => `
+                <div onclick="selectCostItem('${c.item_name.replace(/'/g, "\\\\'")}')"
+                     style="padding: 10px 15px; cursor: pointer; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;"
+                     onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'">
+                    <div>
+                        <div style="font-weight: 500;">${c.item_name}</div>
+                        <div style="font-size: 12px; color: #64748b;">${c.category || ''} | 총원가: ${formatNumber(c.total_cost)}원</div>
+                    </div>
+                    ${c.score >= 80 ? '<span style="background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">추천</span>' :
+                      c.score >= 50 ? '<span style="background: #f59e0b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">유사</span>' : ''}
+                </div>
+            `).join('');
+        }
+
+        function selectCostItem(itemName) {
+            document.getElementById('mappingCostItem').value = itemName;
+            // 선택된 항목 하이라이트
+            document.querySelectorAll('#costSuggestions > div').forEach(div => {
+                div.style.background = div.textContent.includes(itemName) ? '#ecfdf5' : 'white';
+            });
+        }
+
+        async function saveMapping() {
+            const costItem = document.getElementById('mappingCostItem').value.trim();
+            const salesItem = document.getElementById('mappingSalesItem').value.trim();
+            if (!costItem || !salesItem) {
+                alert('원가 항목과 매출 항목을 모두 입력하세요');
+                return;
+            }
+            try {
+                const response = await fetch('/api/admin/cost-mapping', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cost_item_name: costItem, sales_item_name: salesItem })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    closeModal('mappingModal');
+                    loadCostMapping();
+                    loadProfitAnalysis();
+                } else {
+                    alert('저장 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('저장 실패: ' + e.message);
+            }
+        }
+
+        // 전체 선택/해제
+        function toggleAllUnmapped() {
+            const checked = document.getElementById('selectAllUnmapped').checked;
+            document.querySelectorAll('.unmapped-checkbox').forEach(cb => cb.checked = checked);
+        }
+
+        // 선택된 항목 가져오기
+        function getSelectedUnmappedItems() {
+            const selected = [];
+            document.querySelectorAll('.unmapped-checkbox:checked').forEach(cb => {
+                selected.push(cb.dataset.item);
+            });
+            return selected;
+        }
+
+        // 일괄 매핑 모달 표시
+        function showBatchMappingModal() {
+            const selected = getSelectedUnmappedItems();
+            if (selected.length === 0) {
+                alert('매핑할 항목을 선택하세요');
+                return;
+            }
+
+            document.getElementById('selectedCount').textContent = selected.length;
+            document.getElementById('selectedItemsList').innerHTML = selected.map(item =>
+                `<span style="display: inline-block; background: #e2e8f0; padding: 2px 8px; margin: 2px; border-radius: 4px;">${item}</span>`
+            ).join('');
+            document.getElementById('batchGroupName').value = '';
+            document.getElementById('batchCostSearch').value = '';
+            document.getElementById('batchCostItem').value = '';
+            document.getElementById('batchCostSuggestions').innerHTML = '<div style="padding: 15px; text-align: center; color: #64748b;">원가 항목을 검색하세요</div>';
+            document.getElementById('batchMappingModal').classList.add('show');
+        }
+
+        // 일괄 매핑용 원가 항목 검색
+        function searchBatchCostItems() {
+            const search = document.getElementById('batchCostSearch').value.toLowerCase().trim();
+            if (!search) {
+                document.getElementById('batchCostSuggestions').innerHTML = '<div style="padding: 15px; text-align: center; color: #64748b;">원가 항목을 검색하세요</div>';
+                return;
+            }
+
+            const filtered = costDataCache.filter(c =>
+                (c.item_name || '').toLowerCase().includes(search)
+            ).slice(0, 15);
+
+            if (!filtered.length) {
+                document.getElementById('batchCostSuggestions').innerHTML = '<div style="padding: 15px; text-align: center; color: #64748b;">일치하는 항목 없음</div>';
+                return;
+            }
+
+            document.getElementById('batchCostSuggestions').innerHTML = filtered.map(c => `
+                <div onclick="selectBatchCostItem('${c.item_name.replace(/'/g, "\\\\'")}')"
+                     style="padding: 10px 15px; cursor: pointer; border-bottom: 1px solid #e2e8f0;"
+                     onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'">
+                    <div style="font-weight: 500;">${c.item_name}</div>
+                    <div style="font-size: 12px; color: #64748b;">${c.category || ''} | 총원가: ${formatNumber(c.total_cost)}원</div>
+                </div>
+            `).join('');
+        }
+
+        function selectBatchCostItem(itemName) {
+            document.getElementById('batchCostItem').value = itemName;
+            // 그룹명 자동 설정
+            if (!document.getElementById('batchGroupName').value) {
+                document.getElementById('batchGroupName').value = itemName;
+            }
+        }
+
+        // 일괄 매핑 저장
+        async function saveBatchMapping() {
+            const costItem = document.getElementById('batchCostItem').value.trim();
+            const groupName = document.getElementById('batchGroupName').value.trim();
+            const salesItems = getSelectedUnmappedItems();
+
+            if (!costItem) {
+                alert('원가 항목을 선택하세요');
+                return;
+            }
+            if (!groupName) {
+                alert('그룹명을 입력하세요');
+                return;
+            }
+            if (salesItems.length === 0) {
+                alert('매핑할 매출 항목이 없습니다');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/cost-mapping/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cost_item_name: costItem,
+                        sales_item_names: salesItems,
+                        group_name: groupName
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.count + '개 항목이 "' + result.group_name + '" 그룹으로 매핑되었습니다');
+                    closeModal('batchMappingModal');
+                    loadCostMapping();
+                    loadProfitAnalysis();
+                } else {
+                    alert('매핑 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('매핑 실패: ' + e.message);
+            }
+        }
+
+        // 손익 분석 로드
+        async function loadProfitAnalysis() {
+            const year = document.getElementById('profitYear')?.value || '2025';
+            try {
+                const response = await fetch('/api/cost/profit-analysis?year=' + year);
+                const data = await response.json();
+                const summary = data.summary || {};
+
+                document.getElementById('totalRevenue').textContent = formatCurrency(summary.total_revenue || 0);
+                document.getElementById('totalCostSum').textContent = formatCurrency(summary.total_cost || 0);
+                document.getElementById('totalProfit').textContent = formatCurrency(summary.total_profit || 0);
+                document.getElementById('profitRate').textContent = (summary.profit_rate || 0).toFixed(1) + '%';
+                document.getElementById('totalItems').textContent = summary.total_items || 0;
+                document.getElementById('matchedItems').textContent = summary.matched_items || 0;
+                document.getElementById('matchRate').textContent = (summary.match_rate || 0).toFixed(1) + '%';
+
+                document.getElementById('profitAnalysisTable').innerHTML = (data.data || []).map(p => `
+                    <tr style="${p.matched ? '' : 'background: #fef3c7;'}">
+                        <td>${p.item_name}</td>
+                        <td style="text-align: right;">${p.count}</td>
+                        <td style="text-align: right;">${formatCurrency(p.revenue)}</td>
+                        <td style="text-align: right;">${formatNumber(p.unit_cost)}</td>
+                        <td style="text-align: right;">${formatCurrency(p.total_cost)}</td>
+                        <td style="text-align: right; color: ${p.profit >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(p.profit)}</td>
+                        <td style="text-align: right;">${p.profit_rate.toFixed(1)}%</td>
+                        <td style="text-align: center;">${p.matched ? '✅' : '❌'}</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="8" style="text-align:center;">데이터가 없습니다</td></tr>';
+            } catch (e) {
+                console.error('손익 분석 로드 실패:', e);
+            }
+        }
+
+        // ============ 손익계산서 설정 함수들 ============
+        let financialDetailsCache = [];
+
+        // 콤마 포맷 헬퍼 함수
+        function formatMoneyInput(num) {
+            return Math.round(num || 0).toLocaleString('ko-KR');
+        }
+
+        function parseMoneyInput(str) {
+            if (!str) return 0;
+            return parseFloat(String(str).replace(/,/g, '')) || 0;
+        }
+
+        function setMoneyInputValue(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.value = formatMoneyInput(value);
+        }
+
+        function getMoneyInputValue(id) {
+            const el = document.getElementById(id);
+            return el ? parseMoneyInput(el.value) : 0;
+        }
+
+        // 입력 시 자동 콤마 포맷
+        document.addEventListener('input', function(e) {
+            if (e.target.classList.contains('fs-money-input')) {
+                const val = parseMoneyInput(e.target.value);
+                const cursorPos = e.target.selectionStart;
+                const oldLen = e.target.value.length;
+                e.target.value = formatMoneyInput(val);
+                const newLen = e.target.value.length;
+                // 커서 위치 조정
+                const newPos = cursorPos + (newLen - oldLen);
+                e.target.setSelectionRange(newPos, newPos);
+                calculateFinancialSummary();
+            }
+        });
+
+        async function loadFinancialSettings() {
+            const year = document.getElementById('financialYear')?.value || '2025';
+            try {
+                const response = await fetch('/api/admin/financial-settings?year=' + year);
+                const data = await response.json();
+
+                if (data.settings) {
+                    const s = data.settings;
+                    setMoneyInputValue('fsRevenue', s.revenue || 0);
+                    setMoneyInputValue('fsCostOfSales', s.cost_of_sales || 0);
+                    setMoneyInputValue('fsSgaExpense', s.sga_expense || 0);
+                    setMoneyInputValue('fsNonOperating', s.non_operating_income || 0);
+                    document.getElementById('fsNotes').value = s.notes || '';
+                } else {
+                    // 데이터가 없으면 초기화
+                    setMoneyInputValue('fsRevenue', 0);
+                    setMoneyInputValue('fsCostOfSales', 0);
+                    setMoneyInputValue('fsSgaExpense', 0);
+                    setMoneyInputValue('fsNonOperating', 0);
+                    document.getElementById('fsNotes').value = '';
+                }
+
+                financialDetailsCache = data.details || [];
+                renderFinancialDetailsTable();
+                calculateFinancialSummary();
+            } catch (e) {
+                console.error('손익계산서 설정 로드 실패:', e);
+            }
+        }
+
+        function calculateFinancialSummary() {
+            const revenue = getMoneyInputValue('fsRevenue');
+            const costOfSales = getMoneyInputValue('fsCostOfSales');
+            const sgaExpense = getMoneyInputValue('fsSgaExpense');
+            const nonOperating = getMoneyInputValue('fsNonOperating');
+
+            const grossProfit = revenue - costOfSales;
+            const operatingProfit = grossProfit - sgaExpense;
+            const preTaxProfit = operatingProfit + nonOperating;
+
+            const costRate = revenue > 0 ? (costOfSales / revenue * 100) : 0;
+            const grossProfitRate = revenue > 0 ? (grossProfit / revenue * 100) : 0;
+            const sgaRate = revenue > 0 ? (sgaExpense / revenue * 100) : 0;
+            const operatingProfitRate = revenue > 0 ? (operatingProfit / revenue * 100) : 0;
+            const preTaxProfitRate = revenue > 0 ? (preTaxProfit / revenue * 100) : 0;
+
+            document.getElementById('fsCostRate').textContent = costRate.toFixed(1) + '%';
+            document.getElementById('fsGrossProfit').textContent = formatFinancialNumber(grossProfit);
+            document.getElementById('fsGrossProfitRate').textContent = grossProfitRate.toFixed(1) + '%';
+            document.getElementById('fsSgaRate').textContent = sgaRate.toFixed(1) + '%';
+            document.getElementById('fsOperatingProfit').textContent = formatFinancialNumber(operatingProfit);
+            document.getElementById('fsOperatingProfitRate').textContent = operatingProfitRate.toFixed(1) + '%';
+            document.getElementById('fsPreTaxProfit').textContent = formatFinancialNumber(preTaxProfit);
+            document.getElementById('fsPreTaxProfitRate').textContent = preTaxProfitRate.toFixed(1) + '%';
+
+            // 색상 업데이트
+            const opColor = operatingProfit >= 0 ? '#f59e0b' : '#ef4444';
+            const ptColor = preTaxProfit >= 0 ? '#3b82f6' : '#ef4444';
+            document.getElementById('fsOperatingProfit').style.color = opColor;
+            document.getElementById('fsOperatingProfitRate').style.color = opColor;
+            document.getElementById('fsPreTaxProfit').style.color = ptColor;
+            document.getElementById('fsPreTaxProfitRate').style.color = ptColor;
+        }
+
+        function formatFinancialNumber(num) {
+            const n = Math.round(num);
+            if (Math.abs(n) >= 100000000) {
+                return (n / 100000000).toFixed(2) + '억';
+            }
+            return n.toLocaleString('ko-KR');
+        }
+
+        function renderFinancialDetailsTable() {
+            const tbody = document.getElementById('financialDetailsTable');
+            if (!tbody) return;
+
+            tbody.innerHTML = financialDetailsCache.map((d, idx) => `
+                <tr>
+                    <td>
+                        <select class="form-control form-control-sm" onchange="updateFinancialDetail(${idx}, 'category', this.value)">
+                            <option value="원가" ${d.category === '원가' ? 'selected' : ''}>원가</option>
+                            <option value="판관비" ${d.category === '판관비' ? 'selected' : ''}>판관비</option>
+                            <option value="영업외" ${d.category === '영업외' ? 'selected' : ''}>영업외</option>
+                        </select>
+                    </td>
+                    <td><input type="text" class="form-control form-control-sm" value="${d.item_name || ''}" onchange="updateFinancialDetail(${idx}, 'item_name', this.value)"></td>
+                    <td><input type="number" class="form-control form-control-sm" style="text-align: right;" value="${d.amount || 0}" onchange="updateFinancialDetail(${idx}, 'amount', this.value)"></td>
+                    <td style="text-align: center;">
+                        <button class="btn btn-sm" style="color: #ef4444;" onclick="removeFinancialDetail(${idx})">🗑️</button>
+                    </td>
+                </tr>
+            `).join('') || '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">세부 항목이 없습니다</td></tr>';
+        }
+
+        function addFinancialDetail() {
+            financialDetailsCache.push({
+                category: '원가',
+                item_name: '',
+                amount: 0
+            });
+            renderFinancialDetailsTable();
+        }
+
+        function updateFinancialDetail(idx, field, value) {
+            if (financialDetailsCache[idx]) {
+                financialDetailsCache[idx][field] = field === 'amount' ? parseFloat(value) || 0 : value;
+            }
+        }
+
+        function removeFinancialDetail(idx) {
+            financialDetailsCache.splice(idx, 1);
+            renderFinancialDetailsTable();
+        }
+
+        async function saveFinancialSettings() {
+            const year = parseInt(document.getElementById('financialYear').value);
+            const revenue = getMoneyInputValue('fsRevenue');
+            const costOfSales = getMoneyInputValue('fsCostOfSales');
+            const sgaExpense = getMoneyInputValue('fsSgaExpense');
+            const nonOperating = getMoneyInputValue('fsNonOperating');
+            const notes = document.getElementById('fsNotes').value;
+
+            const costRate = revenue > 0 ? (costOfSales / revenue * 100) : 0;
+            const sgaRate = revenue > 0 ? (sgaExpense / revenue * 100) : 0;
+
+            try {
+                const response = await fetch('/api/admin/financial-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        year,
+                        revenue,
+                        cost_of_sales: costOfSales,
+                        sga_expense: sgaExpense,
+                        non_operating_income: nonOperating,
+                        cost_rate: costRate,
+                        sga_rate: sgaRate,
+                        notes,
+                        details: financialDetailsCache
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert('손익계산서 설정이 저장되었습니다.');
+                } else {
+                    alert('저장 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('저장 실패: ' + e.message);
+            }
+        }
+
+        function formatNumber(num) {
+            return Math.round(num || 0).toLocaleString('ko-KR');
+        }
+
+        function formatCurrency(num) {
+            const n = Math.round(num || 0);
+            if (Math.abs(n) >= 100000000) {
+                return (n / 100000000).toFixed(1) + '억원';
+            } else if (Math.abs(n) >= 10000) {
+                return Math.round(n / 10000).toLocaleString('ko-KR') + '만원';
+            }
+            return n.toLocaleString('ko-KR') + '원';
+        }
+
         // 설정 로드
         async function loadSettings() {
             const response = await fetch('/api/admin/teams');
@@ -3310,6 +4600,20 @@ ADMIN_TEMPLATE = '''
 
         // 권한 로드
         async function loadPermissions() {
+            // 사용자 목록 로드
+            try {
+                const usersRes = await fetch('/api/admin/users');
+                const usersJson = await usersRes.json();
+                const users = usersJson.users || [];
+                const select = document.getElementById('permUserSelect');
+                if (select) {
+                    select.innerHTML = '<option value="">-- 사용자 선택 --</option>' +
+                        users.map(u => `<option value="${u.id}">${u.name} (${u.username})</option>`).join('');
+                }
+            } catch (e) {
+                console.error('사용자 목록 로드 실패:', e);
+            }
+
             const response = await fetch('/api/admin/permission-groups');
             const data = await response.json();
             document.getElementById('permissionGroups').innerHTML = (data.groups || []).map(g => `
@@ -3320,6 +4624,95 @@ ADMIN_TEMPLATE = '''
                     <div style="font-size: 12px; color: #64748b;">${g.description}</div>
                 </div>
             `).join('');
+        }
+
+        // 탭 목록 정의
+        const TAB_LIST = [
+            { id: 'overview', name: '대시보드', icon: '📊' },
+            { id: 'detail', name: '상세분석', icon: '📈' },
+            { id: 'collection', name: '수금', icon: '💰' },
+            { id: 'profitAnalysis', name: '손익분석', icon: '📊' },
+            { id: 'aiAnalysis', name: 'AI분석', icon: '🤖' },
+            { id: 'reports', name: '보고서', icon: '📑' },
+            { id: 'organization', name: '조직', icon: '🏢' }
+        ];
+
+        let currentPermUserId = null;
+        let currentTabPermissions = {};
+
+        async function loadUserTabPermissions() {
+            const userId = document.getElementById('permUserSelect').value;
+            const container = document.getElementById('tabPermissionsContainer');
+
+            if (!userId) {
+                container.style.display = 'none';
+                return;
+            }
+
+            currentPermUserId = userId;
+            container.style.display = 'block';
+
+            try {
+                const response = await fetch('/api/admin/user-tab-permissions?user_id=' + userId);
+                const data = await response.json();
+                currentTabPermissions = data.permissions || {};
+
+                // 관리자 접근 권한 체크박스
+                document.getElementById('permAdminAccess').checked = data.is_admin || false;
+
+                // 탭 권한 테이블 렌더링
+                const tbody = document.getElementById('tabPermissionsTable');
+                tbody.innerHTML = TAB_LIST.map(tab => `
+                    <tr>
+                        <td>${tab.icon} ${tab.name}</td>
+                        <td style="text-align: center;">
+                            <input type="checkbox" class="tab-perm-checkbox"
+                                data-tab="${tab.id}"
+                                ${currentTabPermissions[tab.id] !== false ? 'checked' : ''}>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('탭 권한 로드 실패:', e);
+            }
+        }
+
+        async function saveUserTabPermissions() {
+            if (!currentPermUserId) {
+                alert('사용자를 선택하세요.');
+                return;
+            }
+
+            const permissions = {};
+            document.querySelectorAll('.tab-perm-checkbox').forEach(cb => {
+                permissions[cb.dataset.tab] = cb.checked;
+            });
+
+            const isAdmin = document.getElementById('permAdminAccess').checked;
+
+            try {
+                const response = await fetch('/api/admin/user-tab-permissions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentPermUserId,
+                        permissions: permissions,
+                        is_admin: isAdmin
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert('권한이 저장되었습니다.');
+                } else {
+                    alert('저장 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('저장 실패: ' + e.message);
+            }
+        }
+
+        function toggleAdminAccess() {
+            // 관리자 권한 토글 시 추가 작업 필요하면 여기에
         }
 
         // 모달
@@ -5566,8 +6959,7 @@ HTML_TEMPLATE = '''
                     📅
                     <span class="filter-label">조회기간</span>
                     <select id="yearSelect" class="filter-select">
-                        <option value="2025">2025년</option>
-                        <option value="2024">2024년</option>
+                        <!-- 연도 목록은 API에서 동적으로 로드됨 -->
                     </select>
                     <select id="monthSelect" class="filter-select">
                         <option value="">전체</option>
@@ -5595,8 +6987,7 @@ HTML_TEMPLATE = '''
 
                 <div class="filter-group" id="compareYearGroup" style="display: none;">
                     <select id="compareYearSelect" class="filter-select">
-                        <option value="2024">2024년</option>
-                        <option value="2023">2023년</option>
+                        <!-- 비교 연도 목록은 API에서 동적으로 로드됨 -->
                     </select>
                 </div>
 
@@ -5660,6 +7051,10 @@ HTML_TEMPLATE = '''
             <div class="tab-card" onclick="showTab('collection')">
                 <div class="tab-icon">💵</div>
                 <div class="tab-label">수금</div>
+            </div>
+            <div class="tab-card" onclick="showTab('profitAnalysis')">
+                <div class="tab-icon">📊</div>
+                <div class="tab-label">손익분석</div>
             </div>
         </section>
 
@@ -7634,6 +9029,160 @@ HTML_TEMPLATE = '''
             </div>
         </div>
 
+        <!-- 손익분석 탭 -->
+        <div id="profitAnalysis" class="tab-content">
+            <!-- 손익계산서 요약 KPI -->
+            <div id="profitKpiSource" style="text-align: right; font-size: 12px; color: #9ca3af; margin-bottom: 10px;">데이터 소스: -</div>
+            <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 15px; margin-bottom: 20px;">
+                <div class="card" style="text-align: center; padding: 20px;">
+                    <div style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">매출액</div>
+                    <div id="profitTotalSales" style="font-size: 20px; font-weight: 700; color: #2563eb;">-</div>
+                </div>
+                <div class="card" style="text-align: center; padding: 20px;">
+                    <div id="profitCostLabel" style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">매출원가</div>
+                    <div id="profitTotalCost" style="font-size: 20px; font-weight: 700; color: #dc2626;">-</div>
+                    <div id="profitCostRate" style="font-size: 11px; color: #9ca3af; margin-top: 4px;">-</div>
+                </div>
+                <div class="card" style="text-align: center; padding: 20px;">
+                    <div style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">판관비</div>
+                    <div id="profitSgaExpense" style="font-size: 20px; font-weight: 700; color: #f97316;">-</div>
+                    <div id="profitSgaRate" style="font-size: 11px; color: #9ca3af; margin-top: 4px;">-</div>
+                </div>
+                <div class="card" style="text-align: center; padding: 20px;">
+                    <div style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">영업이익</div>
+                    <div id="profitTotalProfit" style="font-size: 20px; font-weight: 700; color: #059669;">-</div>
+                </div>
+                <div class="card" style="text-align: center; padding: 20px;">
+                    <div style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">영업이익률</div>
+                    <div id="profitMarginRate" style="font-size: 20px; font-weight: 700; color: #7c3aed;">-</div>
+                </div>
+                <div class="card" style="text-align: center; padding: 20px;">
+                    <div style="color: #6b7280; font-size: 13px; margin-bottom: 8px;">세전이익</div>
+                    <div id="profitNetProfit" style="font-size: 20px; font-weight: 700; color: #0891b2;">-</div>
+                    <div id="profitDiscountRate" style="font-size: 11px; color: #9ca3af; margin-top: 4px;">-</div>
+                </div>
+            </div>
+
+            <!-- 분석 선택 탭 -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button class="btn" id="btnProfitByPurpose" onclick="showProfitTab('purpose')" style="background: #2563eb; color: white;">검사목적별</button>
+                <button class="btn" id="btnProfitByManager" onclick="showProfitTab('manager')">담당자별</button>
+                <button class="btn" id="btnProfitByMonth" onclick="showProfitTab('month')">월별 추이</button>
+            </div>
+
+            <!-- 검사목적별 분석 -->
+            <div id="profitByPurpose" class="profit-section">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">📊 검사목적별 매출 vs 이익</span>
+                        </div>
+                        <div class="card-body"><div class="chart-container"><canvas id="profitByPurposeChart"></canvas></div></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">🥧 검사목적별 이익 비중</span>
+                        </div>
+                        <div class="card-body"><div class="chart-container"><canvas id="profitByPurposePieChart"></canvas></div></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">📋 검사목적별 손익 상세</span>
+                    </div>
+                    <div class="card-body" style="overflow-x: auto;">
+                        <table class="data-table" id="profitByPurposeTable">
+                            <thead>
+                                <tr>
+                                    <th>검사목적</th>
+                                    <th>건수</th>
+                                    <th>정상가 합계</th>
+                                    <th>실제 매출</th>
+                                    <th>할인율</th>
+                                    <th>추정 원가</th>
+                                    <th>추정 이익</th>
+                                    <th>이익률</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 담당자별 분석 -->
+            <div id="profitByManager" class="profit-section" style="display: none;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">📊 담당자별 매출 vs 이익</span>
+                        </div>
+                        <div class="card-body"><div class="chart-container"><canvas id="profitByManagerChart"></canvas></div></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">📈 담당자별 이익률 비교</span>
+                        </div>
+                        <div class="card-body"><div class="chart-container"><canvas id="profitByManagerRateChart"></canvas></div></div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">📋 담당자별 손익 상세</span>
+                    </div>
+                    <div class="card-body" style="overflow-x: auto;">
+                        <table class="data-table" id="profitByManagerTable">
+                            <thead>
+                                <tr>
+                                    <th>담당자</th>
+                                    <th>건수</th>
+                                    <th>정상가 합계</th>
+                                    <th>실제 매출</th>
+                                    <th>할인율</th>
+                                    <th>추정 원가</th>
+                                    <th>추정 이익</th>
+                                    <th>이익률</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 월별 추이 -->
+            <div id="profitByMonth" class="profit-section" style="display: none;">
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header">
+                        <span class="card-title">📈 월별 손익 추이</span>
+                    </div>
+                    <div class="card-body"><div class="chart-container" style="height: 350px;"><canvas id="profitMonthlyTrendChart"></canvas></div></div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">📋 월별 손익 상세</span>
+                    </div>
+                    <div class="card-body" style="overflow-x: auto;">
+                        <table class="data-table" id="profitByMonthTable">
+                            <thead>
+                                <tr>
+                                    <th>월</th>
+                                    <th>건수</th>
+                                    <th>정상가 합계</th>
+                                    <th>실제 매출</th>
+                                    <th>할인율</th>
+                                    <th>추정 원가</th>
+                                    <th>추정 이익</th>
+                                    <th>이익률</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- AI 분석 탭 -->
         <div id="aiAnalysis" class="tab-content">
             <section class="ai-section">
@@ -7758,7 +9307,7 @@ HTML_TEMPLATE = '''
         let managerTableSort = { column: null, direction: 'desc' };
         let branchTableSort = { column: null, direction: 'desc' };
         let clientChartFiltersInitialized = false;  // 거래처 차트 필터 초기화 여부
-        const availableYears = [2025, 2024];  // 사용 가능한 연도 목록
+        let availableYears = [];  // 사용 가능한 연도 목록 (API에서 동적 로드)
 
         // 담당자-팀 매핑 (JavaScript용)
         const MANAGER_TO_BRANCH_JS = {
@@ -7859,6 +9408,31 @@ HTML_TEMPLATE = '''
             const content = document.getElementById(tabId);
             if (content) content.classList.add('active');
             document.getElementById('kpiSection').classList.toggle('hidden', tabId !== 'main');
+
+            // 손익분석 탭이면 데이터 로드
+            if (tabId === 'profitAnalysis') {
+                loadProfitAnalysisData();
+            }
+
+            // 탭 이용 기록 저장
+            const tabNames = {
+                'main': '대시보드',
+                'monthlySales': '월별매출',
+                'sampleType': '검체유형',
+                'branchChart': '지역별',
+                'clientAnalysis': '업체분석',
+                'defectAnalysis': '부적합분석',
+                'livestockTab': '축산물분석',
+                'collectionTab': '수금현황',
+                'profitAnalysis': '손익분석',
+                'aiAnalysis': 'AI분석'
+            };
+            const menuName = tabNames[tabId] || tabId;
+            fetch('/api/log-menu', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({menu: menuName})
+            }).catch(() => {});
         }
 
         // 비교 체크박스
@@ -7890,13 +9464,69 @@ HTML_TEMPLATE = '''
             } catch (e) { console.log('토큰 로드 실패', e); }
         }
 
+        // 사용 가능한 연도 목록 로드 및 드롭다운 초기화
+        async function initializeYearSelects() {
+            try {
+                const res = await fetch('/api/available-years');
+                const data = await res.json();
+                availableYears = data.years || [2025, 2024];
+                console.log('[DEBUG] 사용 가능한 연도:', availableYears);
+
+                // 연도 드롭다운 채우기
+                const yearSelect = document.getElementById('yearSelect');
+                const compareYearSelect = document.getElementById('compareYearSelect');
+
+                if (yearSelect && availableYears.length > 0) {
+                    yearSelect.innerHTML = availableYears.map((y, i) =>
+                        `<option value="${y}" ${i === 0 ? 'selected' : ''}>${y}년</option>`
+                    ).join('');
+                }
+
+                if (compareYearSelect && availableYears.length > 0) {
+                    // 비교 연도는 두 번째 연도부터 (현재 연도 제외)
+                    const compareYears = availableYears.slice(1);
+                    if (compareYears.length > 0) {
+                        compareYearSelect.innerHTML = compareYears.map((y, i) =>
+                            `<option value="${y}" ${i === 0 ? 'selected' : ''}>${y}년</option>`
+                        ).join('');
+                    } else {
+                        // 비교할 연도가 없으면 현재 연도 -1 추가
+                        const prevYear = availableYears[0] - 1;
+                        compareYearSelect.innerHTML = `<option value="${prevYear}">${prevYear}년</option>`;
+                    }
+                }
+            } catch (e) {
+                console.error('[DEBUG] 연도 목록 로드 실패:', e);
+                // 실패 시 기본값 사용
+                availableYears = [2025, 2024];
+                const yearSelect = document.getElementById('yearSelect');
+                const compareYearSelect = document.getElementById('compareYearSelect');
+                if (yearSelect) {
+                    yearSelect.innerHTML = '<option value="2025" selected>2025년</option><option value="2024">2024년</option>';
+                }
+                if (compareYearSelect) {
+                    compareYearSelect.innerHTML = '<option value="2024" selected>2024년</option>';
+                }
+            }
+        }
+
         // 데이터 로드 (실제 API 호출)
         async function loadData() {
+            console.log('[DEBUG] loadData() 시작');
             const btn = document.getElementById('btnSearch');
+            if (!btn) {
+                console.error('[DEBUG] btnSearch 버튼을 찾을 수 없음');
+                return;
+            }
             btn.disabled = true;
             btn.innerHTML = '⏳ 로딩중...';
             showToast('데이터를 불러오는 중...', 'loading');
             clientChartFiltersInitialized = false;  // 필터 초기화 플래그 리셋
+
+            // 연도 목록이 비어있으면 먼저 초기화
+            if (availableYears.length === 0) {
+                await initializeYearSelects();
+            }
 
             try {
                 const year = document.getElementById('yearSelect').value;
@@ -7904,13 +9534,17 @@ HTML_TEMPLATE = '''
                 const purpose = document.getElementById('purposeSelect').value;
                 const compareCheck = document.getElementById('compareCheck').checked;
                 const compareYear = document.getElementById('compareYearSelect').value;
+                console.log('[DEBUG] 조회 조건:', { year, month, purpose, compareCheck, compareYear });
 
                 let url = `/api/data?year=${year}`;
                 if (month) url += `&month=${month}`;
                 if (purpose !== '전체') url += `&purpose=${encodeURIComponent(purpose)}`;
+                console.log('[DEBUG] API URL:', url);
 
                 const res = await fetch(url);
+                console.log('[DEBUG] API 응답 상태:', res.status);
                 currentData = await res.json();
+                console.log('[DEBUG] currentData 로드됨, 키:', Object.keys(currentData));
                 currentData.year = year;
 
                 // 비교 데이터 로드
@@ -7929,12 +9563,14 @@ HTML_TEMPLATE = '''
                 hideToast();
                 showToast(`${year}년 데이터 로드 완료`, 'success');
             } catch (e) {
+                console.error('[DEBUG] loadData 에러:', e);
                 hideToast();
                 showToast('데이터 로드 실패: ' + e.message, 'error');
             }
 
             btn.disabled = false;
             btn.innerHTML = '🔍 조회하기';
+            console.log('[DEBUG] loadData() 완료');
         }
 
         function updateAll() {
@@ -9389,7 +11025,7 @@ HTML_TEMPLATE = '''
                         if (!info) return;
 
                         const isComparison = ds.isComparison;
-                        const managerName = ds.label.replace(/ [(]\d{4}[)]$/, '');
+                        const managerName = ds.label.replace(/ [(]\\d{4}[)]$/, '');
                         const isIncrease = !isComparison && ds.ownAvg && info.sales >= ds.ownAvg;
                         const borderColor = isIncrease ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.8)';
                         tooltipEl.style.border = `2px solid ${borderColor}`;
@@ -9792,7 +11428,7 @@ HTML_TEMPLATE = '''
                             if (!info) return;
 
                             const isComparison = ds.isComparison;
-                            const managerName = ds.label.replace(/ [(]\d{4}[)]$/, '');
+                            const managerName = ds.label.replace(/ [(]\\d{4}[)]$/, '');
                             const isIncrease = !isComparison && ds.ownAvg && info.sales >= ds.ownAvg;
                             const borderColor = isIncrease ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.8)';
                             tooltipEl.style.border = `2px solid ${borderColor}`;
@@ -23628,23 +25264,11 @@ HTML_TEMPLATE = '''
             content.innerHTML = '';
             result.classList.add('show');
 
-            // 현재 탭과 필터 정보 수집
-            const currentFilters = {
-                tab: currentTab,
-                year: document.getElementById('yearSelect')?.value || '2025',
-                purpose: document.getElementById('monthlySalesPurposeFilter')?.value ||
-                         document.getElementById('managerChartPurposeFilter')?.value ||
-                         document.getElementById('branchChartPurposeFilter')?.value || '전체',
-                manager: document.getElementById('monthlySalesManagerFilter')?.value || '전체',
-                sampleType: document.getElementById('sampleTypePurposeFilter')?.value || '전체',
-                branch: document.getElementById('branchChartFilter')?.value || '전체'
-            };
-
             try {
                 const res = await fetch('/api/ai/analyze', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query, filters: currentFilters })
+                    body: JSON.stringify({ query })
                 });
                 const data = await res.json();
 
@@ -23657,14 +25281,6 @@ HTML_TEMPLATE = '''
                     // 새로운 경영 분석 응답 처리
                     const markdown = data.response;
                     let html = formatMarkdownToHtml(markdown);
-
-                    // 현재 분석 컨텍스트 표시
-                    if (data.current_context) {
-                        const ctx = data.current_context;
-                        html = `<div class="ai-context" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px;">
-                            <strong>🎯 분석 기준</strong>: ${ctx.tab_name} | ${ctx.year}년 | 필터: ${ctx.filters}
-                        </div>` + html;
-                    }
 
                     // 데이터 요약 표시
                     if (data.data_summary) {
@@ -23911,10 +25527,270 @@ HTML_TEMPLATE = '''
             }
         }
 
+        // ============ 손익분석 함수들 ============
+        let profitCharts = {};
+        let currentProfitTab = 'purpose';
+
+        async function loadProfitAnalysisData() {
+            console.log('[손익분석] loadProfitAnalysisData 호출됨');
+            const yearEl = document.getElementById('yearSelect');
+            if (!yearEl) {
+                console.error('[손익분석] yearSelect 요소를 찾을 수 없음');
+                return;
+            }
+            const year = yearEl.value;
+            console.log('[손익분석] 조회 연도:', year);
+            try {
+                console.log('[손익분석] API 호출 시작...');
+                const [summaryRes, purposeRes, managerRes, monthRes] = await Promise.all([
+                    fetch(`/api/profit/summary?year=${year}`),
+                    fetch(`/api/profit/by-purpose?year=${year}`),
+                    fetch(`/api/profit/by-manager?year=${year}`),
+                    fetch(`/api/profit/by-month?year=${year}`)
+                ]);
+
+                console.log('[손익분석] API 응답 상태:', summaryRes.status, purposeRes.status, managerRes.status, monthRes.status);
+
+                const summary = await summaryRes.json();
+                const purposeData = await purposeRes.json();
+                const managerData = await managerRes.json();
+                const monthData = await monthRes.json();
+
+                console.log('[손익분석] summary:', summary);
+                console.log('[손익분석] purposeData:', purposeData);
+
+                // KPI 업데이트 (손익계산서 구조)
+                const isFinSettings = summary.source === 'financial_settings';
+                document.getElementById('profitKpiSource').textContent = `데이터 소스: ${isFinSettings ? '손익계산서 설정' : 'Excel 데이터'}`;
+
+                document.getElementById('profitTotalSales').textContent = formatCurrency(summary.total_actual_sales || 0);
+                document.getElementById('profitTotalCost').textContent = formatCurrency(summary.estimated_cost || summary.cost_of_sales || 0);
+                document.getElementById('profitCostRate').textContent = `원가율: ${summary.cost_rate || 0}%`;
+
+                // 판관비 (financial_settings에서만)
+                const sgaEl = document.getElementById('profitSgaExpense');
+                const sgaRateEl = document.getElementById('profitSgaRate');
+                if (isFinSettings && summary.sga_expense) {
+                    sgaEl.textContent = formatCurrency(summary.sga_expense);
+                    sgaRateEl.textContent = `판관비율: ${summary.sga_rate || 0}%`;
+                } else {
+                    sgaEl.textContent = '-';
+                    sgaRateEl.textContent = '데이터 없음';
+                }
+
+                // 영업이익 (음수면 빨간색)
+                const profitEl = document.getElementById('profitTotalProfit');
+                const profitVal = summary.estimated_profit || summary.operating_profit || 0;
+                profitEl.textContent = formatCurrency(profitVal);
+                profitEl.style.color = profitVal >= 0 ? '#059669' : '#dc2626';
+
+                document.getElementById('profitMarginRate').textContent = (summary.profit_rate || 0) + '%';
+
+                // 세전이익 (financial_settings에서만)
+                const netProfitEl = document.getElementById('profitNetProfit');
+                const discountEl = document.getElementById('profitDiscountRate');
+                if (isFinSettings && summary.net_profit !== undefined) {
+                    netProfitEl.textContent = formatCurrency(summary.net_profit);
+                    netProfitEl.style.color = summary.net_profit >= 0 ? '#0891b2' : '#dc2626';
+                    discountEl.textContent = `영업외: ${formatCurrency(summary.non_operating_income || 0)}`;
+                } else {
+                    netProfitEl.textContent = '-';
+                    discountEl.textContent = `할인율: ${summary.discount_rate || 0}%`;
+                }
+
+                console.log('[손익분석] KPI 업데이트 완료');
+
+                // 테이블 및 차트 업데이트
+                updateProfitByPurposeTable(purposeData.data || []);
+                updateProfitByManagerTable(managerData.data || []);
+                updateProfitByMonthTable(monthData.data || []);
+                updateProfitCharts(purposeData.data, managerData.data, monthData.data);
+            } catch (e) {
+                console.error('손익분석 데이터 로드 실패:', e);
+            }
+        }
+
+        function showProfitTab(tab) {
+            currentProfitTab = tab;
+            document.querySelectorAll('.profit-section').forEach(s => s.style.display = 'none');
+            document.getElementById('profitBy' + tab.charAt(0).toUpperCase() + tab.slice(1)).style.display = 'block';
+            document.querySelectorAll('#profitAnalysis .btn').forEach(b => {
+                b.style.background = '#e2e8f0';
+                b.style.color = '#1e293b';
+            });
+            document.getElementById('btnProfitBy' + tab.charAt(0).toUpperCase() + tab.slice(1)).style.background = '#2563eb';
+            document.getElementById('btnProfitBy' + tab.charAt(0).toUpperCase() + tab.slice(1)).style.color = 'white';
+        }
+
+        function updateProfitByPurposeTable(data) {
+            const tbody = document.querySelector('#profitByPurposeTable tbody');
+            tbody.innerHTML = data.map(d => `
+                <tr>
+                    <td>${d.purpose}</td>
+                    <td style="text-align:right;">${d.count.toLocaleString()}</td>
+                    <td style="text-align:right;">${formatCurrency(d.normal_price)}</td>
+                    <td style="text-align:right;">${formatCurrency(d.actual_sales)}</td>
+                    <td style="text-align:right; color:${d.discount_rate > 0 ? '#f59e0b' : '#059669'};">${d.discount_rate}%</td>
+                    <td style="text-align:right; color:#dc2626;">${formatCurrency(d.estimated_cost)}</td>
+                    <td style="text-align:right; color:${d.estimated_profit >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(d.estimated_profit)}</td>
+                    <td style="text-align:right; font-weight:bold;">${d.profit_rate}%</td>
+                </tr>
+            `).join('') || '<tr><td colspan="8" style="text-align:center;">데이터 없음</td></tr>';
+        }
+
+        function updateProfitByManagerTable(data) {
+            const tbody = document.querySelector('#profitByManagerTable tbody');
+            tbody.innerHTML = data.map(d => `
+                <tr>
+                    <td>${d.manager}</td>
+                    <td style="text-align:right;">${d.count.toLocaleString()}</td>
+                    <td style="text-align:right;">${formatCurrency(d.normal_price)}</td>
+                    <td style="text-align:right;">${formatCurrency(d.actual_sales)}</td>
+                    <td style="text-align:right; color:${d.discount_rate > 0 ? '#f59e0b' : '#059669'};">${d.discount_rate}%</td>
+                    <td style="text-align:right; color:#dc2626;">${formatCurrency(d.estimated_cost)}</td>
+                    <td style="text-align:right; color:${d.estimated_profit >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(d.estimated_profit)}</td>
+                    <td style="text-align:right; font-weight:bold;">${d.profit_rate}%</td>
+                </tr>
+            `).join('') || '<tr><td colspan="8" style="text-align:center;">데이터 없음</td></tr>';
+        }
+
+        function updateProfitByMonthTable(data) {
+            const tbody = document.querySelector('#profitByMonthTable tbody');
+            tbody.innerHTML = data.filter(d => d.count > 0).map(d => `
+                <tr>
+                    <td>${d.month_name}</td>
+                    <td style="text-align:right;">${d.count.toLocaleString()}</td>
+                    <td style="text-align:right;">${formatCurrency(d.normal_price)}</td>
+                    <td style="text-align:right;">${formatCurrency(d.actual_sales)}</td>
+                    <td style="text-align:right; color:${d.discount_rate > 0 ? '#f59e0b' : '#059669'};">${d.discount_rate}%</td>
+                    <td style="text-align:right; color:#dc2626;">${formatCurrency(d.estimated_cost)}</td>
+                    <td style="text-align:right; color:${d.estimated_profit >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(d.estimated_profit)}</td>
+                    <td style="text-align:right; font-weight:bold;">${d.profit_rate}%</td>
+                </tr>
+            `).join('') || '<tr><td colspan="8" style="text-align:center;">데이터 없음</td></tr>';
+        }
+
+        function updateProfitCharts(purposeData, managerData, monthData) {
+            // 검사목적별 차트
+            const purposeCtx = document.getElementById('profitByPurposeChart');
+            if (purposeCtx && purposeData) {
+                if (profitCharts.purpose) profitCharts.purpose.destroy();
+                profitCharts.purpose = new Chart(purposeCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: purposeData.slice(0, 10).map(d => d.purpose),
+                        datasets: [{
+                            label: '매출',
+                            data: purposeData.slice(0, 10).map(d => d.actual_sales),
+                            backgroundColor: 'rgba(37, 99, 235, 0.7)'
+                        }, {
+                            label: '이익',
+                            data: purposeData.slice(0, 10).map(d => d.estimated_profit),
+                            backgroundColor: 'rgba(34, 197, 94, 0.7)'
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { ticks: { callback: v => (v/100000000).toFixed(1) + '억' } } } }
+                });
+            }
+
+            // 검사목적별 파이 차트
+            const purposePieCtx = document.getElementById('profitByPurposePieChart');
+            if (purposePieCtx && purposeData) {
+                if (profitCharts.purposePie) profitCharts.purposePie.destroy();
+                profitCharts.purposePie = new Chart(purposePieCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: purposeData.slice(0, 6).map(d => d.purpose),
+                        datasets: [{
+                            data: purposeData.slice(0, 6).map(d => d.estimated_profit),
+                            backgroundColor: ['#2563eb', '#059669', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b']
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            }
+
+            // 담당자별 차트
+            const managerCtx = document.getElementById('profitByManagerChart');
+            if (managerCtx && managerData) {
+                if (profitCharts.manager) profitCharts.manager.destroy();
+                profitCharts.manager = new Chart(managerCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: managerData.slice(0, 10).map(d => d.manager),
+                        datasets: [{
+                            label: '매출',
+                            data: managerData.slice(0, 10).map(d => d.actual_sales),
+                            backgroundColor: 'rgba(37, 99, 235, 0.7)'
+                        }, {
+                            label: '이익',
+                            data: managerData.slice(0, 10).map(d => d.estimated_profit),
+                            backgroundColor: 'rgba(34, 197, 94, 0.7)'
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { ticks: { callback: v => (v/100000000).toFixed(1) + '억' } } } }
+                });
+            }
+
+            // 담당자별 이익률 차트
+            const managerRateCtx = document.getElementById('profitByManagerRateChart');
+            if (managerRateCtx && managerData) {
+                if (profitCharts.managerRate) profitCharts.managerRate.destroy();
+                profitCharts.managerRate = new Chart(managerRateCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: managerData.slice(0, 10).map(d => d.manager),
+                        datasets: [{
+                            label: '이익률 (%)',
+                            data: managerData.slice(0, 10).map(d => d.profit_rate),
+                            backgroundColor: managerData.slice(0, 10).map(d => d.profit_rate >= 30 ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)')
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { max: 50 } } }
+                });
+            }
+
+            // 월별 추이 차트
+            const monthCtx = document.getElementById('profitMonthlyTrendChart');
+            if (monthCtx && monthData) {
+                if (profitCharts.month) profitCharts.month.destroy();
+                profitCharts.month = new Chart(monthCtx, {
+                    type: 'line',
+                    data: {
+                        labels: monthData.map(d => d.month_name),
+                        datasets: [{
+                            label: '매출',
+                            data: monthData.map(d => d.actual_sales),
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }, {
+                            label: '이익',
+                            data: monthData.map(d => d.estimated_profit),
+                            borderColor: '#059669',
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }, {
+                            label: '원가',
+                            data: monthData.map(d => d.estimated_cost),
+                            borderColor: '#dc2626',
+                            borderDash: [5, 5],
+                            fill: false,
+                            tension: 0.3
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { ticks: { callback: v => (v/100000000).toFixed(1) + '억' } } } }
+                });
+            }
+        }
+
         // 초기화
         console.log('[DEBUG] Initializing...');
         loadTokenUsage();
         loadSessionInfo();
+        initializeYearSelects();  // 연도 드롭다운 동적 로드
         showToast('조회 버튼을 클릭하세요.', 'loading', 3000);
         console.log('[DEBUG] Main script completed successfully');
     </script>
@@ -24145,6 +26021,9 @@ def api_admin_delete_user(user_id):
 @app.route('/api/admin/activity')
 @admin_required
 def api_admin_activity():
+    from datetime import timezone, timedelta
+    KST = timezone(timedelta(hours=9))
+
     conn = get_user_db()
     cursor = conn.cursor()
     cursor.execute('''
@@ -24152,13 +26031,27 @@ def api_admin_activity():
         LEFT JOIN users u ON a.user_id = u.id
         ORDER BY a.created_at DESC LIMIT 100
     ''')
-    activities = [dict(row) for row in cursor.fetchall()]
+    activities = []
+    for row in cursor.fetchall():
+        activity = dict(row)
+        # UTC -> KST 변환
+        if activity.get('created_at'):
+            try:
+                utc_time = datetime.strptime(activity['created_at'], '%Y-%m-%d %H:%M:%S')
+                kst_time = utc_time.replace(tzinfo=timezone.utc).astimezone(KST)
+                activity['created_at'] = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                pass
+        activities.append(activity)
     conn.close()
     return jsonify({'activities': activities})
 
 @app.route('/api/admin/ai-logs')
 @admin_required
 def api_admin_ai_logs():
+    from datetime import timezone, timedelta
+    KST = timezone(timedelta(hours=9))
+
     conn = get_user_db()
     cursor = conn.cursor()
     cursor.execute('''
@@ -24166,7 +26059,18 @@ def api_admin_ai_logs():
         LEFT JOIN users u ON l.user_id = u.id
         ORDER BY l.created_at DESC LIMIT 100
     ''')
-    logs = [dict(row) for row in cursor.fetchall()]
+    logs = []
+    for row in cursor.fetchall():
+        log = dict(row)
+        # UTC -> KST 변환
+        if log.get('created_at'):
+            try:
+                utc_time = datetime.strptime(log['created_at'], '%Y-%m-%d %H:%M:%S')
+                kst_time = utc_time.replace(tzinfo=timezone.utc).astimezone(KST)
+                log['created_at'] = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                pass
+        logs.append(log)
     conn.close()
     return jsonify({'logs': logs})
 
@@ -24229,6 +26133,46 @@ def api_purposes():
         return jsonify({'purposes': purposes})
     except Exception as e:
         return jsonify({'purposes': [], 'error': str(e)})
+
+@app.route('/api/available-years')
+@login_required
+def api_available_years():
+    """DB와 데이터 폴더에서 사용 가능한 연도 목록 반환"""
+    try:
+        years_set = set()
+
+        # 1. DB에서 연도 조회
+        try:
+            conn = sqlite3.connect(str(SQLITE_DB))
+            cursor = conn.cursor()
+            cursor.execute('SELECT DISTINCT year FROM excel_data ORDER BY year DESC')
+            db_years = [row[0] for row in cursor.fetchall()]
+            years_set.update(db_years)
+            conn.close()
+        except:
+            pass
+
+        # 2. 데이터 폴더에서 연도 조회 (data/2024, data/2025, data/2026 등)
+        try:
+            for item in DATA_DIR.iterdir():
+                if item.is_dir() and item.name.isdigit():
+                    year = int(item.name)
+                    # 2020~2030 범위의 연도만 인식
+                    if 2020 <= year <= 2030:
+                        years_set.add(year)
+        except:
+            pass
+
+        # 내림차순 정렬
+        years = sorted(list(years_set), reverse=True)
+
+        # 연도가 없으면 기본값
+        if not years:
+            years = [2025, 2024]
+
+        return jsonify({'years': years})
+    except Exception as e:
+        return jsonify({'years': [2025, 2024], 'error': str(e)})
 
 @app.route('/api/admin/teams', methods=['GET', 'POST'])
 @admin_required
@@ -24432,18 +26376,75 @@ def api_admin_permission_groups():
         conn.close()
         return jsonify({'success': True})
 
+@app.route('/api/log-menu', methods=['POST'])
+@login_required
+def api_log_menu():
+    """메뉴 접근 로깅 API"""
+    session_id = request.cookies.get('session_id')
+    session = verify_user_session(session_id)
+    if not session:
+        return jsonify({'error': '로그인 필요'}), 401
+
+    menu_name = request.json.get('menu', '')
+    if menu_name:
+        log_menu_access(session.get('user_id'), menu_name)
+    return jsonify({'success': True})
+
 @app.route('/api/admin/menu-logs')
 @admin_required
 def api_admin_menu_logs():
     """메뉴 접근 로그"""
+    from datetime import timezone, timedelta
+    KST = timezone(timedelta(hours=9))
+
+    # 메뉴명 한글 매핑
+    menu_names_kr = {
+        'main': '대시보드', '대시보드': '대시보드',
+        'monthlySales': '월별매출', '월별매출': '월별매출',
+        'sampleType': '검체유형', '검체유형': '검체유형',
+        'branchChart': '지역별', '지역별': '지역별',
+        'clientAnalysis': '업체분석', '업체분석': '업체분석',
+        'defectAnalysis': '부적합분석', '부적합분석': '부적합분석',
+        'livestockTab': '축산물분석', '축산물분석': '축산물분석',
+        'collectionTab': '수금현황', '수금현황': '수금현황',
+        'aiAnalysis': 'AI분석', 'AI분석': 'AI분석',
+        'foodItem': '검사항목', 'purpose': '검사목적', 'team': '팀별',
+        'monthly': '월별', 'personal': '개인별'
+    }
+
     conn = get_user_db()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT m.*, u.username FROM menu_logs m
+        SELECT m.*, u.username, u.name as user_name FROM menu_logs m
         LEFT JOIN users u ON m.user_id = u.id
         ORDER BY m.created_at DESC LIMIT 100
     ''')
-    logs = [dict(row) for row in cursor.fetchall()]
+    logs = []
+    for row in cursor.fetchall():
+        log = dict(row)
+        # 메뉴명 한글 변환
+        log['menu_name_kr'] = menu_names_kr.get(log.get('menu_name', ''), log.get('menu_name', ''))
+        # 사용자명 (이름 우선, 없으면 username)
+        log['display_name'] = log.get('user_name') or log.get('username') or '알 수 없음'
+        # UTC -> KST 변환 (진입시간)
+        if log.get('created_at'):
+            try:
+                utc_time = datetime.strptime(log['created_at'], '%Y-%m-%d %H:%M:%S')
+                kst_time = utc_time.replace(tzinfo=timezone.utc).astimezone(KST)
+                log['entry_time'] = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                log['entry_time'] = log['created_at']
+        # UTC -> KST 변환 (종료시간)
+        if log.get('exit_at'):
+            try:
+                utc_time = datetime.strptime(log['exit_at'], '%Y-%m-%d %H:%M:%S')
+                kst_time = utc_time.replace(tzinfo=timezone.utc).astimezone(KST)
+                log['exit_time'] = kst_time.strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                log['exit_time'] = log['exit_at']
+        else:
+            log['exit_time'] = '-'
+        logs.append(log)
     conn.close()
     return jsonify({'logs': logs})
 
@@ -24461,6 +26462,610 @@ def api_admin_download_logs():
     logs = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return jsonify({'logs': logs})
+
+# ============ 원가 관리 API ============
+@app.route('/api/admin/cost-data')
+@admin_required
+def api_admin_cost_data():
+    """원가 데이터 조회"""
+    data = get_cost_data()
+    return jsonify({'success': True, 'data': data, 'count': len(data)})
+
+@app.route('/api/admin/cost-data/reload', methods=['POST'])
+@admin_required
+def api_admin_reload_cost_data():
+    """원가 데이터 엑셀에서 다시 로드"""
+    result = load_cost_data_from_excel()
+    return jsonify(result)
+
+@app.route('/api/admin/cost-mapping')
+@admin_required
+def api_admin_cost_mapping():
+    """원가-매출 매핑 목록 조회"""
+    conn = get_user_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM cost_mapping ORDER BY cost_item_name')
+    mappings = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({'success': True, 'mappings': mappings})
+
+@app.route('/api/admin/cost-mapping', methods=['POST'])
+@admin_required
+def api_admin_add_cost_mapping():
+    """원가-매출 매핑 추가"""
+    cost_item = request.json.get('cost_item_name', '').strip()
+    sales_item = request.json.get('sales_item_name', '').strip()
+    group_name = request.json.get('group_name', '').strip() or None
+
+    if not cost_item or not sales_item:
+        return jsonify({'success': False, 'error': '항목명을 입력하세요'})
+
+    try:
+        conn = get_user_db()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO cost_mapping (cost_item_name, sales_item_name, group_name)
+            VALUES (?, ?, ?)
+        ''', (cost_item, sales_item, group_name))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/admin/cost-mapping/batch', methods=['POST'])
+@admin_required
+def api_admin_batch_cost_mapping():
+    """원가-매출 일괄 매핑 (그룹)"""
+    cost_item = request.json.get('cost_item_name', '').strip()
+    sales_items = request.json.get('sales_item_names', [])
+    group_name = request.json.get('group_name', '').strip()
+
+    if not cost_item or not sales_items:
+        return jsonify({'success': False, 'error': '원가 항목과 매출 항목을 선택하세요'})
+
+    if not group_name:
+        group_name = f"그룹_{cost_item}"
+
+    try:
+        conn = get_user_db()
+        cursor = conn.cursor()
+        count = 0
+        for sales_item in sales_items:
+            sales_item = sales_item.strip()
+            if sales_item:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO cost_mapping (cost_item_name, sales_item_name, group_name)
+                    VALUES (?, ?, ?)
+                ''', (cost_item, sales_item, group_name))
+                count += 1
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'count': count, 'group_name': group_name})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/admin/cost-mapping/<int:mapping_id>', methods=['DELETE'])
+@admin_required
+def api_admin_delete_cost_mapping(mapping_id):
+    """원가-매출 매핑 삭제"""
+    conn = get_user_db()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM cost_mapping WHERE id = ?', (mapping_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+@app.route('/api/cost/profit-analysis')
+@login_required
+def api_cost_profit_analysis():
+    """손익 분석 API"""
+    year = request.args.get('year', '2025')
+
+    # 매출 데이터 로드
+    sales_data = load_food_item_data(year)
+
+    # 항목별 매출 집계
+    item_sales = {}
+    for row in sales_data:
+        item_name = str(row.get('항목명', '')).strip()
+        fee = row.get('항목수수료', 0) or 0
+        if isinstance(fee, str):
+            fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+
+        if item_name:
+            if item_name not in item_sales:
+                item_sales[item_name] = {'count': 0, 'revenue': 0}
+            item_sales[item_name]['count'] += 1
+            item_sales[item_name]['revenue'] += fee
+
+    # 원가 데이터와 매칭하여 손익 계산
+    profit_data = []
+    total_revenue = 0
+    total_cost = 0
+    matched_count = 0
+
+    for item_name, sales in item_sales.items():
+        cost_info = get_cost_by_item_name(item_name)
+
+        if cost_info:
+            unit_cost = cost_info.get('total_cost', 0)
+            total_item_cost = unit_cost * sales['count']
+            profit = sales['revenue'] - total_item_cost
+            profit_rate = (profit / sales['revenue'] * 100) if sales['revenue'] > 0 else 0
+
+            profit_data.append({
+                'item_name': item_name,
+                'count': sales['count'],
+                'revenue': sales['revenue'],
+                'unit_cost': unit_cost,
+                'total_cost': total_item_cost,
+                'profit': profit,
+                'profit_rate': round(profit_rate, 1),
+                'matched': True
+            })
+
+            total_revenue += sales['revenue']
+            total_cost += total_item_cost
+            matched_count += 1
+        else:
+            profit_data.append({
+                'item_name': item_name,
+                'count': sales['count'],
+                'revenue': sales['revenue'],
+                'unit_cost': 0,
+                'total_cost': 0,
+                'profit': sales['revenue'],
+                'profit_rate': 100,
+                'matched': False
+            })
+            total_revenue += sales['revenue']
+
+    # 정렬 (매출액 기준 내림차순)
+    profit_data.sort(key=lambda x: x['revenue'], reverse=True)
+
+    return jsonify({
+        'success': True,
+        'year': year,
+        'summary': {
+            'total_revenue': total_revenue,
+            'total_cost': total_cost,
+            'total_profit': total_revenue - total_cost,
+            'profit_rate': round((total_revenue - total_cost) / total_revenue * 100, 1) if total_revenue > 0 else 0,
+            'total_items': len(item_sales),
+            'matched_items': matched_count,
+            'match_rate': round(matched_count / len(item_sales) * 100, 1) if item_sales else 0
+        },
+        'data': profit_data[:100]  # 상위 100개만
+    })
+
+# ============ 손익분석 (메인 대시보드용) ============
+COST_RATE = 0.697  # 원가율 69.7%
+
+def get_financial_settings(year):
+    """손익계산서 설정 데이터 조회"""
+    try:
+        conn = get_user_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM financial_settings WHERE year = ?', (int(year),))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return dict(row)
+        return None
+    except Exception as e:
+        print(f"[ERROR] get_financial_settings: {e}")
+        return None
+
+@app.route('/api/profit/summary')
+@login_required
+def api_profit_summary():
+    """손익 요약 API - 실제 매출 데이터 + 원가율/판관비율 적용"""
+    year = request.args.get('year', '2025')
+
+    # 1. 실제 매출 데이터 가져오기 (Excel 데이터에서)
+    data = load_excel_data(year)
+
+    total_sales = 0  # 실제 매출액 (공급가액 합계)
+    for row in data:
+        fee = row.get('공급가액', 0) or 0
+        if isinstance(fee, str):
+            fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+        total_sales += fee
+
+    # 2. 원가율/판관비율 가져오기 (financial_settings에서)
+    fin_settings = get_financial_settings(year)
+
+    if fin_settings:
+        cost_rate = fin_settings.get('cost_rate', 69.7) / 100  # % -> 비율
+        sga_rate = fin_settings.get('sga_rate', 58.4) / 100
+        non_operating = fin_settings.get('non_operating_income', 0)
+    else:
+        cost_rate = COST_RATE  # 기본값 69.7%
+        sga_rate = 0.584  # 기본값 58.4%
+        non_operating = 0
+
+    # 3. 손익 계산 (실제 매출 × 비율)
+    cost_of_sales = total_sales * cost_rate  # 매출원가
+    gross_profit = total_sales - cost_of_sales  # 매출총이익
+    sga_expense = total_sales * sga_rate  # 판관비
+    operating_profit = gross_profit - sga_expense  # 영업이익
+    net_profit = operating_profit + non_operating  # 세전이익
+
+    profit_rate = (operating_profit / total_sales * 100) if total_sales > 0 else 0
+    gross_margin = (gross_profit / total_sales * 100) if total_sales > 0 else 0
+
+    return jsonify({
+        'success': True,
+        'year': year,
+        'source': 'excel_data',
+        'data_count': len(data),
+        'total_actual_sales': total_sales,
+        'cost_of_sales': cost_of_sales,
+        'gross_profit': gross_profit,
+        'sga_expense': sga_expense,
+        'operating_profit': operating_profit,
+        'non_operating_income': non_operating,
+        'net_profit': net_profit,
+        'estimated_cost': cost_of_sales,
+        'estimated_profit': operating_profit,
+        'profit_rate': round(profit_rate, 1),
+        'gross_margin': round(gross_margin, 1),
+        'cost_rate': round(cost_rate * 100, 1),
+        'sga_rate': round(sga_rate * 100, 1),
+        'discount_rate': 0,
+        'total_normal_price': total_sales
+    })
+
+@app.route('/api/profit/by-purpose')
+@login_required
+def api_profit_by_purpose():
+    """검사목적별 손익 분석 - 실제 매출 + 원가율/판관비율 적용"""
+    year = request.args.get('year', '2025')
+    data = load_excel_data(year)
+
+    # 원가율/판관비율 가져오기
+    fin_settings = get_financial_settings(year)
+    if fin_settings:
+        cost_rate = fin_settings.get('cost_rate', 69.7) / 100
+        sga_rate = fin_settings.get('sga_rate', 58.4) / 100
+    else:
+        cost_rate = COST_RATE
+        sga_rate = 0.584
+
+    purpose_stats = {}
+    for row in data:
+        purpose = str(row.get('검사목적', '기타')).strip() or '기타'
+
+        if purpose not in purpose_stats:
+            purpose_stats[purpose] = {'count': 0, 'sales': 0}
+
+        purpose_stats[purpose]['count'] += 1
+
+        # 공급가액 사용
+        fee = row.get('공급가액', 0) or 0
+        if isinstance(fee, str):
+            fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+        purpose_stats[purpose]['sales'] += fee
+
+    result = []
+    for purpose, stats in purpose_stats.items():
+        sales = stats['sales']
+        cost_of_sales = sales * cost_rate
+        sga_expense = sales * sga_rate
+        operating_profit = sales - cost_of_sales - sga_expense
+        profit_rate = (operating_profit / sales * 100) if sales > 0 else 0
+
+        result.append({
+            'purpose': purpose,
+            'count': stats['count'],
+            'actual_sales': sales,
+            'cost_of_sales': cost_of_sales,
+            'sga_expense': sga_expense,
+            'estimated_cost': cost_of_sales + sga_expense,
+            'estimated_profit': operating_profit,
+            'profit_rate': round(profit_rate, 1)
+        })
+
+    result.sort(key=lambda x: x['actual_sales'], reverse=True)
+    return jsonify({'success': True, 'data': result})
+
+@app.route('/api/profit/by-manager')
+@login_required
+def api_profit_by_manager():
+    """담당자별 손익 분석 - 실제 매출 + 원가율/판관비율 적용"""
+    year = request.args.get('year', '2025')
+    data = load_excel_data(year)
+
+    # 원가율/판관비율 가져오기
+    fin_settings = get_financial_settings(year)
+    if fin_settings:
+        cost_rate = fin_settings.get('cost_rate', 69.7) / 100
+        sga_rate = fin_settings.get('sga_rate', 58.4) / 100
+    else:
+        cost_rate = COST_RATE
+        sga_rate = 0.584
+
+    manager_stats = {}
+    for row in data:
+        manager = str(row.get('영업담당', '미지정')).strip() or '미지정'
+
+        if manager not in manager_stats:
+            manager_stats[manager] = {'count': 0, 'sales': 0}
+
+        manager_stats[manager]['count'] += 1
+
+        # 공급가액 사용
+        fee = row.get('공급가액', 0) or 0
+        if isinstance(fee, str):
+            fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+        manager_stats[manager]['sales'] += fee
+
+    result = []
+    for manager, stats in manager_stats.items():
+        sales = stats['sales']
+        cost_of_sales = sales * cost_rate
+        sga_expense = sales * sga_rate
+        operating_profit = sales - cost_of_sales - sga_expense
+        profit_rate = (operating_profit / sales * 100) if sales > 0 else 0
+
+        result.append({
+            'manager': manager,
+            'count': stats['count'],
+            'actual_sales': sales,
+            'cost_of_sales': cost_of_sales,
+            'sga_expense': sga_expense,
+            'estimated_cost': cost_of_sales + sga_expense,
+            'estimated_profit': operating_profit,
+            'profit_rate': round(profit_rate, 1)
+        })
+
+    result.sort(key=lambda x: x['actual_sales'], reverse=True)
+    return jsonify({'success': True, 'data': result})
+
+@app.route('/api/profit/by-month')
+@login_required
+def api_profit_by_month():
+    """월별 손익 분석 - 실제 매출 + 원가율/판관비율 적용"""
+    year = request.args.get('year', '2025')
+    data = load_excel_data(year)
+
+    # 원가율/판관비율 가져오기
+    fin_settings = get_financial_settings(year)
+    if fin_settings:
+        cost_rate = fin_settings.get('cost_rate', 69.7) / 100
+        sga_rate = fin_settings.get('sga_rate', 58.4) / 100
+    else:
+        cost_rate = COST_RATE
+        sga_rate = 0.584
+
+    month_stats = {m: {'count': 0, 'sales': 0} for m in range(1, 13)}
+
+    for row in data:
+        date_str = row.get('접수일자', '')
+        if not date_str:
+            continue
+        try:
+            if isinstance(date_str, str):
+                month = int(date_str.split('-')[1]) if '-' in date_str else int(date_str.split('/')[1])
+            else:
+                month = date_str.month
+        except:
+            continue
+
+        if 1 <= month <= 12:
+            month_stats[month]['count'] += 1
+
+            # 공급가액 사용
+            fee = row.get('공급가액', 0) or 0
+            if isinstance(fee, str):
+                fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+            month_stats[month]['sales'] += fee
+
+    result = []
+    for month in range(1, 13):
+        stats = month_stats[month]
+        sales = stats['sales']
+        cost_of_sales = sales * cost_rate
+        sga_expense = sales * sga_rate
+        operating_profit = sales - cost_of_sales - sga_expense
+        profit_rate = (operating_profit / sales * 100) if sales > 0 else 0
+
+        result.append({
+            'month': month,
+            'month_name': f'{month}월',
+            'count': stats['count'],
+            'actual_sales': sales,
+            'cost_of_sales': cost_of_sales,
+            'sga_expense': sga_expense,
+            'estimated_cost': cost_of_sales + sga_expense,
+            'estimated_profit': operating_profit,
+            'profit_rate': round(profit_rate, 1)
+        })
+
+    return jsonify({'success': True, 'data': result})
+
+# ============ 손익계산서 설정 API ============
+@app.route('/api/admin/financial-settings')
+@admin_required
+def api_admin_get_financial_settings():
+    """손익계산서 설정 조회"""
+    year = request.args.get('year', 2025, type=int)
+
+    conn = get_user_db()
+    cursor = conn.cursor()
+
+    # 설정 조회
+    cursor.execute('SELECT * FROM financial_settings WHERE year = ?', (year,))
+    row = cursor.fetchone()
+    settings = dict(row) if row else None
+
+    # 세부 항목 조회
+    cursor.execute('SELECT * FROM financial_details WHERE year = ? ORDER BY category, item_name', (year,))
+    details = [dict(r) for r in cursor.fetchall()]
+
+    conn.close()
+
+    return jsonify({
+        'success': True,
+        'year': year,
+        'settings': settings,
+        'details': details
+    })
+
+@app.route('/api/admin/financial-settings', methods=['POST'])
+@admin_required
+def api_admin_save_financial_settings():
+    """손익계산서 설정 저장"""
+    data = request.json
+    year = data.get('year', 2025)
+
+    try:
+        conn = get_user_db()
+        cursor = conn.cursor()
+
+        # 기존 설정 업데이트 또는 삽입
+        cursor.execute('SELECT id FROM financial_settings WHERE year = ?', (year,))
+        existing = cursor.fetchone()
+
+        if existing:
+            cursor.execute('''
+                UPDATE financial_settings SET
+                    revenue = ?,
+                    cost_of_sales = ?,
+                    sga_expense = ?,
+                    non_operating_income = ?,
+                    cost_rate = ?,
+                    sga_rate = ?,
+                    notes = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE year = ?
+            ''', (
+                data.get('revenue', 0),
+                data.get('cost_of_sales', 0),
+                data.get('sga_expense', 0),
+                data.get('non_operating_income', 0),
+                data.get('cost_rate', 0),
+                data.get('sga_rate', 0),
+                data.get('notes', ''),
+                year
+            ))
+        else:
+            cursor.execute('''
+                INSERT INTO financial_settings
+                (year, revenue, cost_of_sales, sga_expense, non_operating_income, cost_rate, sga_rate, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                year,
+                data.get('revenue', 0),
+                data.get('cost_of_sales', 0),
+                data.get('sga_expense', 0),
+                data.get('non_operating_income', 0),
+                data.get('cost_rate', 0),
+                data.get('sga_rate', 0),
+                data.get('notes', '')
+            ))
+
+        # 세부 항목 저장 (기존 삭제 후 다시 삽입)
+        cursor.execute('DELETE FROM financial_details WHERE year = ?', (year,))
+
+        details = data.get('details', [])
+        for detail in details:
+            if detail.get('item_name'):  # 항목명이 있는 경우만
+                cursor.execute('''
+                    INSERT INTO financial_details (year, category, item_name, amount)
+                    VALUES (?, ?, ?, ?)
+                ''', (
+                    year,
+                    detail.get('category', '원가'),
+                    detail.get('item_name', ''),
+                    detail.get('amount', 0)
+                ))
+
+        conn.commit()
+        conn.close()
+
+        # COST_RATE 글로벌 변수 업데이트 (해당 연도가 현재 연도인 경우)
+        global COST_RATE
+        if year == 2025:
+            new_rate = data.get('cost_rate', 69.7)
+            COST_RATE = new_rate / 100
+
+        return jsonify({'success': True, 'message': '손익계산서 설정이 저장되었습니다.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+# ============ 사용자 탭 권한 API ============
+@app.route('/api/admin/user-tab-permissions')
+@admin_required
+def api_admin_get_user_tab_permissions():
+    """사용자별 탭 접근 권한 조회"""
+    user_id = request.args.get('user_id', type=int)
+
+    if not user_id:
+        return jsonify({'success': False, 'error': '사용자 ID가 필요합니다'})
+
+    conn = get_user_db()
+    cursor = conn.cursor()
+
+    # 사용자 정보 조회 (관리자 여부)
+    cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
+    user = cursor.fetchone()
+    is_admin = user['role'] == 'admin' if user else False
+
+    # 탭 권한 조회
+    cursor.execute('SELECT tab_name, can_access FROM user_tab_permissions WHERE user_id = ?', (user_id,))
+    rows = cursor.fetchall()
+
+    permissions = {}
+    for row in rows:
+        permissions[row['tab_name']] = bool(row['can_access'])
+
+    conn.close()
+
+    return jsonify({
+        'success': True,
+        'user_id': user_id,
+        'is_admin': is_admin,
+        'permissions': permissions
+    })
+
+@app.route('/api/admin/user-tab-permissions', methods=['POST'])
+@admin_required
+def api_admin_save_user_tab_permissions():
+    """사용자별 탭 접근 권한 저장"""
+    data = request.json
+    user_id = data.get('user_id')
+    permissions = data.get('permissions', {})
+    is_admin = data.get('is_admin', False)
+
+    if not user_id:
+        return jsonify({'success': False, 'error': '사용자 ID가 필요합니다'})
+
+    try:
+        conn = get_user_db()
+        cursor = conn.cursor()
+
+        # 관리자 역할 업데이트
+        new_role = 'admin' if is_admin else 'user'
+        cursor.execute('UPDATE users SET role = ? WHERE id = ?', (new_role, user_id))
+
+        # 기존 권한 삭제
+        cursor.execute('DELETE FROM user_tab_permissions WHERE user_id = ?', (user_id,))
+
+        # 새 권한 삽입
+        for tab_name, can_access in permissions.items():
+            cursor.execute('''
+                INSERT INTO user_tab_permissions (user_id, tab_name, can_access)
+                VALUES (?, ?, ?)
+            ''', (user_id, tab_name, 1 if can_access else 0))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True, 'message': '권한이 저장되었습니다.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 # ============ 메인 페이지 ============
 @app.route('/')
@@ -24974,6 +27579,71 @@ def get_columns():
     except Exception as e:
         return jsonify({'error': str(e), 'columns': []})
 
+@app.route('/api/upload-db', methods=['POST'])
+def upload_db():
+    """Colab에서 생성된 DB 파일 업로드 API"""
+    import shutil
+
+    # 간단한 API 키 인증 (환경변수 또는 기본값)
+    api_key = request.headers.get('X-API-Key', '')
+    expected_key = os.environ.get('DB_UPLOAD_KEY', 'biofl1411-upload-key')
+
+    if api_key != expected_key:
+        return jsonify({'error': '인증 실패'}), 401
+
+    if 'file' not in request.files:
+        return jsonify({'error': '파일이 없습니다'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': '파일명이 없습니다'}), 400
+
+    try:
+        # 기존 DB 백업
+        if SQLITE_DB.exists():
+            backup_path = SQLITE_DB.with_suffix('.db.backup')
+            shutil.copy(str(SQLITE_DB), str(backup_path))
+            print(f"[DB] 기존 DB 백업: {backup_path}")
+
+        # 새 DB 저장
+        file.save(str(SQLITE_DB))
+        print(f"[DB] 새 DB 업로드 완료: {SQLITE_DB}")
+
+        # DB 검증 - 테이블 및 행 수 확인
+        import sqlite3
+        conn = sqlite3.connect(str(SQLITE_DB))
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+
+        table_info = {}
+        for table in tables:
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            count = cursor.fetchone()[0]
+            table_info[table] = count
+
+        conn.close()
+
+        # 캐시 초기화
+        global DATA_CACHE, CACHE_TIME, AI_SUMMARY_CACHE, FILE_MTIME
+        DATA_CACHE = {}
+        CACHE_TIME = {}
+        AI_SUMMARY_CACHE = {}
+        FILE_MTIME = {}
+        print("[DB] 캐시 초기화 완료")
+
+        return jsonify({
+            'status': 'ok',
+            'message': 'DB 업로드 성공',
+            'tables': table_info
+        })
+
+    except Exception as e:
+        print(f"[DB ERROR] 업로드 실패: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/cache/refresh')
 def refresh_cache():
     """캐시 새로고침"""
@@ -25339,26 +28009,14 @@ def get_company_context():
 
 @app.route('/api/ai/analyze', methods=['POST'])
 def ai_analyze():
-    """AI 경영 분석 API - Claude를 사용한 경영 판단 지원 (탭/필터 반영 + 확장 컨텍스트)"""
+    """AI 경영 분석 API - Claude를 사용한 경영 판단 지원"""
     import urllib.request
     import urllib.error
     import time
 
     query = request.json.get('query', '')
-    filters = request.json.get('filters', {})
-
-    # 필터 정보 추출
-    current_tab = filters.get('tab', 'main')
-    selected_year = filters.get('year', '2025')
-    purpose_filter = filters.get('purpose', '전체')
-    manager_filter = filters.get('manager', '전체')
-    sample_type_filter = filters.get('sampleType', '전체')
-    branch_filter = filters.get('branch', '전체')
-
     print(f"[AI] === 경영 분석 요청 시작 ===")
     print(f"[AI] 질문: {query}")
-    print(f"[AI] 현재 탭: {current_tab}, 연도: {selected_year}")
-    print(f"[AI] 필터 - 목적:{purpose_filter}, 담당:{manager_filter}, 유형:{sample_type_filter}")
 
     if not query:
         return jsonify({'error': '질문을 입력해주세요.'})
@@ -25367,151 +28025,126 @@ def ai_analyze():
     data_summary = get_ai_data_summary()
     stats_2024 = data_summary['2024']
     stats_2025 = data_summary['2025']
-    current_stats = stats_2025 if selected_year == '2025' else stats_2024
-    compare_stats = stats_2024 if selected_year == '2025' else stats_2025
 
     # 2024년 vs 2025년 비교 데이터 계산
     growth_rate = ((stats_2025['total_fee'] - stats_2024['total_fee']) / stats_2024['total_fee'] * 100) if stats_2024['total_fee'] > 0 else 0
     count_growth = ((stats_2025['total_count'] - stats_2024['total_count']) / stats_2024['total_count'] * 100) if stats_2024['total_count'] > 0 else 0
 
     # TOP 분석
-    top_purposes = sorted(current_stats['by_purpose'].items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
-    top_managers = sorted(current_stats['by_manager'].items(), key=lambda x: x[1]['fee'], reverse=True)[:15]
-    top_sample_types = sorted(current_stats['by_sample_type'].items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
-    top_items = sorted(current_stats['by_item'].items(), key=lambda x: x[1]['fee'], reverse=True)[:20]
+    top_purposes_2025 = sorted(stats_2025['by_purpose'].items(), key=lambda x: x[1]['fee'], reverse=True)[:7]
+    top_purposes_2024 = sorted(stats_2024['by_purpose'].items(), key=lambda x: x[1]['fee'], reverse=True)[:7]
+    top_managers_2025 = sorted(stats_2025['by_manager'].items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
+    top_managers_2024 = sorted(stats_2024['by_manager'].items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
 
-    # 월별 추이
-    monthly_data = current_stats.get('monthly', {})
+    # 월별 추이 (2025년)
+    monthly_2025 = stats_2025.get('monthly', {})
     monthly_trend = []
     for m in range(1, 13):
-        if m in monthly_data:
-            monthly_trend.append(f"{m}월: {monthly_data[m]['fee']/100000000:.2f}억({monthly_data[m]['count']:,}건)")
+        if m in monthly_2025:
+            monthly_trend.append(f"{m}월: {monthly_2025[m]['fee']/100000000:.2f}억")
 
     # 영업담당별 상세 분석
     manager_analysis = []
-    for name, data in top_managers:
-        prev = compare_stats['by_manager'].get(name, {'fee': 0, 'count': 0})
+    for name, data in top_managers_2025:
+        prev = stats_2024['by_manager'].get(name, {'fee': 0, 'count': 0})
         growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 0
-        avg_per_case = data['fee'] / data['count'] if data['count'] > 0 else 0
-        manager_analysis.append(f"{name}: {data['fee']/100000000:.2f}억({data['count']:,}건, 건당 {avg_per_case/10000:.1f}만원, 전년비 {growth:+.1f}%)")
+        manager_analysis.append(f"{name}: {data['fee']/100000000:.2f}억(전년비 {growth:+.1f}%)")
 
     # 검사목적별 성장률 분석
-    purpose_analysis = []
-    for name, data in top_purposes:
-        prev = compare_stats['by_purpose'].get(name, {'fee': 0, 'count': 0})
+    purpose_growth = []
+    for name, data in top_purposes_2025:
+        prev = stats_2024['by_purpose'].get(name, {'fee': 0})
         growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 0
-        purpose_analysis.append(f"{name}: {data['fee']/100000000:.2f}억({data['count']:,}건, 전년비 {growth:+.1f}%)")
+        purpose_growth.append(f"{name}: {data['fee']/100000000:.2f}억(전년비 {growth:+.1f}%)")
 
-    # 검체유형별 분석
-    sample_type_analysis = []
-    for name, data in top_sample_types:
-        prev = compare_stats['by_sample_type'].get(name, {'fee': 0, 'count': 0})
-        growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 0
-        sample_type_analysis.append(f"{name}: {data['fee']/100000000:.2f}억({data['count']:,}건, 전년비 {growth:+.1f}%)")
+    # 고객(업체) 분석 추가
+    top_clients_2025 = sorted(stats_2025.get('by_client', {}).items(), key=lambda x: x[1]['fee'], reverse=True)[:10]
 
-    # 항목별 상세 분석
-    item_analysis = []
-    for name, data in top_items:
-        prev = compare_stats['by_item'].get(name, {'fee': 0, 'count': 0})
-        growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 0
-        item_analysis.append(f"{name}: {data['fee']/10000:.0f}만원({data['count']:,}건, 전년비 {growth:+.1f}%)")
+    # 고객별 상세 분석
+    client_analysis = []
+    for name, data in top_clients_2025:
+        prev = stats_2024.get('by_client', {}).get(name, {'fee': 0, 'count': 0})
+        growth = ((data['fee'] - prev['fee']) / prev['fee'] * 100) if prev['fee'] > 0 else 100
+        months_active = len(data.get('months', []))
+        client_analysis.append(f"{name}: {data['fee']/100000000:.2f}억({data['count']}건, {months_active}개월 거래, 전년비 {growth:+.1f}%)")
+
+    # 신규/이탈 고객 분석
+    clients_2024_set = set(stats_2024.get('by_client', {}).keys())
+    clients_2025_set = set(stats_2025.get('by_client', {}).keys())
+    new_clients = clients_2025_set - clients_2024_set
+    lost_clients = clients_2024_set - clients_2025_set
+    retained_clients = clients_2024_set & clients_2025_set
+
+    new_client_revenue = sum(stats_2025.get('by_client', {}).get(c, {}).get('fee', 0) for c in new_clients)
+    lost_client_revenue = sum(stats_2024.get('by_client', {}).get(c, {}).get('fee', 0) for c in lost_clients)
+    retention_rate = (len(retained_clients) / len(clients_2024_set) * 100) if clients_2024_set else 0
+
+    avg_revenue_per_client_2025 = (stats_2025['total_fee'] / len(clients_2025_set)) if clients_2025_set else 0
+    avg_revenue_per_client_2024 = (stats_2024['total_fee'] / len(clients_2024_set)) if clients_2024_set else 0
+
+    # 핵심 KPI 계산
+    months_with_data_2025 = len([m for m in monthly_2025.values() if m['fee'] > 0])
+    months_with_data_2024 = len([m for m in stats_2024.get('monthly', {}).values() if m['fee'] > 0])
+
+    monthly_avg_2025 = (stats_2025['total_fee'] / months_with_data_2025) if months_with_data_2025 > 0 else 0
+    monthly_avg_2024 = (stats_2024['total_fee'] / months_with_data_2024) if months_with_data_2024 > 0 else 0
+    avg_price_per_case_2025 = (stats_2025['total_fee'] / stats_2025['total_count']) if stats_2025['total_count'] > 0 else 0
+    avg_price_per_case_2024 = (stats_2024['total_fee'] / stats_2024['total_count']) if stats_2024['total_count'] > 0 else 0
+    monthly_avg_count_2025 = (stats_2025['total_count'] / months_with_data_2025) if months_with_data_2025 > 0 else 0
+
+    # 전월 대비 성장률
+    sorted_months = sorted(monthly_2025.keys())
+    if len(sorted_months) >= 2:
+        latest_month = sorted_months[-1]
+        prev_month = sorted_months[-2]
+        mom_growth = ((monthly_2025[latest_month]['fee'] - monthly_2025[prev_month]['fee']) / monthly_2025[prev_month]['fee'] * 100) if monthly_2025[prev_month]['fee'] > 0 else 0
+        mom_text = f"- 전월 대비 성장률: {mom_growth:+.1f}% ({prev_month}월→{latest_month}월)"
+    else:
+        mom_text = ""
 
     # 기업 정보 컨텍스트
     company_context = get_company_context()
 
-    # 탭별 한글명 매핑
-    tab_names = {
-        'main': '메인(종합현황)',
-        'personal': '개인별 실적',
-        'team': '팀별 실적',
-        'monthly': '월별 추이',
-        'client': '고객 분석',
-        'region': '지역/지사별',
-        'purpose': '검사목적별',
-        'sampleType': '검체유형별',
-        'defect': '부적합 현황',
-        'foodItem': '검사항목별',
-        'collection': '수거 현황',
-        'aiAnalysis': 'AI 분석'
-    }
-    current_tab_name = tab_names.get(current_tab, current_tab)
-
-    # 필터 적용 상태 텍스트
-    active_filters = []
-    if purpose_filter != '전체':
-        active_filters.append(f"검사목적={purpose_filter}")
-    if manager_filter != '전체':
-        active_filters.append(f"영업담당={manager_filter}")
-    if sample_type_filter != '전체':
-        active_filters.append(f"검체유형={sample_type_filter}")
-    if branch_filter != '전체':
-        active_filters.append(f"지사={branch_filter}")
-    filter_text = ', '.join(active_filters) if active_filters else '전체 데이터'
-
-    # 탭별 상세 컨텍스트 생성
-    tab_specific_context = ""
-    if current_tab == 'purpose':
-        tab_specific_context = f"""
-[현재 보고 있는 탭: 검사목적별 분석]
-검사목적별 전체 현황 (상위 10개):
-{chr(10).join(purpose_analysis)}
-"""
-    elif current_tab == 'sampleType':
-        tab_specific_context = f"""
-[현재 보고 있는 탭: 검체유형별 분석]
-검체유형별 전체 현황 (상위 10개):
-{chr(10).join(sample_type_analysis)}
-"""
-    elif current_tab == 'personal' or current_tab == 'manager':
-        tab_specific_context = f"""
-[현재 보고 있는 탭: 영업담당별 분석]
-영업담당별 상세 현황 (상위 15명):
-{chr(10).join(manager_analysis)}
-"""
-    elif current_tab == 'monthly':
-        tab_specific_context = f"""
-[현재 보고 있는 탭: 월별 추이 분석]
-{selected_year}년 월별 상세 현황:
-{chr(10).join(monthly_trend) if monthly_trend else '데이터 없음'}
-"""
-    elif current_tab == 'foodItem':
-        tab_specific_context = f"""
-[현재 보고 있는 탭: 검사항목별 분석]
-검사항목별 상세 현황 (상위 20개):
-{chr(10).join(item_analysis)}
-"""
-
     # 종합 데이터 컨텍스트 생성
     comprehensive_context = f"""
 === 경영 데이터 현황 ===
-사용자가 현재 보고 있는 화면: {current_tab_name}
-적용된 필터: {filter_text}
-분석 기준 연도: {selected_year}년
 
-[{selected_year}년 실적]
-- 총 매출: {current_stats['total_fee']/100000000:.2f}억원
-- 총 건수: {current_stats['total_count']:,}건
-- 건당 평균 수수료: {current_stats['total_fee']/current_stats['total_count']/10000:.1f}만원
+[2025년 실적]
+- 총 매출: {stats_2025['total_fee']/100000000:.2f}억원 (전년비 {growth_rate:+.1f}%)
+- 총 건수: {stats_2025['total_count']:,}건 (전년비 {count_growth:+.1f}%)
 
-[전년 대비 성장률]
-- 매출 성장률: {growth_rate:+.1f}%
-- 건수 성장률: {count_growth:+.1f}%
+[2024년 실적]
+- 총 매출: {stats_2024['total_fee']/100000000:.2f}억원
+- 총 건수: {stats_2024['total_count']:,}건
 
-[월별 매출 추이 ({selected_year}년)]
+[핵심 경영 지표 (KPI)]
+- 월평균 매출: {monthly_avg_2025/100000000:.2f}억원 (전년 {monthly_avg_2024/100000000:.2f}억)
+- 건당 평균 단가: {avg_price_per_case_2025:,.0f}원 (전년 {avg_price_per_case_2024:,.0f}원)
+- 월평균 검사 건수: {monthly_avg_count_2025:,.0f}건
+{mom_text}
+
+[2025년 월별 매출 추이]
 {', '.join(monthly_trend) if monthly_trend else '데이터 없음'}
 
-[영업담당별 실적 TOP 15]
+[영업담당별 실적 (2025년 TOP 10)]
 {chr(10).join(manager_analysis)}
 
-[검사목적별 매출 TOP 10]
-{chr(10).join(purpose_analysis)}
+[검사목적별 매출 (2025년)]
+{chr(10).join(purpose_growth)}
 
-[검체유형별 매출 TOP 10]
-{chr(10).join(sample_type_analysis)}
+[검체유형 TOP 5 (2025년)]
+{', '.join([f"{k}({v['fee']/100000000:.2f}억)" for k, v in sorted(stats_2025['by_sample_type'].items(), key=lambda x: x[1]['fee'], reverse=True)[:5]])}
 
-[검사항목별 매출 TOP 20]
-{chr(10).join(item_analysis)}
-{tab_specific_context}
+[고객(업체) 분석]
+- 총 거래처 수: 2025년 {len(clients_2025_set):,}개 / 2024년 {len(clients_2024_set):,}개
+- 고객 유지율: {retention_rate:.1f}% (유지 {len(retained_clients):,}개 / 전년 {len(clients_2024_set):,}개)
+- 신규 고객: {len(new_clients):,}개 (매출 {new_client_revenue/100000000:.2f}억)
+- 이탈 고객: {len(lost_clients):,}개 (전년 매출 {lost_client_revenue/100000000:.2f}억)
+- 평균 객단가: 2025년 {avg_revenue_per_client_2025/10000:.0f}만원 / 2024년 {avg_revenue_per_client_2024/10000:.0f}만원
+
+[TOP 10 고객사 (2025년)]
+{chr(10).join(client_analysis)}
+
 {company_context if company_context else ''}
 """
 
@@ -25521,12 +28154,11 @@ def ai_analyze():
 {comprehensive_context}
 
 응답 지침:
-1. 사용자가 현재 '{current_tab_name}' 탭을 보고 있으며, 해당 탭과 관련된 분석을 우선적으로 제공하세요
-2. 적용된 필터({filter_text})를 고려하여 맥락에 맞는 분석을 하세요
-3. 반드시 다음 구조로 답변하세요:
+1. 질문에 대해 데이터 기반의 명확한 분석을 제공하세요
+2. 반드시 다음 구조로 답변하세요:
 
 ## 📊 현황 분석
-(데이터에 기반한 현재 상황 설명 - 현재 탭의 데이터를 중심으로)
+(데이터에 기반한 현재 상황 설명)
 
 ## ✅ 장점 (강점)
 - 구체적인 수치와 함께 긍정적인 측면 나열
@@ -25542,12 +28174,11 @@ def ai_analyze():
 
 중요:
 - 모든 분석은 제공된 데이터의 구체적인 수치를 인용하세요
-- 현재 탭({current_tab_name})과 필터({filter_text})에 맞는 맞춤형 분석을 제공하세요
 - 추측이나 일반론이 아닌 데이터 기반 인사이트를 제공하세요
 - 경영자가 바로 활용할 수 있는 실용적인 제안을 하세요"""
 
     print(f"[AI] Claude API 호출 중...")
-    claude_result = call_claude_api(f"질문: {query}", system_prompt=system_prompt, max_tokens=2500)
+    claude_result = call_claude_api(f"질문: {query}", system_prompt=system_prompt, max_tokens=2000)
 
     if claude_result['success']:
         ai_response = claude_result['text']
@@ -25564,12 +28195,6 @@ def ai_analyze():
             'analysis_type': 'management_insight',
             'response': ai_response,
             'ai_model': 'Claude Sonnet 4',
-            'current_context': {
-                'tab': current_tab,
-                'tab_name': current_tab_name,
-                'year': selected_year,
-                'filters': filter_text
-            },
             'data_summary': {
                 'total_sales_2025': stats_2025['total_fee'],
                 'total_sales_2024': stats_2024['total_fee'],
@@ -26439,14 +29064,19 @@ def goal_analysis():
 
                 ai_prompt = f"""당신은 사업 분석 전문가입니다. 아래 데이터를 분석하여 목표 달성을 위한 구체적인 전략적 인사이트를 제공해주세요.
 
+## 분석 지침
+- 모든 탭(메인, 개인별, 팀별, 월별, 업체별, 지역별, 목적별, 유형, 부적합, 검사항목, 수금)을 참고하여 다각도로 분석
+- 매출은 공급가액을 기준으로 분석 (검사항목의 매출 값이 아님)
+- 항상 평균에 준하는 값을 기준으로 평균 이하/이상으로 분석
+
 {analysis_summary}
 
 다음 형식으로 분석해주세요:
 
-1. **핵심 진단** (3줄 이내): 현재 상황의 핵심 문제점 또는 기회
+1. **핵심 진단** (3줄 이내): 현재 상황의 핵심 문제점 또는 기회 (평균 대비 분석 포함)
 2. **우선순위 전략** (3개): 가장 효과적인 매출 증대 전략
-3. **위험 요소** (2개): 주의해야 할 리스크
-4. **실행 제안** (3개): 구체적인 실행 방안
+3. **위험 요소** (2개): 주의해야 할 리스크 (평균 이하 항목 중심)
+4. **실행 제안** (3개): 구체적인 실행 방안 (평균 이상으로 끌어올릴 방안)
 
 한국어로 간결하고 실행 가능한 조언을 제공해주세요."""
 
@@ -26674,4 +29304,5 @@ def terminal_exec():
 if __name__ == '__main__':
     # 서버 시작 시 데이터 미리 로드
     preload_data()
-    app.run(host='0.0.0.0', port=6001, debug=False)
+    port = int(os.environ.get('PORT', 6001))
+    app.run(host='0.0.0.0', port=port, debug=False)

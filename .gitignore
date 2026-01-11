@@ -23,6 +23,10 @@ env/
 # OS
 .DS_Store
 Thumbs.db
-data/business_data.db
-data/users.db
+
+# Database files
+*.db
+data/*.db
+
+# Logs
 nohup.out
