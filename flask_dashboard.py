@@ -9523,22 +9523,25 @@ HTML_TEMPLATE = '''
             }
         }
 
-        // 비교 연도 체크박스 업데이트 (조회 연도 제외)
+        // 비교 연도 체크박스 업데이트 (현재 연도 포함 - 월 비교용)
         function updateCompareYearCheckboxes() {
             const yearSelect = document.getElementById('yearSelect');
             const compareYearCheckboxes = document.getElementById('compareYearCheckboxes');
             if (!compareYearCheckboxes) return;
 
             const selectedYear = yearSelect ? parseInt(yearSelect.value) : availableYears[0];
-            const compareYears = availableYears.filter(y => y !== selectedYear);
+            // 모든 연도 포함 (현재 연도도 포함하여 같은 연도 다른 월 비교 가능)
+            const compareYears = availableYears;
 
             if (compareYears.length > 0) {
-                compareYearCheckboxes.innerHTML = compareYears.map((y, i) =>
-                    `<label style="display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 4px 8px; background: #f1f5f9; border-radius: 6px; font-size: 13px;">
-                        <input type="checkbox" class="compare-year-checkbox" value="${y}" ${i === 0 ? 'checked' : ''}>
-                        <span>${y}년</span>
-                    </label>`
-                ).join('');
+                compareYearCheckboxes.innerHTML = compareYears.map((y, i) => {
+                    const isCurrent = (y === selectedYear);
+                    const bgColor = isCurrent ? '#e0e7ff' : '#f1f5f9';  // 현재 연도는 다른 색상
+                    return `<label style="display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 4px 8px; background: ${bgColor}; border-radius: 6px; font-size: 13px;${isCurrent ? ' border: 1px dashed #6366f1;' : ''}">
+                        <input type="checkbox" class="compare-year-checkbox" value="${y}" ${i === 1 ? 'checked' : ''}>
+                        <span>${y}년${isCurrent ? ' (현재)' : ''}</span>
+                    </label>`;
+                }).join('');
             } else {
                 compareYearCheckboxes.innerHTML = '<span style="color: #94a3b8; font-size: 12px;">비교할 연도 없음</span>';
             }
