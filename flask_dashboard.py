@@ -10715,7 +10715,12 @@ HTML_TEMPLATE = '''
                         // 2. 기본 지표 - 모든 연도 표시 (현재 연도 + 비교 연도들)
                         const compareColorsList = ['#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
 
-                        html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
+                        // 현재 연도 데이터는 항상 currentData.by_month에서 가져옴
+                        const currentMonthMap = Object.fromEntries(currentData.by_month || []);
+                        const currentMonthInfo = currentMonthMap[monthIdx + 1] || { sales: 0, count: 0 };
+                        const currentPerCase = currentMonthInfo.count > 0 ? currentMonthInfo.sales / currentMonthInfo.count : 0;
+
+                        html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(currentMonthInfo.sales / 100000000).toFixed(2)}억</strong></div>`;
 
                         // 다중 비교 연도 매출 표시
                         if (compareDataList && compareDataList.length > 0) {
@@ -10728,7 +10733,7 @@ HTML_TEMPLATE = '''
                             });
                         }
 
-                        html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                        html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${currentMonthInfo.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(currentPerCase))}</strong></div>`;
 
                         // 다중 비교 연도 건수 표시
                         if (compareDataList && compareDataList.length > 0) {
