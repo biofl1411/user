@@ -9303,6 +9303,7 @@ HTML_TEMPLATE = '''
         let charts = {};
         let currentData = null;
         let compareData = null;
+        let compareDataList = [];  // 다중 비교 연도 데이터 배열
         let currentTab = 'main';
         let managerTableSort = { column: null, direction: 'desc' };
         let branchTableSort = { column: null, direction: 'desc' };
@@ -9555,8 +9556,11 @@ HTML_TEMPLATE = '''
                     const compRes = await fetch(compUrl);
                     compareData = await compRes.json();
                     compareData.year = compareYear;
+                    // compareDataList 설정 (다중 비교 연도 지원)
+                    compareDataList = [compareData];
                 } else {
                     compareData = null;
+                    compareDataList = [];
                 }
 
                 updateAll();
