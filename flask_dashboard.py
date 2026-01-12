@@ -6986,9 +6986,9 @@ HTML_TEMPLATE = '''
                 </label>
 
                 <div class="filter-group" id="compareYearGroup" style="display: none;">
-                    <select id="compareYearSelect" class="filter-select">
-                        <!-- 비교 연도 목록은 API에서 동적으로 로드됨 -->
-                    </select>
+                    <div id="compareYearCheckboxes" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <!-- 비교 연도 체크박스는 API에서 동적으로 로드됨 -->
+                    </div>
                 </div>
 
                 <div class="filter-divider"></div>
@@ -9483,17 +9483,24 @@ HTML_TEMPLATE = '''
                     ).join('');
                 }
 
-                if (compareYearSelect && availableYears.length > 0) {
+                const compareYearCheckboxes = document.getElementById('compareYearCheckboxes');
+                if (compareYearCheckboxes && availableYears.length > 0) {
                     // 비교 연도는 두 번째 연도부터 (현재 연도 제외)
                     const compareYears = availableYears.slice(1);
                     if (compareYears.length > 0) {
-                        compareYearSelect.innerHTML = compareYears.map((y, i) =>
-                            `<option value="${y}" ${i === 0 ? 'selected' : ''}>${y}년</option>`
+                        compareYearCheckboxes.innerHTML = compareYears.map((y, i) =>
+                            `<label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
+                                <input type="checkbox" class="compare-year-cb" value="${y}" ${i === 0 ? 'checked' : ''}>
+                                <span style="font-size: 13px;">${y}년</span>
+                            </label>`
                         ).join('');
                     } else {
                         // 비교할 연도가 없으면 현재 연도 -1 추가
                         const prevYear = availableYears[0] - 1;
-                        compareYearSelect.innerHTML = `<option value="${prevYear}">${prevYear}년</option>`;
+                        compareYearCheckboxes.innerHTML = `<label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" class="compare-year-cb" value="${prevYear}" checked>
+                            <span style="font-size: 13px;">${prevYear}년</span>
+                        </label>`;
                     }
                 }
             } catch (e) {
@@ -9501,12 +9508,15 @@ HTML_TEMPLATE = '''
                 // 실패 시 기본값 사용
                 availableYears = [2025, 2024];
                 const yearSelect = document.getElementById('yearSelect');
-                const compareYearSelect = document.getElementById('compareYearSelect');
+                const compareYearCheckboxes = document.getElementById('compareYearCheckboxes');
                 if (yearSelect) {
                     yearSelect.innerHTML = '<option value="2025" selected>2025년</option><option value="2024">2024년</option>';
                 }
-                if (compareYearSelect) {
-                    compareYearSelect.innerHTML = '<option value="2024" selected>2024년</option>';
+                if (compareYearCheckboxes) {
+                    compareYearCheckboxes.innerHTML = `<label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
+                        <input type="checkbox" class="compare-year-cb" value="2024" checked>
+                        <span style="font-size: 13px;">2024년</span>
+                    </label>`;
                 }
             }
         }
@@ -9534,8 +9544,9 @@ HTML_TEMPLATE = '''
                 const month = document.getElementById('monthSelect').value;
                 const purpose = document.getElementById('purposeSelect').value;
                 const compareCheck = document.getElementById('compareCheck').checked;
-                const compareYear = document.getElementById('compareYearSelect').value;
-                console.log('[DEBUG] 조회 조건:', { year, month, purpose, compareCheck, compareYear });
+                // 다중 비교 연도 체크박스에서 선택된 연도들 가져오기
+                const selectedCompareYears = Array.from(document.querySelectorAll('.compare-year-cb:checked')).map(cb => cb.value);
+                console.log('[DEBUG] 조회 조건:', { year, month, purpose, compareCheck, selectedCompareYears });
 
                 let url = `/api/data?year=${year}`;
                 if (month) url += `&month=${month}`;
@@ -9548,16 +9559,20 @@ HTML_TEMPLATE = '''
                 console.log('[DEBUG] currentData 로드됨, 키:', Object.keys(currentData));
                 currentData.year = year;
 
-                // 비교 데이터 로드
-                if (compareCheck) {
-                    let compUrl = `/api/data?year=${compareYear}`;
-                    if (month) compUrl += `&month=${month}`;
-                    if (purpose !== '전체') compUrl += `&purpose=${encodeURIComponent(purpose)}`;
-                    const compRes = await fetch(compUrl);
-                    compareData = await compRes.json();
-                    compareData.year = compareYear;
-                    // compareDataList 설정 (다중 비교 연도 지원)
-                    compareDataList = [compareData];
+                // 다중 비교 데이터 로드
+                if (compareCheck && selectedCompareYears.length > 0) {
+                    compareDataList = [];
+                    for (const compYear of selectedCompareYears) {
+                        let compUrl = `/api/data?year=${compYear}`;
+                        if (month) compUrl += `&month=${month}`;
+                        if (purpose !== '전체') compUrl += `&purpose=${encodeURIComponent(purpose)}`;
+                        const compRes = await fetch(compUrl);
+                        const compData = await compRes.json();
+                        compData.year = compYear;
+                        compareDataList.push(compData);
+                    }
+                    // 하위 호환성: 첫 번째 비교 연도를 compareData에도 설정
+                    compareData = compareDataList.length > 0 ? compareDataList[0] : null;
                 } else {
                     compareData = null;
                     compareDataList = [];
