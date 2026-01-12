@@ -6986,9 +6986,9 @@ HTML_TEMPLATE = '''
                 </label>
 
                 <div class="filter-group" id="compareYearGroup" style="display: none;">
-                    <div id="compareYearCheckboxes" style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <!-- 비교 연도 체크박스는 API에서 동적으로 로드됨 -->
-                    </div>
+                    <select id="compareYearSelect" class="filter-select">
+                        <!-- 비교 연도 목록은 API에서 동적으로 로드됨 -->
+                    </select>
                 </div>
 
                 <div class="filter-divider"></div>
@@ -9303,7 +9303,6 @@ HTML_TEMPLATE = '''
         let charts = {};
         let currentData = null;
         let compareData = null;
-        let compareDataList = [];  // 다중 비교 연도 데이터 배열
         let currentTab = 'main';
         let managerTableSort = { column: null, direction: 'desc' };
         let branchTableSort = { column: null, direction: 'desc' };
@@ -9483,39 +9482,30 @@ HTML_TEMPLATE = '''
                     ).join('');
                 }
 
-                const compareYearCheckboxes = document.getElementById('compareYearCheckboxes');
-                if (compareYearCheckboxes && availableYears.length > 0) {
-                    // 모든 연도를 비교 연도로 표시
-                    compareYearCheckboxes.innerHTML = availableYears.map((y, i) =>
-                        `<label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
-                            <input type="checkbox" class="compare-year-cb" value="${y}">
-                            <span style="font-size: 13px;">${y}년</span>
-                        </label>`
-                    ).join('');
+                if (compareYearSelect && availableYears.length > 0) {
+                    // 비교 연도는 두 번째 연도부터 (현재 연도 제외)
+                    const compareYears = availableYears.slice(1);
+                    if (compareYears.length > 0) {
+                        compareYearSelect.innerHTML = compareYears.map((y, i) =>
+                            `<option value="${y}" ${i === 0 ? 'selected' : ''}>${y}년</option>`
+                        ).join('');
+                    } else {
+                        // 비교할 연도가 없으면 현재 연도 -1 추가
+                        const prevYear = availableYears[0] - 1;
+                        compareYearSelect.innerHTML = `<option value="${prevYear}">${prevYear}년</option>`;
+                    }
                 }
             } catch (e) {
                 console.error('[DEBUG] 연도 목록 로드 실패:', e);
                 // 실패 시 기본값 사용
-                availableYears = [2026, 2025, 2024];
+                availableYears = [2025, 2024];
                 const yearSelect = document.getElementById('yearSelect');
-                const compareYearCheckboxes = document.getElementById('compareYearCheckboxes');
+                const compareYearSelect = document.getElementById('compareYearSelect');
                 if (yearSelect) {
-                    yearSelect.innerHTML = '<option value="2026" selected>2026년</option><option value="2025">2025년</option><option value="2024">2024년</option>';
+                    yearSelect.innerHTML = '<option value="2025" selected>2025년</option><option value="2024">2024년</option>';
                 }
-                if (compareYearCheckboxes) {
-                    compareYearCheckboxes.innerHTML = `
-                        <label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
-                            <input type="checkbox" class="compare-year-cb" value="2026">
-                            <span style="font-size: 13px;">2026년</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
-                            <input type="checkbox" class="compare-year-cb" value="2025">
-                            <span style="font-size: 13px;">2025년</span>
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
-                            <input type="checkbox" class="compare-year-cb" value="2024">
-                            <span style="font-size: 13px;">2024년</span>
-                        </label>`;
+                if (compareYearSelect) {
+                    compareYearSelect.innerHTML = '<option value="2024" selected>2024년</option>';
                 }
             }
         }
@@ -9543,9 +9533,8 @@ HTML_TEMPLATE = '''
                 const month = document.getElementById('monthSelect').value;
                 const purpose = document.getElementById('purposeSelect').value;
                 const compareCheck = document.getElementById('compareCheck').checked;
-                // 다중 비교 연도 체크박스에서 선택된 연도들 가져오기
-                const selectedCompareYears = Array.from(document.querySelectorAll('.compare-year-cb:checked')).map(cb => cb.value);
-                console.log('[DEBUG] 조회 조건:', { year, month, purpose, compareCheck, selectedCompareYears });
+                const compareYear = document.getElementById('compareYearSelect').value;
+                console.log('[DEBUG] 조회 조건:', { year, month, purpose, compareCheck, compareYear });
 
                 let url = `/api/data?year=${year}`;
                 if (month) url += `&month=${month}`;
@@ -9558,23 +9547,16 @@ HTML_TEMPLATE = '''
                 console.log('[DEBUG] currentData 로드됨, 키:', Object.keys(currentData));
                 currentData.year = year;
 
-                // 다중 비교 데이터 로드
-                if (compareCheck && selectedCompareYears.length > 0) {
-                    compareDataList = [];
-                    for (const compYear of selectedCompareYears) {
-                        let compUrl = `/api/data?year=${compYear}`;
-                        if (month) compUrl += `&month=${month}`;
-                        if (purpose !== '전체') compUrl += `&purpose=${encodeURIComponent(purpose)}`;
-                        const compRes = await fetch(compUrl);
-                        const compData = await compRes.json();
-                        compData.year = compYear;
-                        compareDataList.push(compData);
-                    }
-                    // 하위 호환성: 첫 번째 비교 연도를 compareData에도 설정
-                    compareData = compareDataList.length > 0 ? compareDataList[0] : null;
+                // 비교 데이터 로드
+                if (compareCheck) {
+                    let compUrl = `/api/data?year=${compareYear}`;
+                    if (month) compUrl += `&month=${month}`;
+                    if (purpose !== '전체') compUrl += `&purpose=${encodeURIComponent(purpose)}`;
+                    const compRes = await fetch(compUrl);
+                    compareData = await compRes.json();
+                    compareData.year = compareYear;
                 } else {
                     compareData = null;
-                    compareDataList = [];
                 }
 
                 updateAll();
@@ -10560,39 +10542,8 @@ HTML_TEMPLATE = '''
                     isComparison: false,
                 }];
 
-                // 다중 비교 연도 데이터 추가
-                const compYearColors = ['#f59e0b', '#8b5cf6', '#10b981', '#ef4444', '#06b6d4'];
-                if (compareDataList && compareDataList.length > 0) {
-                    compareDataList.forEach((compData, compIdx) => {
-                        if (!compData.by_month) return;
-                        const compMonthMap = Object.fromEntries(compData.by_month || []);
-                        const compMonthlyInfo = labels.map((_, i) => {
-                            const m = compMonthMap[i+1] || {};
-                            return {
-                                sales: m.sales || 0,
-                                count: m.count || 0,
-                                perCase: (m.count > 0) ? (m.sales / m.count) : 0,
-                                byPurpose: m.byPurpose || {}
-                            };
-                        });
-                        const color = compYearColors[compIdx % compYearColors.length];
-                        datasets.push({
-                            label: compData.year + '년 전체',
-                            data: compMonthlyInfo.map(m => m.sales),
-                            monthlyInfo: compMonthlyInfo,
-                            compYear: compData.year,
-                            borderColor: color,
-                            backgroundColor: color + '20',
-                            fill: false,
-                            tension: 0.4,
-                            pointRadius: 4,
-                            pointBackgroundColor: color,
-                            borderDash: [5, 5],
-                            isComparison: true,
-                        });
-                    });
-                } else if (compareData && compareData.by_month) {
-                    // 하위 호환성 - 단일 비교 연도
+                // 전년도 비교 데이터 추가
+                if (compareData && compareData.by_month) {
                     const compMonthMap = Object.fromEntries(compareData.by_month || []);
                     const compMonthlyInfo = labels.map((_, i) => {
                         const m = compMonthMap[i+1] || {};
@@ -10607,13 +10558,12 @@ HTML_TEMPLATE = '''
                         label: compareData.year + '년 전체',
                         data: compMonthlyInfo.map(m => m.sales),
                         monthlyInfo: compMonthlyInfo,
-                        compYear: compareData.year,
-                        borderColor: compYearColors[0],
-                        backgroundColor: compYearColors[0] + '20',
+                        borderColor: 'rgba(156, 163, 175, 0.8)',
+                        backgroundColor: 'rgba(156, 163, 175, 0.1)',
                         fill: false,
                         tension: 0.4,
                         pointRadius: 4,
-                        pointBackgroundColor: compYearColors[0],
+                        pointBackgroundColor: 'rgba(156, 163, 175, 0.8)',
                         borderDash: [5, 5],
                         isComparison: true,
                     });
@@ -10689,34 +10639,21 @@ HTML_TEMPLATE = '''
 
                         // 1. 헤더
                         const headerBg = isIncrease ? 'rgba(99, 102, 241, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-                        const yearLabel = isComparison ? (ds.compYear || compareData?.year || '') : currentData.year;
+                        const yearLabel = isComparison ? compareData.year : currentData.year;
                         html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">📅 ${yearLabel}년 ${monthIdx + 1}월 ${isComparison ? '(비교)' : ''}</div>`;
 
-                        // 2. 기본 지표 - 모든 연도 표시 (다중 비교 지원)
-                        const tooltipYearColors = ['#60a5fa', '#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
-                        html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:${tooltipYearColors[0]};">${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
-                        html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                        // 2. 기본 지표 - 양쪽 연도 표시
+                        const compMonthMapForBasic = compareData ? Object.fromEntries(compareData.by_month || []) : {};
+                        const compInfoForBasic = compMonthMapForBasic[monthIdx + 1];
 
-                        // 모든 비교 연도 데이터 표시
-                        if (compareDataList && compareDataList.length > 0) {
-                            compareDataList.forEach((compData, compIdx) => {
-                                const compMonthMap = Object.fromEntries(compData.by_month || []);
-                                const compInfo = compMonthMap[monthIdx + 1];
-                                const colorIdx = (compIdx + 1) % tooltipYearColors.length;
-                                if (compInfo && compInfo.sales > 0) {
-                                    const compPerCase = compInfo.count > 0 ? compInfo.sales / compInfo.count : 0;
-                                    html += `<div style="margin-bottom: 4px;">💰 ${compData.year}년 매출: <strong style="color:${tooltipYearColors[colorIdx]};">${(compInfo.sales / 100000000).toFixed(2)}억</strong></div>`;
-                                    html += `<div style="margin-bottom: 4px;">📋 ${compData.year}년 건수: <strong>${compInfo.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCase))}</strong></div>`;
-                                }
-                            });
-                        } else if (compareData) {
-                            const compMonthMapForBasic = Object.fromEntries(compareData.by_month || []);
-                            const compInfoForBasic = compMonthMapForBasic[monthIdx + 1];
-                            if (compInfoForBasic && compInfoForBasic.sales > 0) {
-                                const compPerCase = compInfoForBasic.sales / compInfoForBasic.count;
-                                html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(compInfoForBasic.sales / 100000000).toFixed(2)}억</strong></div>`;
-                                html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${compInfoForBasic.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCase))}</strong></div>`;
-                            }
+                        html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
+                        if (compareData && compInfoForBasic && compInfoForBasic.sales > 0) {
+                            html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(compInfoForBasic.sales / 100000000).toFixed(2)}억</strong></div>`;
+                        }
+                        html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                        if (compareData && compInfoForBasic && compInfoForBasic.count > 0) {
+                            const compPerCase = compInfoForBasic.sales / compInfoForBasic.count;
+                            html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${compInfoForBasic.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCase))}</strong></div>`;
                         }
 
                         if (!isComparison && ds.ownAvg) {
@@ -10730,29 +10667,13 @@ HTML_TEMPLATE = '''
                             const avgSign = avgDiff >= 0 ? '+' : '';
                             html += `<div style="margin-bottom: 4px;">📊 월평균 대비: <span style="color: ${avgColor}; font-weight: bold;">${avgSign}${avgDiffPct.toFixed(1)}% (${avgSign}${(avgDiff / 10000).toFixed(0)}만)</span></div>`;
 
-                            // 각 비교 연도 동월 대비
-                            if (compareDataList && compareDataList.length > 0) {
-                                compareDataList.forEach((compData) => {
-                                    const compMonthMap = Object.fromEntries(compData.by_month || []);
-                                    const compInfo = compMonthMap[monthIdx + 1];
-                                    if (compInfo && compInfo.sales > 0) {
-                                        const yoyDiff = info.sales - compInfo.sales;
-                                        const yoyPct = (yoyDiff / compInfo.sales * 100);
-                                        const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
-                                        const yoySign = yoyDiff >= 0 ? '+' : '';
-                                        html += `<div style="margin-bottom: 4px;">📆 ${compData.year}년 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
-                                    }
-                                });
-                            } else if (compareData) {
-                                const compMonthMapForBasic = Object.fromEntries(compareData.by_month || []);
-                                const compInfoForBasic = compMonthMapForBasic[monthIdx + 1];
-                                if (compInfoForBasic && compInfoForBasic.sales > 0) {
-                                    const yoyDiff = info.sales - compInfoForBasic.sales;
-                                    const yoyPct = (yoyDiff / compInfoForBasic.sales * 100);
-                                    const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
-                                    const yoySign = yoyDiff >= 0 ? '+' : '';
-                                    html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
-                                }
+                            // 전년 동월 대비
+                            if (compareData && compInfoForBasic && compInfoForBasic.sales > 0) {
+                                const yoyDiff = info.sales - compInfoForBasic.sales;
+                                const yoyPct = (yoyDiff / compInfoForBasic.sales * 100);
+                                const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
+                                const yoySign = yoyDiff >= 0 ? '+' : '';
+                                html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
                             }
 
                             // 전월 대비
@@ -11015,38 +10936,8 @@ HTML_TEMPLATE = '''
                     });
                 });
 
-                // 다중 비교 연도 데이터 추가
-                const compYearColorsTop3 = ['#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
-                if (compareDataList && compareDataList.length > 0) {
-                    compareDataList.forEach((compData, compIdx) => {
-                        if (!compData.by_month) return;
-                        const compMonthMap = Object.fromEntries(compData.by_month || []);
-                        top3Labels.forEach((name, i) => {
-                            const monthlyInfo = labels.map((_, mi) => {
-                                const monthData = compMonthMap[mi+1];
-                                const mgrData = monthData?.byManager?.[name];
-                                const sales = mgrData?.sales || 0;
-                                const count = mgrData?.count || 0;
-                                const byPurpose = mgrData?.byPurpose || {};
-                                return { sales, count, perCase: count > 0 ? sales / count : 0, byPurpose };
-                            });
-                            datasets.push({
-                                label: name + ' (' + compData.year + ')',
-                                data: monthlyInfo.map(d => d.sales),
-                                monthlyInfo,
-                                compYear: compData.year,
-                                borderColor: compYearColorsTop3[compIdx % compYearColorsTop3.length] + '80',
-                                backgroundColor: 'transparent',
-                                fill: false,
-                                tension: 0.4,
-                                pointRadius: 3,
-                                borderDash: [5, 5],
-                                isComparison: true,
-                            });
-                        });
-                    });
-                } else if (compareData && compareData.by_month) {
-                    // 하위 호환성 - 단일 비교 연도
+                // 전년도 비교 데이터 추가
+                if (compareData && compareData.by_month) {
                     const compMonthMap = Object.fromEntries(compareData.by_month || []);
                     top3Labels.forEach((name, i) => {
                         const monthlyInfo = labels.map((_, mi) => {
@@ -11061,7 +10952,6 @@ HTML_TEMPLATE = '''
                             label: name + ' (' + compareData.year + ')',
                             data: monthlyInfo.map(d => d.sales),
                             monthlyInfo,
-                            compYear: compareData.year,
                             borderColor: colors[i] + '60',
                             backgroundColor: 'transparent',
                             fill: false,
@@ -11144,39 +11034,25 @@ HTML_TEMPLATE = '''
 
                         // 1. 헤더
                         const headerBg = isIncrease ? 'rgba(99, 102, 241, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-                        const yearLabel = isComparison ? (ds.compYear || compareData?.year || '') : currentData.year;
+                        const yearLabel = isComparison ? compareData.year : currentData.year;
                         html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">👤 ${managerName} - ${yearLabel}년 ${monthIdx + 1}월</div>`;
 
-                        // 2. 기본 지표 - 모든 연도 표시 (다중 비교 지원)
-                        const tooltipYearColors = ['#60a5fa', '#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
-                        html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:${tooltipYearColors[0]};">${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
-                        html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
-
-                        // 모든 비교 연도 데이터 표시
-                        const compInfoList = [];
-                        if (compareDataList && compareDataList.length > 0) {
-                            compareDataList.forEach((compData, compIdx) => {
-                                const compMonthMap = Object.fromEntries(compData.by_month || []);
-                                const compMonthData = compMonthMap[monthIdx + 1];
-                                const compInfo = compMonthData?.byManager?.[managerName];
-                                const colorIdx = (compIdx + 1) % tooltipYearColors.length;
-                                compInfoList.push({ year: compData.year, info: compInfo, colorIdx });
-                                if (compInfo && compInfo.sales > 0) {
-                                    const compPerCase = compInfo.count > 0 ? compInfo.sales / compInfo.count : 0;
-                                    html += `<div style="margin-bottom: 4px;">💰 ${compData.year}년 매출: <strong style="color:${tooltipYearColors[colorIdx]};">${(compInfo.sales / 100000000).toFixed(2)}억</strong></div>`;
-                                    html += `<div style="margin-bottom: 4px;">📋 ${compData.year}년 건수: <strong>${compInfo.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCase))}</strong></div>`;
-                                }
-                            });
-                        } else if (compareData && compareData.by_month) {
+                        // 2. 기본 지표 - 양쪽 연도 표시
+                        let compInfoForManager = null;
+                        if (compareData && compareData.by_month) {
                             const compMonthMapBasic = Object.fromEntries(compareData.by_month || []);
                             const compMonthDataBasic = compMonthMapBasic[monthIdx + 1];
-                            const compInfoForManager = compMonthDataBasic?.byManager?.[managerName];
-                            compInfoList.push({ year: compareData.year, info: compInfoForManager, colorIdx: 1 });
-                            if (compInfoForManager && compInfoForManager.sales > 0) {
-                                const compPerCase = compInfoForManager.sales / compInfoForManager.count;
-                                html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(compInfoForManager.sales / 100000000).toFixed(2)}억</strong></div>`;
-                                html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${compInfoForManager.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCase))}</strong></div>`;
-                            }
+                            compInfoForManager = compMonthDataBasic?.byManager?.[managerName];
+                        }
+
+                        html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
+                        if (compInfoForManager && compInfoForManager.sales > 0) {
+                            html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(compInfoForManager.sales / 100000000).toFixed(2)}억</strong></div>`;
+                        }
+                        html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                        if (compInfoForManager && compInfoForManager.count > 0) {
+                            const compPerCase = compInfoForManager.sales / compInfoForManager.count;
+                            html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${compInfoForManager.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCase))}</strong></div>`;
                         }
 
                         if (!isComparison && ds.ownAvg) {
@@ -11190,16 +11066,14 @@ HTML_TEMPLATE = '''
                             const avgSign = avgDiff >= 0 ? '+' : '';
                             html += `<div style="margin-bottom: 4px;">📊 자체 월평균 대비: <span style="color: ${avgColor}; font-weight: bold;">${avgSign}${avgDiffPct.toFixed(1)}% (${avgSign}${(avgDiff / 10000).toFixed(0)}만)</span></div>`;
 
-                            // 각 비교 연도 동월 대비 (해당 담당자)
-                            compInfoList.forEach((compItem) => {
-                                if (compItem.info && compItem.info.sales > 0) {
-                                    const yoyDiff = info.sales - compItem.info.sales;
-                                    const yoyPct = (yoyDiff / compItem.info.sales * 100);
-                                    const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
-                                    const yoySign = yoyDiff >= 0 ? '+' : '';
-                                    html += `<div style="margin-bottom: 4px;">📆 ${compItem.year}년 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
-                                }
-                            });
+                            // 전년 동월 대비 (해당 담당자)
+                            if (compInfoForManager && compInfoForManager.sales > 0) {
+                                const yoyDiff = info.sales - compInfoForManager.sales;
+                                const yoyPct = (yoyDiff / compInfoForManager.sales * 100);
+                                const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
+                                const yoySign = yoyDiff >= 0 ? '+' : '';
+                                html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
+                            }
 
                             // 전월 대비
                             if (monthIdx > 0 && ds.monthlyInfo[monthIdx - 1].sales > 0) {
@@ -11467,38 +11341,8 @@ HTML_TEMPLATE = '''
                         });
                     });
 
-                    // 다중 비교 연도 데이터 추가
-                    const compYearColorsSelected = ['#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
-                    if (compareDataList && compareDataList.length > 0) {
-                        compareDataList.forEach((compData, compIdx) => {
-                            if (!compData.by_month) return;
-                            const compMonthMap = Object.fromEntries(compData.by_month || []);
-                            selectedManagers.forEach((name, i) => {
-                                const monthlyInfo = labels.map((_, mi) => {
-                                    const monthData = compMonthMap[mi+1];
-                                    const mgrData = monthData?.byManager?.[name];
-                                    const sales = mgrData?.sales || 0;
-                                    const count = mgrData?.count || 0;
-                                    const byPurpose = mgrData?.byPurpose || {};
-                                    return { sales, count, perCase: count > 0 ? sales / count : 0, byPurpose };
-                                });
-                                datasets.push({
-                                    label: name + ' (' + compData.year + ')',
-                                    data: monthlyInfo.map(d => d.sales),
-                                    monthlyInfo,
-                                    compYear: compData.year,
-                                    borderColor: compYearColorsSelected[compIdx % compYearColorsSelected.length] + '80',
-                                    backgroundColor: 'transparent',
-                                    fill: false,
-                                    tension: 0.4,
-                                    pointRadius: 3,
-                                    borderDash: [5, 5],
-                                    isComparison: true,
-                                });
-                            });
-                        });
-                    } else if (compareData && compareData.by_month) {
-                        // 하위 호환성 - 단일 비교 연도
+                    // 전년도 비교 데이터 추가
+                    if (compareData && compareData.by_month) {
                         const compMonthMap = Object.fromEntries(compareData.by_month || []);
                         selectedManagers.forEach((name, i) => {
                             const monthlyInfo = labels.map((_, mi) => {
@@ -11513,7 +11357,6 @@ HTML_TEMPLATE = '''
                                 label: name + ' (' + compareData.year + ')',
                                 data: monthlyInfo.map(d => d.sales),
                                 monthlyInfo,
-                                compYear: compareData.year,
                                 borderColor: colors[i % colors.length] + '60',
                                 backgroundColor: 'transparent',
                                 fill: false,
@@ -11594,39 +11437,25 @@ HTML_TEMPLATE = '''
 
                             // 1. 헤더
                             const headerBg = isIncrease ? 'rgba(99, 102, 241, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-                            const yearLabel = isComparison ? (ds.compYear || compareData?.year || '') : currentData.year;
+                            const yearLabel = isComparison ? compareData.year : currentData.year;
                             html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">👤 ${managerName} - ${yearLabel}년 ${monthIdx + 1}월</div>`;
 
-                            // 2. 기본 지표 - 모든 연도 표시 (다중 비교 지원)
-                            const tooltipYearColors = ['#60a5fa', '#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
-                            html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:${tooltipYearColors[0]};">${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
-                            html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
-
-                            // 모든 비교 연도 데이터 표시
-                            const compInfoListSel = [];
-                            if (compareDataList && compareDataList.length > 0) {
-                                compareDataList.forEach((compData, compIdx) => {
-                                    const compMonthMap = Object.fromEntries(compData.by_month || []);
-                                    const compMonthData = compMonthMap[monthIdx + 1];
-                                    const compInfo = compMonthData?.byManager?.[managerName];
-                                    const colorIdx = (compIdx + 1) % tooltipYearColors.length;
-                                    compInfoListSel.push({ year: compData.year, info: compInfo, colorIdx });
-                                    if (compInfo && compInfo.sales > 0) {
-                                        const compPerCase = compInfo.count > 0 ? compInfo.sales / compInfo.count : 0;
-                                        html += `<div style="margin-bottom: 4px;">💰 ${compData.year}년 매출: <strong style="color:${tooltipYearColors[colorIdx]};">${(compInfo.sales / 100000000).toFixed(2)}억</strong></div>`;
-                                        html += `<div style="margin-bottom: 4px;">📋 ${compData.year}년 건수: <strong>${compInfo.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCase))}</strong></div>`;
-                                    }
-                                });
-                            } else if (compareData && compareData.by_month) {
+                            // 2. 기본 지표 - 양쪽 연도 표시
+                            let compInfoForMgr = null;
+                            if (compareData && compareData.by_month) {
                                 const compMonthMapB = Object.fromEntries(compareData.by_month || []);
                                 const compMonthDataB = compMonthMapB[monthIdx + 1];
-                                const compInfoForMgr = compMonthDataB?.byManager?.[managerName];
-                                compInfoListSel.push({ year: compareData.year, info: compInfoForMgr, colorIdx: 1 });
-                                if (compInfoForMgr && compInfoForMgr.sales > 0) {
-                                    const compPerCaseM = compInfoForMgr.sales / compInfoForMgr.count;
-                                    html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(compInfoForMgr.sales / 100000000).toFixed(2)}억</strong></div>`;
-                                    html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${compInfoForMgr.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCaseM))}</strong></div>`;
-                                }
+                                compInfoForMgr = compMonthDataB?.byManager?.[managerName];
+                            }
+
+                            html += `<div style="margin-bottom: 4px;">💰 ${currentData.year}년 매출: <strong style="color:#60a5fa;">${(info.sales / 100000000).toFixed(2)}억</strong></div>`;
+                            if (compInfoForMgr && compInfoForMgr.sales > 0) {
+                                html += `<div style="margin-bottom: 4px;">💰 ${compareData.year}년 매출: <strong style="color:#f59e0b;">${(compInfoForMgr.sales / 100000000).toFixed(2)}억</strong></div>`;
+                            }
+                            html += `<div style="margin-bottom: 4px;">📋 ${currentData.year}년 건수: <strong>${info.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(info.perCase))}</strong></div>`;
+                            if (compInfoForMgr && compInfoForMgr.count > 0) {
+                                const compPerCaseM = compInfoForMgr.sales / compInfoForMgr.count;
+                                html += `<div style="margin-bottom: 8px;">📋 ${compareData.year}년 건수: <strong>${compInfoForMgr.count.toLocaleString()}건</strong> | 건당: <strong>${formatCurrency(Math.round(compPerCaseM))}</strong></div>`;
                             }
 
                             if (!isComparison && ds.ownAvg) {
@@ -11640,16 +11469,14 @@ HTML_TEMPLATE = '''
                                 const avgSign = avgDiff >= 0 ? '+' : '';
                                 html += `<div style="margin-bottom: 4px;">📊 자체 월평균 대비: <span style="color: ${avgColor}; font-weight: bold;">${avgSign}${avgDiffPct.toFixed(1)}% (${avgSign}${(avgDiff / 10000).toFixed(0)}만)</span></div>`;
 
-                                // 각 비교 연도 동월 대비 (해당 담당자)
-                                compInfoListSel.forEach((compItem) => {
-                                    if (compItem.info && compItem.info.sales > 0) {
-                                        const yoyDiff = info.sales - compItem.info.sales;
-                                        const yoyPct = (yoyDiff / compItem.info.sales * 100);
-                                        const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
-                                        const yoySign = yoyDiff >= 0 ? '+' : '';
-                                        html += `<div style="margin-bottom: 4px;">📆 ${compItem.year}년 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
-                                    }
-                                });
+                                // 전년 동월 대비 (해당 담당자)
+                                if (compInfoForMgr && compInfoForMgr.sales > 0) {
+                                    const yoyDiff = info.sales - compInfoForMgr.sales;
+                                    const yoyPct = (yoyDiff / compInfoForMgr.sales * 100);
+                                    const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
+                                    const yoySign = yoyDiff >= 0 ? '+' : '';
+                                    html += `<div style="margin-bottom: 4px;">📆 전년 동월 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
+                                }
 
                                 // 전월 대비
                                 if (monthIdx > 0 && ds.monthlyInfo[monthIdx - 1].sales > 0) {
@@ -15401,37 +15228,8 @@ HTML_TEMPLATE = '''
                 fill: false,
             });
 
-            // 다중 비교 연도 데이터 추가
-            const compYearColorsBranch = ['#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
-            if (compareDataList && compareDataList.length > 0) {
-                compareDataList.forEach((compData, compIdx) => {
-                    if (!compData.by_month) return;
-                    const compMonthMap = Object.fromEntries(compData.by_month || []);
-                    branchMonthlyData.forEach((b, i) => {
-                        const monthlyInfo = labels.map((_, mi) => {
-                            const monthData = compMonthMap[mi+1];
-                            const sales = monthData?.byBranch?.[b.name]?.sales || 0;
-                            const count = monthData?.byBranch?.[b.name]?.count || 0;
-                            return { sales, count, perCase: count > 0 ? sales / count : 0 };
-                        });
-                        datasets.push({
-                            label: b.name + ' (' + compData.year + ')',
-                            data: monthlyInfo.map(d => d.sales),
-                            monthlyInfo,
-                            compareYear: compData.year,
-                            borderColor: compYearColorsBranch[compIdx % compYearColorsBranch.length] + '80',
-                            backgroundColor: 'transparent',
-                            fill: false,
-                            tension: 0.4,
-                            pointRadius: 2,
-                            borderDash: [4, 4],
-                            borderWidth: 1,
-                            isComparison: true,
-                        });
-                    });
-                });
-            } else if (selectedCompareYear && compareData && compareData.year == selectedCompareYear && compareData.by_month) {
-                // 하위 호환성 - 단일 비교 연도
+            // 선택된 비교년도 데이터 추가
+            if (selectedCompareYear && compareData && compareData.year == selectedCompareYear && compareData.by_month) {
                 const compMonthMap = Object.fromEntries(compareData.by_month || []);
                 branchMonthlyData.forEach((b, i) => {
                     const monthlyInfo = labels.map((_, mi) => {
@@ -15519,7 +15317,7 @@ HTML_TEMPLATE = '''
                     // 클릭한 포인트가 비교 연도인지 확인
                     const clickedPoint = dataPoints[0];
                     const isClickedComparison = clickedPoint?.dataset?.isComparison;
-                    const displayYear = isClickedComparison ? (clickedPoint?.dataset?.compareYear || selectedCompareYear) : currentData.year;
+                    const displayYear = isClickedComparison ? selectedCompareYear : currentData.year;
 
                     // 현재 연도 데이터만 필터링
                     const currentYearPoints = dataPoints.filter(p => !p.dataset.isComparison && p.dataset.label !== '평균');
@@ -15532,18 +15330,11 @@ HTML_TEMPLATE = '''
                         compYearPoints.forEach(point => {
                             const ds = point.dataset;
                             const rawLabel = ds.label || '';
-                            const compYear = ds.compareYear || selectedCompareYear;
-                            const branchName = rawLabel.replace(` (${compYear})`, '');
+                            const branchName = rawLabel.replace(` (${selectedCompareYear})`, '');
                             const value = point.raw || 0;
 
-                            // 비교 연도의 월별 데이터 가져오기 (다중 비교 연도 지원)
-                            let compMonthMap = {};
-                            if (compareDataList && compareDataList.length > 0) {
-                                const targetCompData = compareDataList.find(c => c.year == compYear);
-                                compMonthMap = Object.fromEntries(targetCompData?.by_month || []);
-                            } else if (compareData?.by_month) {
-                                compMonthMap = Object.fromEntries(compareData.by_month || []);
-                            }
+                            // 비교 연도의 월별 데이터 가져오기
+                            const compMonthMap = Object.fromEntries(compareData?.by_month || []);
                             const compMonthData = compMonthMap[monthIdx + 1];
                             const branchData = compMonthData?.byBranch?.[branchName];
                             const count = branchData?.count || 0;
@@ -15605,22 +15396,8 @@ HTML_TEMPLATE = '''
                             html += `<div style="color: #94a3b8; margin: 8px 0 6px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.2);">── 비교 분석 ──</div>`;
                             html += `<div style="margin-bottom: 4px;">📊 월평균 대비: <span style="color: ${avgColor}; font-weight: bold;">${avgSign}${diffPct.toFixed(1)}% (${avgSign}${(diff / 10000).toFixed(0)}만)</span></div>`;
 
-                            // 각 비교년도 동월 대비
-                            if (compareDataList && compareDataList.length > 0) {
-                                compareDataList.forEach((compData) => {
-                                    const compMonthMap = Object.fromEntries(compData.by_month || []);
-                                    const compMonthData = compMonthMap[monthIdx + 1];
-                                    const compSales = compMonthData?.byBranch?.[branchName]?.sales || 0;
-                                    if (compSales > 0) {
-                                        const yoyDiff = value - compSales;
-                                        const yoyPct = (yoyDiff / compSales * 100);
-                                        const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
-                                        const yoySign = yoyDiff >= 0 ? '+' : '';
-                                        html += `<div style="margin-bottom: 4px;">📆 ${compData.year}년 대비: <span style="color: ${yoyColor}; font-weight: bold;">${yoySign}${yoyPct.toFixed(1)}% (${yoySign}${(yoyDiff / 10000).toFixed(0)}만)</span></div>`;
-                                    }
-                                });
-                            } else if (selectedCompareYear && compareData && compareData.year == selectedCompareYear && compareData.by_month) {
-                                // 하위 호환성
+                            // 비교년도 동월 대비
+                            if (selectedCompareYear && compareData && compareData.year == selectedCompareYear && compareData.by_month) {
                                 const compMonthMap = Object.fromEntries(compareData.by_month || []);
                                 const compMonthData = compMonthMap[monthIdx + 1];
                                 const compSales = compMonthData?.byBranch?.[branchName]?.sales || 0;
@@ -19081,48 +18858,17 @@ HTML_TEMPLATE = '''
             const totalSales = quarters.reduce((s, v) => s + v, 0);
             const avgQuarter = totalSales / 4;
 
-            // 다중 비교 연도 분기 데이터
-            const compQuartersList = [];
-            if (compareDataList && compareDataList.length > 0) {
-                compareDataList.forEach((compData) => {
-                    const compMonthly = compData.by_month || [];
-                    const compMap = Object.fromEntries(compMonthly);
-                    const compQuarters = [0, 0, 0, 0];
-                    const compQuarterCounts = [0, 0, 0, 0];
-                    for (let m = 1; m <= 12; m++) {
-                        const q = Math.floor((m - 1) / 3);
-                        compQuarters[q] += compMap[m]?.sales || 0;
-                        compQuarterCounts[q] += compMap[m]?.count || 0;
-                    }
-                    compQuartersList.push({
-                        year: compData.year,
-                        quarters: compQuarters,
-                        counts: compQuarterCounts,
-                        total: compQuarters.reduce((s, v) => s + v, 0)
-                    });
-                });
-            } else if (compareData) {
-                // 하위 호환성
-                const compMonthly = compareData.by_month || [];
-                const compMap = Object.fromEntries(compMonthly);
-                const compQuarters = [0, 0, 0, 0];
-                const compQuarterCounts = [0, 0, 0, 0];
-                for (let m = 1; m <= 12; m++) {
-                    const q = Math.floor((m - 1) / 3);
-                    compQuarters[q] += compMap[m]?.sales || 0;
-                    compQuarterCounts[q] += compMap[m]?.count || 0;
-                }
-                compQuartersList.push({
-                    year: compareData.year,
-                    quarters: compQuarters,
-                    counts: compQuarterCounts,
-                    total: compQuarters.reduce((s, v) => s + v, 0)
-                });
+            // 전년도 분기 데이터
+            const compMonthly = compareData?.by_month || [];
+            const compMap = Object.fromEntries(compMonthly);
+            const compQuarters = [0, 0, 0, 0];
+            const compQuarterCounts = [0, 0, 0, 0];
+            for (let m = 1; m <= 12; m++) {
+                const q = Math.floor((m - 1) / 3);
+                compQuarters[q] += compMap[m]?.sales || 0;
+                compQuarterCounts[q] += compMap[m]?.count || 0;
             }
-            // 첫 번째 비교 연도 (하위 호환성)
-            const compQuarters = compQuartersList[0]?.quarters || [0, 0, 0, 0];
-            const compQuarterCounts = compQuartersList[0]?.counts || [0, 0, 0, 0];
-            const compTotalSales = compQuartersList[0]?.total || 0;
+            const compTotalSales = compQuarters.reduce((s, v) => s + v, 0);
 
             // 외부 툴팁
             const getOrCreateQuarterlyTooltip = (chart) => {
@@ -19136,51 +18882,15 @@ HTML_TEMPLATE = '''
                 return el;
             };
 
-            // 차트 데이터셋 구성 (현재 연도 + 비교 연도)
-            const quarterlyDatasets = [{
-                label: currentData.year + '년',
-                data: quarters,
-                backgroundColor: 'rgba(99, 102, 241, 0.8)',
-                borderRadius: 6
-            }];
-
-            // 비교 연도 데이터셋 추가
-            const compYearColors = ['rgba(249, 115, 22, 0.6)', 'rgba(139, 92, 246, 0.5)', 'rgba(16, 185, 129, 0.5)'];
-            if (compQuartersList.length > 0) {
-                compQuartersList.forEach((compYear, idx) => {
-                    quarterlyDatasets.push({
-                        label: compYear.year + '년',
-                        data: compYear.quarters,
-                        backgroundColor: compYearColors[idx % compYearColors.length],
-                        borderRadius: 6
-                    });
-                });
-            }
-
-            // 레전드 표시
-            const quarterlyLegendEl = document.getElementById('quarterlyLegend');
-            if (quarterlyLegendEl) {
-                if (compQuartersList.length > 0) {
-                    let legendHtml = `<div class="legend-item"><div class="legend-color" style="background: rgba(99, 102, 241, 0.8);"></div><span>${currentData.year}년</span></div>`;
-                    compQuartersList.forEach((compYear, idx) => {
-                        legendHtml += `<div class="legend-item"><div class="legend-color" style="background: ${compYearColors[idx % compYearColors.length]};"></div><span>${compYear.year}년</span></div>`;
-                    });
-                    quarterlyLegendEl.innerHTML = legendHtml;
-                    quarterlyLegendEl.style.display = 'flex';
-                } else {
-                    quarterlyLegendEl.style.display = 'none';
-                }
-            }
-
             charts.quarterly = new Chart(ctx, {
                 type: 'bar',
-                data: { labels: ['1분기', '2분기', '3분기', '4분기'], datasets: quarterlyDatasets },
+                data: { labels: ['1분기', '2분기', '3분기', '4분기'], datasets: [{ data: quarters, backgroundColor: ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef'], borderRadius: 6 }] },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { intersect: true },
                     plugins: {
-                        legend: { display: compQuartersList.length > 0 },
+                        legend: { display: false },
                         tooltip: {
                             enabled: false,
                             external: function(context) {
@@ -19215,39 +18925,26 @@ HTML_TEMPLATE = '''
                                 html += `<div style="display:flex;justify-content:space-between;"><span>📈 비중</span><strong>${percent.toFixed(1)}%</strong></div>`;
                                 html += `</div>`;
 
-                                // 모든 비교 연도 데이터 표시
-                                const compYearColors = ['#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
-                                const compYearBgs = ['rgba(249,115,22,0.1)', 'rgba(139,92,246,0.1)', 'rgba(16,185,129,0.1)', 'rgba(239,68,68,0.1)'];
-
-                                if (compQuartersList.length > 0) {
-                                    compQuartersList.forEach((compYear, compIdx) => {
-                                        const compSalesYear = compYear.quarters[idx];
-                                        if (compSalesYear > 0) {
-                                            const compCount = compYear.counts[idx];
-                                            const compAvgPrice = compCount > 0 ? compSalesYear / compCount : 0;
-                                            const colorIdx = compIdx % compYearColors.length;
-                                            html += `<div style="background:${compYearBgs[colorIdx]};padding:10px;border-radius:8px;margin-bottom:10px;">`;
-                                            html += `<div style="color:${compYearColors[colorIdx]};font-weight:600;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px;">📅 ${compYear.year}년</div>`;
-                                            html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>💰 매출</span><strong>${formatCurrency(compSalesYear)}</strong></div>`;
-                                            if (compCount > 0) {
-                                                html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>📋 건수</span><strong>${compCount.toLocaleString()}건</strong></div>`;
-                                                html += `<div style="display:flex;justify-content:space-between;"><span>📊 단가</span><strong>${formatCurrency(Math.round(compAvgPrice))}</strong></div>`;
-                                            }
-                                            html += `</div>`;
-                                        }
-                                    });
-
-                                    // 증감 비교 (모든 연도)
-                                    html += `<div style="padding:8px;border-radius:6px;background:rgba(99,102,241,0.1);">`;
-                                    compQuartersList.forEach((compYear, compIdx) => {
-                                        const compSalesYear = compYear.quarters[idx];
-                                        if (compSalesYear > 0) {
-                                            const yoyDiff = ((sales - compSalesYear) / compSalesYear * 100);
-                                            const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
-                                            html += `<div style="margin-bottom:${compIdx < compQuartersList.length - 1 ? '4px' : '0'};">📆 ${compYear.year}년 대비: <span style="color:${yoyColor};font-weight:bold;">${yoyDiff >= 0 ? '+' : ''}${yoyDiff.toFixed(1)}%</span></div>`;
-                                        }
-                                    });
+                                // 전년도 데이터
+                                if (compareData && compSales > 0) {
+                                    const compCount = compQuarterCounts ? compQuarterCounts[idx] : 0;
+                                    const compAvgPrice = compCount > 0 ? compSales / compCount : 0;
+                                    const compPercent = compTotalSales > 0 ? (compSales / compTotalSales * 100) : 0;
+                                    html += `<div style="background:rgba(249,115,22,0.1);padding:10px;border-radius:8px;margin-bottom:10px;">`;
+                                    html += `<div style="color:#f59e0b;font-weight:600;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:4px;">📅 ${compareData.year}년</div>`;
+                                    html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>💰 매출</span><strong>${formatCurrency(compSales)}</strong></div>`;
+                                    if (compCount > 0) {
+                                        html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>📋 건수</span><strong>${compCount.toLocaleString()}건</strong></div>`;
+                                        html += `<div style="display:flex;justify-content:space-between;"><span>📊 단가</span><strong>${formatCurrency(Math.round(compAvgPrice))}</strong></div>`;
+                                    }
                                     html += `</div>`;
+
+                                    // 증감 비교
+                                    const yoyDiff = ((sales - compSales) / compSales * 100);
+                                    const yoyColor = yoyDiff >= 0 ? '#10b981' : '#ef4444';
+                                    html += `<div style="padding:8px;border-radius:6px;background:rgba(99,102,241,0.1);">
+                                        📆 전년 대비: <span style="color:${yoyColor};font-weight:bold;">${yoyDiff >= 0 ? '+' : ''}${yoyDiff.toFixed(1)}%</span>
+                                    </div>`;
                                 }
 
                                 tooltipEl.innerHTML = html;
@@ -21789,43 +21486,23 @@ HTML_TEMPLATE = '''
                 return el;
             };
 
-            // 데이터셋 구성
-            const countDatasets = [{
-                label: currentData.year + '년 건수',
-                data: top10.map(c => c[1].count),
-                backgroundColor: top10.map(c => newClientNames.has(c[0]) ? 'rgba(16, 185, 129, 0.8)' : 'rgba(99, 102, 241, 0.8)'),
-                borderRadius: 6,
-                order: 1
-            }];
-
-            // 전년 비교 데이터 추가
-            if (hasCompare) {
-                countDatasets.push({
-                    label: compareData.year + '년 건수',
-                    data: top10.map(c => {
-                        const compData = compareClientMap[c[0]];
-                        return compData ? compData.count : 0;
-                    }),
-                    backgroundColor: 'rgba(245, 158, 11, 0.5)',
-                    borderColor: '#f59e0b',
-                    borderWidth: 1,
-                    borderRadius: 6,
-                    order: 2
-                });
-            }
-
             charts.clientCount = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: top10.map(c => c[0].length > 8 ? c[0].substring(0, 8) + '..' : c[0]),
-                    datasets: countDatasets
+                    datasets: [{
+                        label: '건수',
+                        data: top10.map(c => c[1].count),
+                        backgroundColor: top10.map(c => newClientNames.has(c[0]) ? 'rgba(16, 185, 129, 0.8)' : 'rgba(99, 102, 241, 0.8)'),
+                        borderRadius: 6
+                    }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { intersect: true },
                     plugins: {
-                        legend: { display: hasCompare, position: 'top', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } },
+                        legend: { display: false },
                         tooltip: {
                             enabled: false,
                             external: function(context) {
@@ -23364,39 +23041,16 @@ HTML_TEMPLATE = '''
                 return el;
             };
 
-            // 데이터셋 구성
-            const regionSalesDatasets = [{
-                label: currentData.year + '년 매출',
-                data: sorted.map(r => r.sales),
-                backgroundColor: sorted.map(r => r.growthRate >= 0 ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.6)'),
-                borderRadius: 6,
-                order: 1
-            }];
-
-            // 비교 연도 데이터 추가
-            if (compareData && compareData.by_region) {
-                const compRegionMap = Object.fromEntries((compareData.by_region || []).map(r => [r[0], r[1]]));
-                regionSalesDatasets.push({
-                    label: compareData.year + '년 매출',
-                    data: sorted.map(r => {
-                        const compRegion = compRegionMap[r.name];
-                        return compRegion ? compRegion.sales : 0;
-                    }),
-                    backgroundColor: 'rgba(245, 158, 11, 0.5)',
-                    borderColor: '#f59e0b',
-                    borderWidth: 1,
-                    borderRadius: 6,
-                    order: 2
-                });
-            }
-
-            const hasRegionCompare = compareData && compareData.by_region;
-
             charts.regionSales = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: sorted.map(r => r.name),
-                    datasets: regionSalesDatasets
+                    datasets: [{
+                        label: '매출',
+                        data: sorted.map(r => r.sales),
+                        backgroundColor: sorted.map(r => r.growthRate >= 0 ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.6)'),
+                        borderRadius: 6
+                    }]
                 },
                 options: {
                     responsive: true,
@@ -23404,7 +23058,7 @@ HTML_TEMPLATE = '''
                     interaction: { intersect: true },
                     indexAxis: 'y',
                     plugins: {
-                        legend: { display: hasRegionCompare, position: 'top', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } },
+                        legend: { display: false },
                         tooltip: {
                             enabled: false,
                             external: function(context) {
@@ -23433,37 +23087,15 @@ HTML_TEMPLATE = '''
                                 html += `<div style="display:flex;justify-content:space-between;"><span>📈 비중</span><strong>${r.percent.toFixed(1)}%</strong></div>`;
                                 html += `</div>`;
 
-                                // 모든 비교 연도별 대비 정보
-                                if (compareDataList && compareDataList.length > 0) {
-                                    html += `<div style="padding:10px;border-radius:6px;background:rgba(99,102,241,0.1);">`;
-                                    compareDataList.forEach((compData, compIdx) => {
-                                        const compRegionMap = Object.fromEntries((compData.by_region || []).map(rg => [rg[0], rg[1]]));
-                                        const compRegion = compRegionMap[r.name];
-                                        if (compRegion && compRegion.sales > 0) {
-                                            const compGrowth = r.sales - compRegion.sales;
-                                            const compGrowthRate = (compGrowth / compRegion.sales * 100);
-                                            const compGrowthColor = compGrowthRate >= 0 ? '#10b981' : '#ef4444';
-                                            html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${compIdx < compareDataList.length - 1 ? '6px' : '0'};">
-                                                <span>📅 ${compData.year}년 대비</span>
-                                                <span style="color:${compGrowthColor};font-weight:bold;">${compGrowthRate >= 0 ? '+' : ''}${compGrowthRate.toFixed(1)}%</span>
-                                            </div>
-                                            <div style="color:#94a3b8;font-size:11px;margin-bottom:${compIdx < compareDataList.length - 1 ? '8px;border-bottom:1px dashed rgba(255,255,255,0.1);padding-bottom:6px' : '0'};">
-                                                ${formatCurrency(compRegion.sales)} → ${formatCurrency(r.sales)}
-                                            </div>`;
-                                        }
-                                    });
-                                    html += `</div>`;
-                                } else {
-                                    html += `<div style="padding:10px;border-radius:6px;background:${r.growthRate >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'};">
-                                        <div style="display:flex;justify-content:space-between;align-items:center;">
-                                            <span>📅 전년 대비</span>
-                                            <span style="color:${growthColor};font-weight:bold;font-size:16px;">${r.growthRate >= 0 ? '+' : ''}${r.growthRate.toFixed(1)}%</span>
-                                        </div>
-                                        <div style="color:#94a3b8;font-size:11px;margin-top:4px;">
-                                            ${formatCurrency(r.lastYearSales || 0)} → ${formatCurrency(r.sales)}
-                                        </div>
-                                    </div>`;
-                                }
+                                html += `<div style="padding:10px;border-radius:6px;background:${r.growthRate >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'};">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                                        <span>📅 전년 대비</span>
+                                        <span style="color:${growthColor};font-weight:bold;font-size:16px;">${r.growthRate >= 0 ? '+' : ''}${r.growthRate.toFixed(1)}%</span>
+                                    </div>
+                                    <div style="color:#94a3b8;font-size:11px;margin-top:4px;">
+                                        ${formatCurrency(r.lastYearSales || 0)} → ${formatCurrency(r.sales)}
+                                    </div>
+                                </div>`;
 
                                 tooltipEl.innerHTML = html;
                                 tooltipEl.style.opacity = 1; tooltipEl.style.pointerEvents = 'auto';
@@ -24950,20 +24582,7 @@ HTML_TEMPLATE = '''
             document.getElementById('popupPurposePercent').textContent = p.percent.toFixed(1) + '%';
             document.getElementById('popupPurposeAvg').textContent = formatCurrency(p.avgPrice);
 
-            // 모든 비교 연도 데이터 표시
-            if (compareDataList && compareDataList.length > 0) {
-                let salesHtml = '', countHtml = '';
-                compareDataList.forEach((compData) => {
-                    const compPurposeMap = Object.fromEntries((compData.by_purpose || []).map(pp => [pp[0], pp[1]]));
-                    const compPurpose = compPurposeMap[p.name];
-                    if (compPurpose && compPurpose.sales > 0) {
-                        salesHtml += `<div style="font-size:11px;color:#94a3b8;">${compData.year}년: ${formatCurrency(compPurpose.sales)}</div>`;
-                        countHtml += `<div style="font-size:11px;color:#94a3b8;">${compData.year}년: ${compPurpose.count.toLocaleString()}건</div>`;
-                    }
-                });
-                document.getElementById('popupPurposeLastSales').innerHTML = salesHtml || '';
-                document.getElementById('popupPurposeLastCount').innerHTML = countHtml || '';
-            } else if (p.lastYearSales > 0) {
+            if (p.lastYearSales > 0) {
                 document.getElementById('popupPurposeLastSales').textContent = `전년 ${formatCurrency(p.lastYearSales)}`;
                 document.getElementById('popupPurposeLastCount').textContent = `전년 ${p.lastYearCount.toLocaleString()}건`;
             } else {
@@ -25057,31 +24676,6 @@ HTML_TEMPLATE = '''
                     borderWidth: 2
                 };
             });
-
-            // 비교 연도 데이터 추가 (점선)
-            if (compareData && compareData.by_month) {
-                const compMonthMap = Object.fromEntries(compareData.by_month || []);
-                top5.forEach((p, i) => {
-                    const compMonthlyData = labels.map((_, mIdx) => {
-                        const monthData = compMonthMap[mIdx + 1]?.byPurpose?.[p.name];
-                        return monthData?.sales || 0;
-                    });
-                    // 데이터가 있는 경우에만 추가
-                    if (compMonthlyData.some(v => v > 0)) {
-                        datasets.push({
-                            label: (p.name.length > 8 ? p.name.substring(0, 8) + '..' : p.name) + ' (' + compareData.year + ')',
-                            data: compMonthlyData,
-                            borderColor: colors[i] + '60',
-                            backgroundColor: 'transparent',
-                            borderDash: [4, 4],
-                            tension: 0.4,
-                            fill: false,
-                            borderWidth: 1,
-                            pointRadius: 2
-                        });
-                    }
-                });
-            }
 
             // purposeMonthlySummary 요약 정보 표시
             const purposeMonthlySummaryEl = document.getElementById('purposeMonthlySummary');
