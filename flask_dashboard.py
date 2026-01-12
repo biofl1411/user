@@ -5505,6 +5505,321 @@ HTML_TEMPLATE = '''
         .kpi-card.count::before { background: linear-gradient(90deg, #10b981, #34d399); }
         .kpi-card.price::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
         .kpi-card.goal::before { background: linear-gradient(90deg, #ec4899, #f472b6); }
+        .kpi-card.insight-card::before { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+
+        /* 일별 탭 KPI 5개 그리드 */
+        .daily-kpi-section-5 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr) 1.5fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        /* 인사이트 카드 */
+        .kpi-card.insight-card {
+            background: linear-gradient(135deg, #ecfeff, #cffafe);
+        }
+        .kpi-card.insight-card .kpi-icon {
+            background: rgba(6, 182, 212, 0.15);
+            color: #0891b2;
+        }
+        .insight-content {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .insight-item {
+            font-size: 13px;
+            color: var(--gray-700);
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .insight-item:last-child {
+            border-bottom: none;
+        }
+
+        /* 일별 탭 2열 그리드 */
+        .daily-grid-2col {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        /* 캘린더 히트맵 */
+        .calendar-heatmap {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .calendar-header {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+        .calendar-header-cell {
+            text-align: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gray-500);
+            padding: 8px 0;
+        }
+        .calendar-header-cell.weekend {
+            color: var(--danger);
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+        .calendar-cell {
+            aspect-ratio: 1;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            min-height: 50px;
+        }
+        .calendar-cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 10;
+        }
+        .calendar-cell.selected {
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5);
+        }
+        .calendar-cell.empty {
+            background: transparent;
+            cursor: default;
+        }
+        .calendar-cell.empty:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        .calendar-cell.max-day::after {
+            content: "\\1F947";
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 10px;
+        }
+        .calendar-cell.weekend {
+            opacity: 0.6;
+        }
+        .calendar-date {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+        .calendar-sales {
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--gray-600);
+            margin-top: 2px;
+        }
+        .calendar-legend {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--gray-100);
+        }
+        .legend-gradient {
+            width: 150px;
+            height: 12px;
+            background: linear-gradient(90deg, #f3f4f6, #e0e7ff, #a5b4fc, #6366f1, #4f46e5);
+            border-radius: 4px;
+        }
+        .legend-label {
+            font-size: 11px;
+            color: var(--gray-500);
+        }
+        .calendar-selected {
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--gray-50);
+            border-radius: 12px;
+            display: none;
+        }
+        .calendar-selected.active {
+            display: block;
+        }
+        .selected-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .selected-date {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-800);
+        }
+        .selected-day {
+            font-size: 13px;
+            color: var(--gray-500);
+        }
+        .selected-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        .selected-stat {
+            text-align: center;
+            padding: 12px;
+            background: white;
+            border-radius: 8px;
+        }
+        .selected-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .selected-stat-value.up { color: var(--success); }
+        .selected-stat-value.down { color: var(--danger); }
+        .selected-stat-label {
+            font-size: 11px;
+            color: var(--gray-500);
+            margin-top: 4px;
+        }
+
+        /* 네비게이션 버튼 */
+        .nav-btn {
+            background: var(--gray-100);
+            border: none;
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .nav-btn:hover {
+            background: var(--gray-200);
+        }
+
+        /* 요일별 인사이트 */
+        .day-insight {
+            margin-top: 12px;
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            border-radius: 8px;
+            font-size: 13px;
+            color: #92400e;
+            border-left: 3px solid #f59e0b;
+        }
+
+        /* TOP 5 매출일 */
+        .top-days-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .top-day-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: var(--gray-50);
+            border-radius: 10px;
+            transition: all 0.2s ease;
+        }
+        .top-day-item:hover {
+            background: var(--gray-100);
+            transform: translateX(4px);
+        }
+        .top-day-item.rank-1 {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+        }
+        .top-day-item.rank-2 {
+            background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+        }
+        .top-day-item.rank-3 {
+            background: linear-gradient(135deg, #fed7aa, #fdba74);
+        }
+        .top-day-rank {
+            font-size: 20px;
+            margin-right: 12px;
+            width: 32px;
+        }
+        .top-day-info {
+            flex: 1;
+        }
+        .top-day-date {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--gray-800);
+        }
+        .top-day-dow {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-left: 6px;
+        }
+        .top-day-sales {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-right: 12px;
+        }
+        .top-day-yoy {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+        .top-day-yoy.up {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .top-day-yoy.down {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        /* 목적 빠른 선택 버튼 */
+        .purpose-quick-btns {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .quick-btn {
+            padding: 6px 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: 20px;
+            background: white;
+            font-size: 12px;
+            color: var(--gray-600);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .quick-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .quick-btn.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: white;
+        }
+
+        /* 일별 탭 반응형 */
+        @media (max-width: 1024px) {
+            .daily-kpi-section-5 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .daily-kpi-section-5 .kpi-card.insight-card {
+                grid-column: 1 / -1;
+            }
+            .daily-grid-2col {
+                grid-template-columns: 1fr;
+            }
+        }
 
         .kpi-header {
             display: flex;
@@ -7273,8 +7588,8 @@ HTML_TEMPLATE = '''
 
         <!-- 일별 탭 -->
         <div id="daily" class="tab-content">
-            <!-- 일별 KPI 카드 -->
-            <div class="kpi-section daily-kpi-section">
+            <!-- 일별 KPI 카드 5개 -->
+            <div class="kpi-section daily-kpi-section-5">
                 <div class="kpi-card sales">
                     <div class="kpi-header"><div class="kpi-icon">📅</div></div>
                     <div class="kpi-label">조회 기간</div>
@@ -7288,7 +7603,7 @@ HTML_TEMPLATE = '''
                     <div class="kpi-compare" id="dailyAvgCompare">-</div>
                 </div>
                 <div class="kpi-card price">
-                    <div class="kpi-header"><div class="kpi-icon">📈</div></div>
+                    <div class="kpi-header"><div class="kpi-icon">🏆</div></div>
                     <div class="kpi-label">최고 매출일</div>
                     <div class="kpi-value" id="dailyMaxDate">-</div>
                     <div class="kpi-compare" id="dailyMaxSales">-</div>
@@ -7299,22 +7614,72 @@ HTML_TEMPLATE = '''
                     <div class="kpi-value" id="dailyAvgCount">-</div>
                     <div class="kpi-compare" id="dailyAvgCountCompare">-</div>
                 </div>
-            </div>
-
-            <!-- 일별 전체 매출 추이 차트 -->
-            <section class="chart-section">
-                <div class="section-title-bar">
-                    <div class="section-title">📊 일별 매출 추이</div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <span class="section-badge" id="dailyChartBadge">-</span>
+                <div class="kpi-card insight-card">
+                    <div class="kpi-header"><div class="kpi-icon">💡</div></div>
+                    <div class="kpi-label">AI 인사이트</div>
+                    <div class="insight-content" id="dailyInsight">
+                        <div class="insight-item">-</div>
                     </div>
                 </div>
-                <div id="dailyChartSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
-                <div class="chart-legend" id="dailyChartLegend" style="display: flex; gap: 16px; margin-bottom: 8px;"></div>
-                <div class="chart-container" style="height: 320px;"><canvas id="dailySalesChart"></canvas></div>
-            </section>
+            </div>
 
-            <!-- 검사목적별 일별 추이 차트 -->
+            <!-- 2열 그리드: 일별 매출 추이 + 캘린더 히트맵 -->
+            <div class="daily-grid-2col">
+                <!-- 일별 매출 추이 차트 -->
+                <section class="chart-section">
+                    <div class="section-title-bar">
+                        <div class="section-title">📊 일별 매출 추이</div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span class="section-badge" id="dailyChartBadge">-</span>
+                        </div>
+                    </div>
+                    <div id="dailyChartSummary" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; font-size: 13px;"></div>
+                    <div class="chart-legend" id="dailyChartLegend" style="display: flex; gap: 16px; margin-bottom: 8px;"></div>
+                    <div class="chart-container" style="height: 280px;"><canvas id="dailySalesChart"></canvas></div>
+                </section>
+
+                <!-- 캘린더 히트맵 -->
+                <section class="chart-section">
+                    <div class="section-title-bar">
+                        <div class="section-title">📅 월간 캘린더 히트맵</div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button class="nav-btn" onclick="changeCalendarMonth(-1)">◀</button>
+                            <span id="calendarMonth" style="font-weight: 600; min-width: 90px; text-align: center;">-</span>
+                            <button class="nav-btn" onclick="changeCalendarMonth(1)">▶</button>
+                        </div>
+                    </div>
+                    <div class="calendar-heatmap" id="calendarHeatmap"></div>
+                    <div class="calendar-legend">
+                        <span class="legend-label">낮음</span>
+                        <div class="legend-gradient"></div>
+                        <span class="legend-label">높음</span>
+                    </div>
+                    <div class="calendar-selected" id="calendarSelected"></div>
+                </section>
+            </div>
+
+            <!-- 2열 그리드: 요일별 평균 + TOP 5 -->
+            <div class="daily-grid-2col">
+                <!-- 요일별 평균 매출 차트 -->
+                <section class="chart-section">
+                    <div class="section-title-bar">
+                        <div class="section-title">📈 요일별 평균 매출</div>
+                        <span class="section-badge" id="topDayBadge">-</span>
+                    </div>
+                    <div class="chart-container" style="height: 220px;"><canvas id="dayOfWeekChart"></canvas></div>
+                    <div class="day-insight" id="dayInsight">💡 데이터 로딩 중...</div>
+                </section>
+
+                <!-- TOP 5 매출일 -->
+                <section class="chart-section">
+                    <div class="section-title-bar">
+                        <div class="section-title">🏆 TOP 5 매출일</div>
+                    </div>
+                    <div class="top-days-list" id="topDaysList"></div>
+                </section>
+            </div>
+
+            <!-- 검사목적별 일별 추이 차트 (전체 너비) -->
             <section class="chart-section">
                 <div class="section-title-bar">
                     <div class="section-title">🎯 검사목적별 일별 추이</div>
@@ -7324,8 +7689,9 @@ HTML_TEMPLATE = '''
                         </select>
                     </div>
                 </div>
+                <div class="purpose-quick-btns" id="purposeQuickBtns"></div>
                 <div class="chart-legend" id="dailyPurposeLegend" style="display: flex; gap: 16px; margin-bottom: 8px;"></div>
-                <div class="chart-container" style="height: 320px;"><canvas id="dailyPurposeChart"></canvas></div>
+                <div class="chart-container" style="height: 280px;"><canvas id="dailyPurposeChart"></canvas></div>
             </section>
         </div>
 
@@ -9985,6 +10351,432 @@ HTML_TEMPLATE = '''
 
             // 차트 업데이트
             updateDailySalesChart();
+            updateDailyPurposeChart();
+
+            // 새로운 기능들
+            generateDailyInsight(dailyData, avgSales, maxDate, maxSales);
+            renderCalendarHeatmap(dailyData, maxDate);
+            createDayOfWeekChart(dailyData);
+            renderTopDays(dailyData);
+            initPurposeQuickBtns();
+        }
+
+        // 캘린더 히트맵 현재 월
+        let calendarCurrentYear = new Date().getFullYear();
+        let calendarCurrentMonth = new Date().getMonth() + 1;
+
+        // 인사이트 생성
+        function generateDailyInsight(dailyData, avgSales, maxDate, maxSales) {
+            const insights = [];
+            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+
+            // 1. 요일별 평균 계산 후 최고 요일 찾기
+            const dayStats = {};
+            dayNames.forEach(d => dayStats[d] = { total: 0, count: 0 });
+            dailyData.forEach(d => {
+                const dow = dayNames[new Date(d[0]).getDay()];
+                if (d[1].sales > 0) {
+                    dayStats[dow].total += d[1].sales;
+                    dayStats[dow].count++;
+                }
+            });
+            const dayAvgs = Object.entries(dayStats)
+                .filter(([_, v]) => v.count > 0)
+                .map(([k, v]) => ({ day: k, avg: v.total / v.count }))
+                .sort((a, b) => b.avg - a.avg);
+            if (dayAvgs.length > 0) {
+                insights.push(`📈 ${dayAvgs[0].day}요일 매출이 가장 높음`);
+            }
+
+            // 2. 전년 동기 대비
+            if (compareDataList && compareDataList.length > 0) {
+                const lastYearData = compareDataList[0];
+                const lastYearTotal = (lastYearData.by_day || []).reduce((sum, d) => sum + d[1].sales, 0);
+                const currentTotal = dailyData.reduce((sum, d) => sum + d[1].sales, 0);
+                if (lastYearTotal > 0) {
+                    const growth = ((currentTotal - lastYearTotal) / lastYearTotal * 100);
+                    const icon = growth >= 0 ? "📊" : "📉";
+                    insights.push(`${icon} 전년 동기 대비 ${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`);
+                }
+            }
+
+            // 3. 주말 영업 여부
+            const weekendSales = dailyData.filter(d => {
+                const dow = new Date(d[0]).getDay();
+                return dow === 0 || dow === 6;
+            }).reduce((sum, d) => sum + d[1].sales, 0);
+            if (weekendSales === 0) {
+                insights.push("⚠️ 주말 영업 없음");
+            }
+
+            // 4. 연속 상승/하락 패턴
+            let consecutive = 1, direction = null;
+            for (let i = 1; i < dailyData.length; i++) {
+                const curr = dailyData[i][1].sales;
+                const prev = dailyData[i-1][1].sales;
+                if (curr > prev) {
+                    if (direction === 'up') consecutive++;
+                    else { direction = 'up'; consecutive = 2; }
+                } else if (curr < prev) {
+                    if (direction === 'down') consecutive++;
+                    else { direction = 'down'; consecutive = 2; }
+                }
+            }
+            if (consecutive >= 3 && direction) {
+                insights.push(`${direction === 'up' ? '🔥' : '❄️'} ${consecutive}일 연속 ${direction === 'up' ? '상승' : '하락'}`);
+            }
+
+            // UI 업데이트
+            const container = document.getElementById('dailyInsight');
+            if (container) {
+                container.innerHTML = insights.slice(0, 3).map(i =>
+                    `<div class="insight-item">${i}</div>`
+                ).join('') || '<div class="insight-item">-</div>';
+            }
+        }
+
+        // 캘린더 히트맵 렌더링
+        function renderCalendarHeatmap(dailyData, maxDateStr) {
+            const container = document.getElementById('calendarHeatmap');
+            if (!container) return;
+
+            // 데이터에서 연/월 추출
+            if (dailyData.length > 0) {
+                const firstDate = new Date(dailyData[0][0]);
+                calendarCurrentYear = firstDate.getFullYear();
+                calendarCurrentMonth = firstDate.getMonth() + 1;
+            }
+
+            renderCalendarForMonth(dailyData, calendarCurrentYear, calendarCurrentMonth, maxDateStr);
+        }
+
+        function renderCalendarForMonth(dailyData, year, month, maxDateStr) {
+            const container = document.getElementById('calendarHeatmap');
+            if (!container) return;
+
+            const firstDay = new Date(year, month - 1, 1);
+            const lastDay = new Date(year, month, 0);
+            const startDayOfWeek = firstDay.getDay();
+
+            // 해당 월 데이터 필터링
+            const monthData = dailyData.filter(d => {
+                const date = new Date(d[0]);
+                return date.getMonth() === month - 1 && date.getFullYear() === year;
+            });
+
+            // 데이터 맵 생성
+            const dataMap = Object.fromEntries(monthData.map(d => [d[0], d[1]]));
+
+            // 매출 범위 계산
+            const salesValues = monthData.map(d => d[1].sales).filter(s => s > 0);
+            const maxSales = salesValues.length > 0 ? Math.max(...salesValues) : 1;
+            const minSales = salesValues.length > 0 ? Math.min(...salesValues) : 0;
+
+            // 최고 매출일 찾기
+            const localMaxDate = monthData.length > 0 ?
+                monthData.reduce((max, d) => d[1].sales > (max ? max[1].sales : 0) ? d : max, null)?.[0] : null;
+
+            // 헤더 (요일)
+            let html = `
+                <div class="calendar-header">
+                    <div class="calendar-header-cell weekend">일</div>
+                    <div class="calendar-header-cell">월</div>
+                    <div class="calendar-header-cell">화</div>
+                    <div class="calendar-header-cell">수</div>
+                    <div class="calendar-header-cell">목</div>
+                    <div class="calendar-header-cell">금</div>
+                    <div class="calendar-header-cell weekend">토</div>
+                </div>
+                <div class="calendar-grid">
+            `;
+
+            // 빈 셀 (월 시작 전)
+            for (let i = 0; i < startDayOfWeek; i++) {
+                html += `<div class="calendar-cell empty"></div>`;
+            }
+
+            // 날짜 셀
+            for (let day = 1; day <= lastDay.getDate(); day++) {
+                const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const dayData = dataMap[dateStr];
+                const sales = dayData?.sales || 0;
+                const dayOfWeek = new Date(year, month - 1, day).getDay();
+                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                const isMaxDay = dateStr === localMaxDate;
+
+                // 색상 계산
+                const bgColor = getHeatmapColor(sales, minSales, maxSales);
+
+                html += `
+                    <div class="calendar-cell ${isWeekend ? 'weekend' : ''} ${isMaxDay ? 'max-day' : ''}"
+                         style="background-color: ${bgColor};"
+                         onclick="selectCalendarDate('${dateStr}')"
+                         data-date="${dateStr}">
+                        <span class="calendar-date">${day}</span>
+                        ${sales > 0 ? `<span class="calendar-sales">${formatShortCurrency(sales)}</span>` : ''}
+                    </div>
+                `;
+            }
+
+            html += `</div>`;
+            container.innerHTML = html;
+
+            // 월 표시 업데이트
+            document.getElementById('calendarMonth').textContent = `${year}년 ${month}월`;
+        }
+
+        function getHeatmapColor(value, min, max) {
+            if (value === 0) return '#f3f4f6';
+            const colors = ['#e0e7ff', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4f46e5'];
+            const range = max - min;
+            const normalized = range > 0 ? (value - min) / range : 0;
+            const index = Math.min(Math.floor(normalized * colors.length), colors.length - 1);
+            return colors[index];
+        }
+
+        function formatShortCurrency(value) {
+            if (value >= 100000000) return (value / 100000000).toFixed(1) + '억';
+            if (value >= 10000000) return Math.round(value / 10000).toLocaleString() + '만';
+            if (value >= 1000000) return (value / 10000).toFixed(0) + '만';
+            return Math.round(value / 10000) + '만';
+        }
+
+        function changeCalendarMonth(delta) {
+            calendarCurrentMonth += delta;
+            if (calendarCurrentMonth > 12) {
+                calendarCurrentMonth = 1;
+                calendarCurrentYear++;
+            } else if (calendarCurrentMonth < 1) {
+                calendarCurrentMonth = 12;
+                calendarCurrentYear--;
+            }
+            const dailyData = currentData.by_day || [];
+            renderCalendarForMonth(dailyData, calendarCurrentYear, calendarCurrentMonth, null);
+        }
+
+        function selectCalendarDate(dateStr) {
+            // 이전 선택 해제
+            document.querySelectorAll('.calendar-cell.selected').forEach(el => el.classList.remove('selected'));
+            // 새 선택
+            const cell = document.querySelector(`.calendar-cell[data-date="${dateStr}"]`);
+            if (cell) cell.classList.add('selected');
+            showDateDetail(dateStr);
+        }
+
+        function showDateDetail(dateStr) {
+            const container = document.getElementById('calendarSelected');
+            const dailyData = currentData.by_day || [];
+            const dataMap = Object.fromEntries(dailyData);
+            const dayData = dataMap[dateStr];
+
+            if (!dayData) {
+                container.classList.remove('active');
+                return;
+            }
+
+            const date = new Date(dateStr);
+            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+
+            // 전년 동일 비교
+            let yoyHtml = '';
+            if (compareDataList && compareDataList.length > 0) {
+                const lastYear = compareDataList[0];
+                const lastYearMap = Object.fromEntries(lastYear.by_day || []);
+                const lastYearDate = lastYear.year + dateStr.slice(4);
+                const lastYearData = lastYearMap[lastYearDate];
+                if (lastYearData && lastYearData.sales > 0) {
+                    const diff = ((dayData.sales - lastYearData.sales) / lastYearData.sales * 100);
+                    yoyHtml = `
+                        <div class="selected-stat">
+                            <div class="selected-stat-value ${diff >= 0 ? 'up' : 'down'}">
+                                ${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%
+                            </div>
+                            <div class="selected-stat-label">전년比</div>
+                        </div>
+                    `;
+                }
+            }
+
+            container.innerHTML = `
+                <div class="selected-header">
+                    <span class="selected-date">${date.getMonth() + 1}월 ${date.getDate()}일</span>
+                    <span class="selected-day">${dayNames[date.getDay()]}요일</span>
+                </div>
+                <div class="selected-stats">
+                    <div class="selected-stat">
+                        <div class="selected-stat-value">${formatCurrency(dayData.sales)}</div>
+                        <div class="selected-stat-label">매출</div>
+                    </div>
+                    <div class="selected-stat">
+                        <div class="selected-stat-value">${dayData.count}건</div>
+                        <div class="selected-stat-label">건수</div>
+                    </div>
+                    ${yoyHtml}
+                </div>
+            `;
+            container.classList.add('active');
+        }
+
+        // 요일별 평균 매출 차트
+        function createDayOfWeekChart(dailyData) {
+            const ctx = document.getElementById('dayOfWeekChart');
+            if (!ctx) return;
+            if (charts.dayOfWeek) charts.dayOfWeek.destroy();
+
+            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+            const dayOrder = ['월', '화', '수', '목', '금', '토', '일'];
+            const dayStats = {};
+            dayNames.forEach(d => dayStats[d] = { total: 0, count: 0 });
+
+            dailyData.forEach(d => {
+                const dow = dayNames[new Date(d[0]).getDay()];
+                if (d[1].sales > 0) {
+                    dayStats[dow].total += d[1].sales;
+                    dayStats[dow].count++;
+                }
+            });
+
+            const avgByDay = dayOrder.map(day => {
+                const stat = dayStats[day];
+                return stat.count > 0 ? stat.total / stat.count : 0;
+            });
+
+            // 최고 요일 찾기
+            const maxAvg = Math.max(...avgByDay);
+            const maxDayIndex = avgByDay.indexOf(maxAvg);
+            const maxDay = dayOrder[maxDayIndex];
+
+            // 배지 업데이트
+            document.getElementById('topDayBadge').textContent = `${maxDay}요일 최고`;
+
+            // 전체 평균 (0 제외)
+            const nonZeroAvgs = avgByDay.filter(v => v > 0);
+            const overallAvg = nonZeroAvgs.length > 0 ? nonZeroAvgs.reduce((a, b) => a + b, 0) / nonZeroAvgs.length : 0;
+            const diffPercent = overallAvg > 0 ? ((maxAvg - overallAvg) / overallAvg * 100).toFixed(0) : 0;
+            document.getElementById('dayInsight').innerHTML =
+                `💡 <strong>${maxDay}요일</strong>이 평균 대비 <strong>${diffPercent}%</strong> 높은 매출을 기록합니다`;
+
+            // 색상 배열 (최고 요일 강조)
+            const colors = avgByDay.map((val, idx) => {
+                if (val === 0) return '#e5e7eb';
+                if (idx === maxDayIndex) return '#f59e0b';
+                return '#6366f1';
+            });
+
+            charts.dayOfWeek = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: dayOrder,
+                    datasets: [{
+                        label: '일평균 매출',
+                        data: avgByDay,
+                        backgroundColor: colors,
+                        borderRadius: 8,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const val = context.raw;
+                                    if (val === 0) return '휴무';
+                                    return `평균: ${formatCurrency(val)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: v => (v / 10000).toFixed(0) + '만' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        // TOP 5 매출일 렌더링
+        function renderTopDays(dailyData) {
+            const container = document.getElementById('topDaysList');
+            if (!container) return;
+
+            const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+            const sorted = [...dailyData]
+                .filter(d => d[1].sales > 0)
+                .sort((a, b) => b[1].sales - a[1].sales)
+                .slice(0, 5);
+
+            const rankEmojis = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+
+            // 비교 데이터 맵
+            const compareMap = compareDataList && compareDataList.length > 0 ?
+                Object.fromEntries(compareDataList[0].by_day || []) : {};
+            const compareYear = compareDataList && compareDataList.length > 0 ? compareDataList[0].year : null;
+
+            container.innerHTML = sorted.map((d, idx) => {
+                const date = new Date(d[0]);
+                const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+                const dow = dayNames[date.getDay()];
+
+                // 전년 비교
+                let yoyHtml = '';
+                if (compareYear) {
+                    const lastYearDate = compareYear + d[0].slice(4);
+                    const lastYearData = compareMap[lastYearDate];
+                    if (lastYearData && lastYearData.sales > 0) {
+                        const diff = ((d[1].sales - lastYearData.sales) / lastYearData.sales * 100);
+                        yoyHtml = `
+                            <span class="top-day-yoy ${diff >= 0 ? 'up' : 'down'}">
+                                ${diff >= 0 ? '▲' : '▼'} ${Math.abs(diff).toFixed(0)}%
+                            </span>
+                        `;
+                    }
+                }
+
+                return `
+                    <div class="top-day-item rank-${idx + 1}">
+                        <span class="top-day-rank">${rankEmojis[idx]}</span>
+                        <div class="top-day-info">
+                            <span class="top-day-date">${dateStr}</span>
+                            <span class="top-day-dow">(${dow})</span>
+                        </div>
+                        <span class="top-day-sales">${formatCurrency(d[1].sales)}</span>
+                        ${yoyHtml}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 목적 빠른 선택 버튼 초기화
+        function initPurposeQuickBtns() {
+            const container = document.getElementById('purposeQuickBtns');
+            if (!container) return;
+
+            const purposes = (currentData.by_purpose || [])
+                .filter(p => p[0] !== '접수취소')
+                .sort((a, b) => b[1].sales - a[1].sales)
+                .slice(0, 5);
+
+            const currentValue = document.getElementById('dailyPurposeSelect')?.value || '전체';
+
+            container.innerHTML = `
+                <button class="quick-btn ${currentValue === '전체' ? 'active' : ''}" onclick="selectDailyPurpose('전체')">전체</button>
+                ${purposes.map(p => `
+                    <button class="quick-btn ${currentValue === p[0] ? 'active' : ''}" onclick="selectDailyPurpose('${p[0]}')">${p[0].length > 6 ? p[0].slice(0, 6) + '...' : p[0]}</button>
+                `).join('')}
+            `;
+        }
+
+        function selectDailyPurpose(purpose) {
+            const select = document.getElementById('dailyPurposeSelect');
+            if (select) select.value = purpose;
+            // 버튼 active 상태 업데이트
+            document.querySelectorAll('#purposeQuickBtns .quick-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.textContent.includes(purpose.slice(0, 6)) || (purpose === '전체' && btn.textContent === '전체'));
+            });
             updateDailyPurposeChart();
         }
 
