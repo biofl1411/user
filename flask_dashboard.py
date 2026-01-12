@@ -10542,8 +10542,39 @@ HTML_TEMPLATE = '''
                     isComparison: false,
                 }];
 
-                // 전년도 비교 데이터 추가
-                if (compareData && compareData.by_month) {
+                // 다중 비교 연도 데이터 추가
+                const compYearColors = ['#f59e0b', '#8b5cf6', '#10b981', '#ef4444', '#06b6d4'];
+                if (compareDataList && compareDataList.length > 0) {
+                    compareDataList.forEach((compData, compIdx) => {
+                        if (!compData.by_month) return;
+                        const compMonthMap = Object.fromEntries(compData.by_month || []);
+                        const compMonthlyInfo = labels.map((_, i) => {
+                            const m = compMonthMap[i+1] || {};
+                            return {
+                                sales: m.sales || 0,
+                                count: m.count || 0,
+                                perCase: (m.count > 0) ? (m.sales / m.count) : 0,
+                                byPurpose: m.byPurpose || {}
+                            };
+                        });
+                        const color = compYearColors[compIdx % compYearColors.length];
+                        datasets.push({
+                            label: compData.year + '년 전체',
+                            data: compMonthlyInfo.map(m => m.sales),
+                            monthlyInfo: compMonthlyInfo,
+                            compYear: compData.year,
+                            borderColor: color,
+                            backgroundColor: color + '20',
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointBackgroundColor: color,
+                            borderDash: [5, 5],
+                            isComparison: true,
+                        });
+                    });
+                } else if (compareData && compareData.by_month) {
+                    // 하위 호환성 - 단일 비교 연도
                     const compMonthMap = Object.fromEntries(compareData.by_month || []);
                     const compMonthlyInfo = labels.map((_, i) => {
                         const m = compMonthMap[i+1] || {};
@@ -10558,12 +10589,13 @@ HTML_TEMPLATE = '''
                         label: compareData.year + '년 전체',
                         data: compMonthlyInfo.map(m => m.sales),
                         monthlyInfo: compMonthlyInfo,
-                        borderColor: 'rgba(156, 163, 175, 0.8)',
-                        backgroundColor: 'rgba(156, 163, 175, 0.1)',
+                        compYear: compareData.year,
+                        borderColor: compYearColors[0],
+                        backgroundColor: compYearColors[0] + '20',
                         fill: false,
                         tension: 0.4,
                         pointRadius: 4,
-                        pointBackgroundColor: 'rgba(156, 163, 175, 0.8)',
+                        pointBackgroundColor: compYearColors[0],
                         borderDash: [5, 5],
                         isComparison: true,
                     });
@@ -10965,8 +10997,38 @@ HTML_TEMPLATE = '''
                     });
                 });
 
-                // 전년도 비교 데이터 추가
-                if (compareData && compareData.by_month) {
+                // 다중 비교 연도 데이터 추가
+                const compYearColorsTop3 = ['#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
+                if (compareDataList && compareDataList.length > 0) {
+                    compareDataList.forEach((compData, compIdx) => {
+                        if (!compData.by_month) return;
+                        const compMonthMap = Object.fromEntries(compData.by_month || []);
+                        top3Labels.forEach((name, i) => {
+                            const monthlyInfo = labels.map((_, mi) => {
+                                const monthData = compMonthMap[mi+1];
+                                const mgrData = monthData?.byManager?.[name];
+                                const sales = mgrData?.sales || 0;
+                                const count = mgrData?.count || 0;
+                                const byPurpose = mgrData?.byPurpose || {};
+                                return { sales, count, perCase: count > 0 ? sales / count : 0, byPurpose };
+                            });
+                            datasets.push({
+                                label: name + ' (' + compData.year + ')',
+                                data: monthlyInfo.map(d => d.sales),
+                                monthlyInfo,
+                                compYear: compData.year,
+                                borderColor: compYearColorsTop3[compIdx % compYearColorsTop3.length] + '80',
+                                backgroundColor: 'transparent',
+                                fill: false,
+                                tension: 0.4,
+                                pointRadius: 3,
+                                borderDash: [5, 5],
+                                isComparison: true,
+                            });
+                        });
+                    });
+                } else if (compareData && compareData.by_month) {
+                    // 하위 호환성 - 단일 비교 연도
                     const compMonthMap = Object.fromEntries(compareData.by_month || []);
                     top3Labels.forEach((name, i) => {
                         const monthlyInfo = labels.map((_, mi) => {
@@ -10981,6 +11043,7 @@ HTML_TEMPLATE = '''
                             label: name + ' (' + compareData.year + ')',
                             data: monthlyInfo.map(d => d.sales),
                             monthlyInfo,
+                            compYear: compareData.year,
                             borderColor: colors[i] + '60',
                             backgroundColor: 'transparent',
                             fill: false,
@@ -11386,8 +11449,38 @@ HTML_TEMPLATE = '''
                         });
                     });
 
-                    // 전년도 비교 데이터 추가
-                    if (compareData && compareData.by_month) {
+                    // 다중 비교 연도 데이터 추가
+                    const compYearColorsSelected = ['#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
+                    if (compareDataList && compareDataList.length > 0) {
+                        compareDataList.forEach((compData, compIdx) => {
+                            if (!compData.by_month) return;
+                            const compMonthMap = Object.fromEntries(compData.by_month || []);
+                            selectedManagers.forEach((name, i) => {
+                                const monthlyInfo = labels.map((_, mi) => {
+                                    const monthData = compMonthMap[mi+1];
+                                    const mgrData = monthData?.byManager?.[name];
+                                    const sales = mgrData?.sales || 0;
+                                    const count = mgrData?.count || 0;
+                                    const byPurpose = mgrData?.byPurpose || {};
+                                    return { sales, count, perCase: count > 0 ? sales / count : 0, byPurpose };
+                                });
+                                datasets.push({
+                                    label: name + ' (' + compData.year + ')',
+                                    data: monthlyInfo.map(d => d.sales),
+                                    monthlyInfo,
+                                    compYear: compData.year,
+                                    borderColor: compYearColorsSelected[compIdx % compYearColorsSelected.length] + '80',
+                                    backgroundColor: 'transparent',
+                                    fill: false,
+                                    tension: 0.4,
+                                    pointRadius: 3,
+                                    borderDash: [5, 5],
+                                    isComparison: true,
+                                });
+                            });
+                        });
+                    } else if (compareData && compareData.by_month) {
+                        // 하위 호환성 - 단일 비교 연도
                         const compMonthMap = Object.fromEntries(compareData.by_month || []);
                         selectedManagers.forEach((name, i) => {
                             const monthlyInfo = labels.map((_, mi) => {
@@ -11402,6 +11495,7 @@ HTML_TEMPLATE = '''
                                 label: name + ' (' + compareData.year + ')',
                                 data: monthlyInfo.map(d => d.sales),
                                 monthlyInfo,
+                                compYear: compareData.year,
                                 borderColor: colors[i % colors.length] + '60',
                                 backgroundColor: 'transparent',
                                 fill: false,
@@ -15289,8 +15383,37 @@ HTML_TEMPLATE = '''
                 fill: false,
             });
 
-            // 선택된 비교년도 데이터 추가
-            if (selectedCompareYear && compareData && compareData.year == selectedCompareYear && compareData.by_month) {
+            // 다중 비교 연도 데이터 추가
+            const compYearColorsBranch = ['#f59e0b', '#8b5cf6', '#10b981', '#ef4444'];
+            if (compareDataList && compareDataList.length > 0) {
+                compareDataList.forEach((compData, compIdx) => {
+                    if (!compData.by_month) return;
+                    const compMonthMap = Object.fromEntries(compData.by_month || []);
+                    branchMonthlyData.forEach((b, i) => {
+                        const monthlyInfo = labels.map((_, mi) => {
+                            const monthData = compMonthMap[mi+1];
+                            const sales = monthData?.byBranch?.[b.name]?.sales || 0;
+                            const count = monthData?.byBranch?.[b.name]?.count || 0;
+                            return { sales, count, perCase: count > 0 ? sales / count : 0 };
+                        });
+                        datasets.push({
+                            label: b.name + ' (' + compData.year + ')',
+                            data: monthlyInfo.map(d => d.sales),
+                            monthlyInfo,
+                            compareYear: compData.year,
+                            borderColor: compYearColorsBranch[compIdx % compYearColorsBranch.length] + '80',
+                            backgroundColor: 'transparent',
+                            fill: false,
+                            tension: 0.4,
+                            pointRadius: 2,
+                            borderDash: [4, 4],
+                            borderWidth: 1,
+                            isComparison: true,
+                        });
+                    });
+                });
+            } else if (selectedCompareYear && compareData && compareData.year == selectedCompareYear && compareData.by_month) {
+                // 하위 호환성 - 단일 비교 연도
                 const compMonthMap = Object.fromEntries(compareData.by_month || []);
                 branchMonthlyData.forEach((b, i) => {
                     const monthlyInfo = labels.map((_, mi) => {
