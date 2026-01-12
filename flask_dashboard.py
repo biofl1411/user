@@ -10812,8 +10812,29 @@ HTML_TEMPLATE = '''
             if (summaryEl) {
                 const totalSales = salesData.reduce((a, b) => a + b, 0);
                 const totalCount = countData.reduce((a, b) => a + b, 0);
+
+                // 전년 동기 합계 계산 (현재 데이터의 날짜 범위에 맞춰서)
+                let compareSummaryHtml = '';
+                if (compareDataList && compareDataList.length > 0) {
+                    const compareColors = ['#f59e0b', '#8b5cf6', '#10b981'];
+                    const compareBgs = ['#fef3c7', '#ede9fe', '#d1fae5'];
+                    compareDataList.forEach((compData, idx) => {
+                        const compDayMap = Object.fromEntries(compData.by_day || []);
+                        // 현재 조회 기간과 동일한 월-일의 비교 연도 데이터 합계
+                        let compTotal = 0;
+                        dailyData.forEach(d => {
+                            const targetDate = compData.year + d[0].slice(4); // 비교년도-MM-DD
+                            compTotal += compDayMap[targetDate]?.sales || 0;
+                        });
+                        const diff = totalSales > 0 && compTotal > 0 ? ((totalSales - compTotal) / compTotal * 100) : 0;
+                        const diffStr = compTotal > 0 ? ` (${diff >= 0 ? '+' : ''}${diff.toFixed(1)}%)` : '';
+                        compareSummaryHtml += `<span style="background:${compareBgs[idx % compareBgs.length]};padding:4px 10px;border-radius:4px;color:${compareColors[idx % compareColors.length]};">${compData.year}년 동기: <strong>${(compTotal / 100000000).toFixed(2)}억</strong>${diffStr}</span>`;
+                    });
+                }
+
                 summaryEl.innerHTML = `
                     <span style="background:#dbeafe;padding:4px 10px;border-radius:4px;color:#1e40af;">${currentData.year}년: <strong>${(totalSales / 100000000).toFixed(2)}억</strong></span>
+                    ${compareSummaryHtml}
                     <span style="background:#e0e7ff;padding:4px 10px;border-radius:4px;color:#3730a3;">건수: <strong>${totalCount.toLocaleString()}건</strong></span>
                     <span style="background:#fce7f3;padding:4px 10px;border-radius:4px;color:#9d174d;">일평균: <strong>${(avgSales / 10000).toFixed(0)}만</strong></span>
                 `;
