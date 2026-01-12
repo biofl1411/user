@@ -9485,38 +9485,37 @@ HTML_TEMPLATE = '''
 
                 const compareYearCheckboxes = document.getElementById('compareYearCheckboxes');
                 if (compareYearCheckboxes && availableYears.length > 0) {
-                    // 비교 연도는 두 번째 연도부터 (현재 연도 제외)
-                    const compareYears = availableYears.slice(1);
-                    if (compareYears.length > 0) {
-                        compareYearCheckboxes.innerHTML = compareYears.map((y, i) =>
-                            `<label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
-                                <input type="checkbox" class="compare-year-cb" value="${y}" ${i === 0 ? 'checked' : ''}>
-                                <span style="font-size: 13px;">${y}년</span>
-                            </label>`
-                        ).join('');
-                    } else {
-                        // 비교할 연도가 없으면 현재 연도 -1 추가
-                        const prevYear = availableYears[0] - 1;
-                        compareYearCheckboxes.innerHTML = `<label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
-                            <input type="checkbox" class="compare-year-cb" value="${prevYear}" checked>
-                            <span style="font-size: 13px;">${prevYear}년</span>
-                        </label>`;
-                    }
+                    // 모든 연도를 비교 연도로 표시
+                    compareYearCheckboxes.innerHTML = availableYears.map((y, i) =>
+                        `<label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" class="compare-year-cb" value="${y}">
+                            <span style="font-size: 13px;">${y}년</span>
+                        </label>`
+                    ).join('');
                 }
             } catch (e) {
                 console.error('[DEBUG] 연도 목록 로드 실패:', e);
                 // 실패 시 기본값 사용
-                availableYears = [2025, 2024];
+                availableYears = [2026, 2025, 2024];
                 const yearSelect = document.getElementById('yearSelect');
                 const compareYearCheckboxes = document.getElementById('compareYearCheckboxes');
                 if (yearSelect) {
-                    yearSelect.innerHTML = '<option value="2025" selected>2025년</option><option value="2024">2024년</option>';
+                    yearSelect.innerHTML = '<option value="2026" selected>2026년</option><option value="2025">2025년</option><option value="2024">2024년</option>';
                 }
                 if (compareYearCheckboxes) {
-                    compareYearCheckboxes.innerHTML = `<label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
-                        <input type="checkbox" class="compare-year-cb" value="2024" checked>
-                        <span style="font-size: 13px;">2024년</span>
-                    </label>`;
+                    compareYearCheckboxes.innerHTML = `
+                        <label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" class="compare-year-cb" value="2026">
+                            <span style="font-size: 13px;">2026년</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" class="compare-year-cb" value="2025">
+                            <span style="font-size: 13px;">2025년</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #f1f5f9; border-radius: 4px; cursor: pointer;">
+                            <input type="checkbox" class="compare-year-cb" value="2024">
+                            <span style="font-size: 13px;">2024년</span>
+                        </label>`;
                 }
             }
         }
