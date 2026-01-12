@@ -26553,7 +26553,7 @@ def api_available_years():
             conn = sqlite3.connect(str(SQLITE_DB))
             cursor = conn.cursor()
             cursor.execute('SELECT DISTINCT year FROM excel_data ORDER BY year DESC')
-            db_years = [row[0] for row in cursor.fetchall()]
+            db_years = [int(row[0]) for row in cursor.fetchall() if row[0]]
             years_set.update(db_years)
             conn.close()
         except:
