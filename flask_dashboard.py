@@ -6982,12 +6982,27 @@ HTML_TEMPLATE = '''
 
                 <label class="filter-checkbox">
                     <input type="checkbox" id="compareCheck">
-                    <span>전년비교</span>
+                    <span>연도비교</span>
                 </label>
 
                 <div class="filter-group" id="compareYearGroup" style="display: none;">
-                    <select id="compareYearSelect" class="filter-select">
-                        <!-- 비교 연도 목록은 API에서 동적으로 로드됨 -->
+                    <div id="compareYearCheckboxes" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <!-- 비교 연도 체크박스는 API에서 동적으로 로드됨 -->
+                    </div>
+                    <select id="compareMonthSelect" class="filter-select" style="min-width: 80px;">
+                        <option value="same">동일월</option>
+                        <option value="1">1월</option>
+                        <option value="2">2월</option>
+                        <option value="3">3월</option>
+                        <option value="4">4월</option>
+                        <option value="5">5월</option>
+                        <option value="6">6월</option>
+                        <option value="7">7월</option>
+                        <option value="8">8월</option>
+                        <option value="9">9월</option>
+                        <option value="10">10월</option>
+                        <option value="11">11월</option>
+                        <option value="12">12월</option>
                     </select>
                 </div>
 
@@ -9303,6 +9318,7 @@ HTML_TEMPLATE = '''
         let charts = {};
         let currentData = null;
         let compareData = null;
+        let compareDataList = [];  // 다중 비교 연도 데이터 배열
         let currentTab = 'main';
         let managerTableSort = { column: null, direction: 'desc' };
         let branchTableSort = { column: null, direction: 'desc' };
@@ -9469,12 +9485,12 @@ HTML_TEMPLATE = '''
             try {
                 const res = await fetch('/api/available-years');
                 const data = await res.json();
-                availableYears = data.years || [2025, 2024];
+                availableYears = data.years || [2026, 2025, 2024];
                 console.log('[DEBUG] 사용 가능한 연도:', availableYears);
 
                 // 연도 드롭다운 채우기
                 const yearSelect = document.getElementById('yearSelect');
-                const compareYearSelect = document.getElementById('compareYearSelect');
+                const compareYearCheckboxes = document.getElementById('compareYearCheckboxes');
 
                 if (yearSelect && availableYears.length > 0) {
                     yearSelect.innerHTML = availableYears.map((y, i) =>
@@ -9482,30 +9498,39 @@ HTML_TEMPLATE = '''
                     ).join('');
                 }
 
-                if (compareYearSelect && availableYears.length > 0) {
-                    // 비교 연도는 두 번째 연도부터 (현재 연도 제외)
-                    const compareYears = availableYears.slice(1);
-                    if (compareYears.length > 0) {
-                        compareYearSelect.innerHTML = compareYears.map((y, i) =>
-                            `<option value="${y}" ${i === 0 ? 'selected' : ''}>${y}년</option>`
-                        ).join('');
-                    } else {
-                        // 비교할 연도가 없으면 현재 연도 -1 추가
-                        const prevYear = availableYears[0] - 1;
-                        compareYearSelect.innerHTML = `<option value="${prevYear}">${prevYear}년</option>`;
-                    }
+                // 비교 연도 체크박스 생성
+                if (compareYearCheckboxes && availableYears.length > 0) {
+                    const currentYear = availableYears[0];
+                    compareYearCheckboxes.innerHTML = availableYears.map((y, i) =>
+                        `<label style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: ${i === 0 ? '#e0e7ff' : '#f1f5f9'}; border-radius: 6px; cursor: pointer; font-size: 13px; border: 1px solid ${i === 0 ? '#818cf8' : '#e2e8f0'};">
+                            <input type="checkbox" class="compare-year-cb" value="${y}" ${i === 0 ? 'disabled' : ''}>
+                            <span>${y}년${i === 0 ? ' (현재)' : ''}</span>
+                        </label>`
+                    ).join('');
                 }
             } catch (e) {
                 console.error('[DEBUG] 연도 목록 로드 실패:', e);
                 // 실패 시 기본값 사용
-                availableYears = [2025, 2024];
+                availableYears = [2026, 2025, 2024];
                 const yearSelect = document.getElementById('yearSelect');
-                const compareYearSelect = document.getElementById('compareYearSelect');
+                const compareYearCheckboxes = document.getElementById('compareYearCheckboxes');
                 if (yearSelect) {
-                    yearSelect.innerHTML = '<option value="2025" selected>2025년</option><option value="2024">2024년</option>';
+                    yearSelect.innerHTML = '<option value="2026" selected>2026년</option><option value="2025">2025년</option><option value="2024">2024년</option>';
                 }
-                if (compareYearSelect) {
-                    compareYearSelect.innerHTML = '<option value="2024" selected>2024년</option>';
+                if (compareYearCheckboxes) {
+                    compareYearCheckboxes.innerHTML = `
+                        <label style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #e0e7ff; border-radius: 6px; cursor: pointer; font-size: 13px; border: 1px solid #818cf8;">
+                            <input type="checkbox" class="compare-year-cb" value="2026" disabled>
+                            <span>2026년 (현재)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #f1f5f9; border-radius: 6px; cursor: pointer; font-size: 13px; border: 1px solid #e2e8f0;">
+                            <input type="checkbox" class="compare-year-cb" value="2025">
+                            <span>2025년</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; padding: 4px 10px; background: #f1f5f9; border-radius: 6px; cursor: pointer; font-size: 13px; border: 1px solid #e2e8f0;">
+                            <input type="checkbox" class="compare-year-cb" value="2024">
+                            <span>2024년</span>
+                        </label>`;
                 }
             }
         }
@@ -9533,8 +9558,12 @@ HTML_TEMPLATE = '''
                 const month = document.getElementById('monthSelect').value;
                 const purpose = document.getElementById('purposeSelect').value;
                 const compareCheck = document.getElementById('compareCheck').checked;
-                const compareYear = document.getElementById('compareYearSelect').value;
-                console.log('[DEBUG] 조회 조건:', { year, month, purpose, compareCheck, compareYear });
+                // 다중 비교 연도 체크박스에서 선택된 연도들 가져오기
+                const selectedCompareYears = Array.from(document.querySelectorAll('.compare-year-cb:checked')).map(cb => cb.value);
+                // 비교 월 선택 (동일월 또는 특정 월)
+                const compareMonthSelect = document.getElementById('compareMonthSelect');
+                const compareMonth = compareMonthSelect ? compareMonthSelect.value : 'same';
+                console.log('[DEBUG] 조회 조건:', { year, month, purpose, compareCheck, selectedCompareYears, compareMonth });
 
                 let url = `/api/data?year=${year}`;
                 if (month) url += `&month=${month}`;
@@ -9547,16 +9576,25 @@ HTML_TEMPLATE = '''
                 console.log('[DEBUG] currentData 로드됨, 키:', Object.keys(currentData));
                 currentData.year = year;
 
-                // 비교 데이터 로드
-                if (compareCheck) {
-                    let compUrl = `/api/data?year=${compareYear}`;
-                    if (month) compUrl += `&month=${month}`;
-                    if (purpose !== '전체') compUrl += `&purpose=${encodeURIComponent(purpose)}`;
-                    const compRes = await fetch(compUrl);
-                    compareData = await compRes.json();
-                    compareData.year = compareYear;
+                // 다중 비교 데이터 로드
+                if (compareCheck && selectedCompareYears.length > 0) {
+                    compareDataList = [];
+                    for (const compYear of selectedCompareYears) {
+                        let compUrl = `/api/data?year=${compYear}`;
+                        // 동일월이면 현재 선택된 월, 아니면 비교 월 사용
+                        const monthToUse = compareMonth === 'same' ? month : compareMonth;
+                        if (monthToUse) compUrl += `&month=${monthToUse}`;
+                        if (purpose !== '전체') compUrl += `&purpose=${encodeURIComponent(purpose)}`;
+                        const compRes = await fetch(compUrl);
+                        const compData = await compRes.json();
+                        compData.year = compYear;
+                        compareDataList.push(compData);
+                    }
+                    // 하위 호환성: 첫 번째 비교 연도를 compareData에도 설정
+                    compareData = compareDataList.length > 0 ? compareDataList[0] : null;
                 } else {
                     compareData = null;
+                    compareDataList = [];
                 }
 
                 updateAll();
