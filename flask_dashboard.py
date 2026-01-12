@@ -18988,15 +18988,51 @@ HTML_TEMPLATE = '''
                 return el;
             };
 
+            // 차트 데이터셋 구성 (현재 연도 + 비교 연도)
+            const quarterlyDatasets = [{
+                label: currentData.year + '년',
+                data: quarters,
+                backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                borderRadius: 6
+            }];
+
+            // 비교 연도 데이터셋 추가
+            const compYearColors = ['rgba(249, 115, 22, 0.6)', 'rgba(139, 92, 246, 0.5)', 'rgba(16, 185, 129, 0.5)'];
+            if (compQuartersList.length > 0) {
+                compQuartersList.forEach((compYear, idx) => {
+                    quarterlyDatasets.push({
+                        label: compYear.year + '년',
+                        data: compYear.quarters,
+                        backgroundColor: compYearColors[idx % compYearColors.length],
+                        borderRadius: 6
+                    });
+                });
+            }
+
+            // 레전드 표시
+            const quarterlyLegendEl = document.getElementById('quarterlyLegend');
+            if (quarterlyLegendEl) {
+                if (compQuartersList.length > 0) {
+                    let legendHtml = `<div class="legend-item"><div class="legend-color" style="background: rgba(99, 102, 241, 0.8);"></div><span>${currentData.year}년</span></div>`;
+                    compQuartersList.forEach((compYear, idx) => {
+                        legendHtml += `<div class="legend-item"><div class="legend-color" style="background: ${compYearColors[idx % compYearColors.length]};"></div><span>${compYear.year}년</span></div>`;
+                    });
+                    quarterlyLegendEl.innerHTML = legendHtml;
+                    quarterlyLegendEl.style.display = 'flex';
+                } else {
+                    quarterlyLegendEl.style.display = 'none';
+                }
+            }
+
             charts.quarterly = new Chart(ctx, {
                 type: 'bar',
-                data: { labels: ['1분기', '2분기', '3분기', '4분기'], datasets: [{ data: quarters, backgroundColor: ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef'], borderRadius: 6 }] },
+                data: { labels: ['1분기', '2분기', '3분기', '4분기'], datasets: quarterlyDatasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { intersect: true },
                     plugins: {
-                        legend: { display: false },
+                        legend: { display: compQuartersList.length > 0 },
                         tooltip: {
                             enabled: false,
                             external: function(context) {
@@ -21605,23 +21641,43 @@ HTML_TEMPLATE = '''
                 return el;
             };
 
+            // 데이터셋 구성
+            const countDatasets = [{
+                label: currentData.year + '년 건수',
+                data: top10.map(c => c[1].count),
+                backgroundColor: top10.map(c => newClientNames.has(c[0]) ? 'rgba(16, 185, 129, 0.8)' : 'rgba(99, 102, 241, 0.8)'),
+                borderRadius: 6,
+                order: 1
+            }];
+
+            // 전년 비교 데이터 추가
+            if (hasCompare) {
+                countDatasets.push({
+                    label: compareData.year + '년 건수',
+                    data: top10.map(c => {
+                        const compData = compareClientMap[c[0]];
+                        return compData ? compData.count : 0;
+                    }),
+                    backgroundColor: 'rgba(245, 158, 11, 0.5)',
+                    borderColor: '#f59e0b',
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    order: 2
+                });
+            }
+
             charts.clientCount = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: top10.map(c => c[0].length > 8 ? c[0].substring(0, 8) + '..' : c[0]),
-                    datasets: [{
-                        label: '건수',
-                        data: top10.map(c => c[1].count),
-                        backgroundColor: top10.map(c => newClientNames.has(c[0]) ? 'rgba(16, 185, 129, 0.8)' : 'rgba(99, 102, 241, 0.8)'),
-                        borderRadius: 6
-                    }]
+                    datasets: countDatasets
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { intersect: true },
                     plugins: {
-                        legend: { display: false },
+                        legend: { display: hasCompare, position: 'top', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } },
                         tooltip: {
                             enabled: false,
                             external: function(context) {
@@ -23160,16 +23216,39 @@ HTML_TEMPLATE = '''
                 return el;
             };
 
+            // 데이터셋 구성
+            const regionSalesDatasets = [{
+                label: currentData.year + '년 매출',
+                data: sorted.map(r => r.sales),
+                backgroundColor: sorted.map(r => r.growthRate >= 0 ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.6)'),
+                borderRadius: 6,
+                order: 1
+            }];
+
+            // 비교 연도 데이터 추가
+            if (compareData && compareData.by_region) {
+                const compRegionMap = Object.fromEntries((compareData.by_region || []).map(r => [r[0], r[1]]));
+                regionSalesDatasets.push({
+                    label: compareData.year + '년 매출',
+                    data: sorted.map(r => {
+                        const compRegion = compRegionMap[r.name];
+                        return compRegion ? compRegion.sales : 0;
+                    }),
+                    backgroundColor: 'rgba(245, 158, 11, 0.5)',
+                    borderColor: '#f59e0b',
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    order: 2
+                });
+            }
+
+            const hasRegionCompare = compareData && compareData.by_region;
+
             charts.regionSales = new Chart(ctx.getContext('2d'), {
                 type: 'bar',
                 data: {
                     labels: sorted.map(r => r.name),
-                    datasets: [{
-                        label: '매출',
-                        data: sorted.map(r => r.sales),
-                        backgroundColor: sorted.map(r => r.growthRate >= 0 ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.6)'),
-                        borderRadius: 6
-                    }]
+                    datasets: regionSalesDatasets
                 },
                 options: {
                     responsive: true,
@@ -23177,7 +23256,7 @@ HTML_TEMPLATE = '''
                     interaction: { intersect: true },
                     indexAxis: 'y',
                     plugins: {
-                        legend: { display: false },
+                        legend: { display: hasRegionCompare, position: 'top', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } },
                         tooltip: {
                             enabled: false,
                             external: function(context) {
@@ -24830,6 +24909,31 @@ HTML_TEMPLATE = '''
                     borderWidth: 2
                 };
             });
+
+            // 비교 연도 데이터 추가 (점선)
+            if (compareData && compareData.by_month) {
+                const compMonthMap = Object.fromEntries(compareData.by_month || []);
+                top5.forEach((p, i) => {
+                    const compMonthlyData = labels.map((_, mIdx) => {
+                        const monthData = compMonthMap[mIdx + 1]?.byPurpose?.[p.name];
+                        return monthData?.sales || 0;
+                    });
+                    // 데이터가 있는 경우에만 추가
+                    if (compMonthlyData.some(v => v > 0)) {
+                        datasets.push({
+                            label: (p.name.length > 8 ? p.name.substring(0, 8) + '..' : p.name) + ' (' + compareData.year + ')',
+                            data: compMonthlyData,
+                            borderColor: colors[i] + '60',
+                            backgroundColor: 'transparent',
+                            borderDash: [4, 4],
+                            tension: 0.4,
+                            fill: false,
+                            borderWidth: 1,
+                            pointRadius: 2
+                        });
+                    }
+                });
+            }
 
             // purposeMonthlySummary 요약 정보 표시
             const purposeMonthlySummaryEl = document.getElementById('purposeMonthlySummary');
