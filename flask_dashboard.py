@@ -10671,7 +10671,7 @@ HTML_TEMPLATE = '''
 
                         // 1. 헤더
                         const headerBg = isIncrease ? 'rgba(99, 102, 241, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-                        const yearLabel = isComparison ? compareData.year : currentData.year;
+                        const yearLabel = isComparison ? (ds.compYear || compareData?.year || '') : currentData.year;
                         html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">📅 ${yearLabel}년 ${monthIdx + 1}월 ${isComparison ? '(비교)' : ''}</div>`;
 
                         // 2. 기본 지표 - 모든 연도 표시 (다중 비교 지원)
@@ -11126,7 +11126,7 @@ HTML_TEMPLATE = '''
 
                         // 1. 헤더
                         const headerBg = isIncrease ? 'rgba(99, 102, 241, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-                        const yearLabel = isComparison ? compareData.year : currentData.year;
+                        const yearLabel = isComparison ? (ds.compYear || compareData?.year || '') : currentData.year;
                         html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">👤 ${managerName} - ${yearLabel}년 ${monthIdx + 1}월</div>`;
 
                         // 2. 기본 지표 - 모든 연도 표시 (다중 비교 지원)
@@ -11576,7 +11576,7 @@ HTML_TEMPLATE = '''
 
                             // 1. 헤더
                             const headerBg = isIncrease ? 'rgba(99, 102, 241, 0.3)' : 'rgba(239, 68, 68, 0.3)';
-                            const yearLabel = isComparison ? compareData.year : currentData.year;
+                            const yearLabel = isComparison ? (ds.compYear || compareData?.year || '') : currentData.year;
                             html += `<div style="font-size: 16px; font-weight: bold; color: #fff; margin: -16px -16px 12px -16px; padding: 12px 16px; background: ${headerBg}; border-radius: 10px 10px 0 0;">👤 ${managerName} - ${yearLabel}년 ${monthIdx + 1}월</div>`;
 
                             // 2. 기본 지표 - 모든 연도 표시 (다중 비교 지원)
@@ -15501,7 +15501,7 @@ HTML_TEMPLATE = '''
                     // 클릭한 포인트가 비교 연도인지 확인
                     const clickedPoint = dataPoints[0];
                     const isClickedComparison = clickedPoint?.dataset?.isComparison;
-                    const displayYear = isClickedComparison ? selectedCompareYear : currentData.year;
+                    const displayYear = isClickedComparison ? (clickedPoint?.dataset?.compareYear || selectedCompareYear) : currentData.year;
 
                     // 현재 연도 데이터만 필터링
                     const currentYearPoints = dataPoints.filter(p => !p.dataset.isComparison && p.dataset.label !== '평균');
@@ -15514,11 +15514,18 @@ HTML_TEMPLATE = '''
                         compYearPoints.forEach(point => {
                             const ds = point.dataset;
                             const rawLabel = ds.label || '';
-                            const branchName = rawLabel.replace(` (${selectedCompareYear})`, '');
+                            const compYear = ds.compareYear || selectedCompareYear;
+                            const branchName = rawLabel.replace(` (${compYear})`, '');
                             const value = point.raw || 0;
 
-                            // 비교 연도의 월별 데이터 가져오기
-                            const compMonthMap = Object.fromEntries(compareData?.by_month || []);
+                            // 비교 연도의 월별 데이터 가져오기 (다중 비교 연도 지원)
+                            let compMonthMap = {};
+                            if (compareDataList && compareDataList.length > 0) {
+                                const targetCompData = compareDataList.find(c => c.year == compYear);
+                                compMonthMap = Object.fromEntries(targetCompData?.by_month || []);
+                            } else if (compareData?.by_month) {
+                                compMonthMap = Object.fromEntries(compareData.by_month || []);
+                            }
                             const compMonthData = compMonthMap[monthIdx + 1];
                             const branchData = compMonthData?.byBranch?.[branchName];
                             const count = branchData?.count || 0;
