@@ -3935,8 +3935,8 @@ ADMIN_TEMPLATE = '''
                         <tbody id="costRateSettingsTable">
                             <tr>
                                 <td style="padding: 12px;">2026년</td>
-                                <td style="padding: 12px; text-align: right; color: #94a3b8;">-</td>
-                                <td style="padding: 12px; text-align: right; color: #94a3b8;">-</td>
+                                <td id="costRef2026" style="padding: 12px; text-align: right; color: #94a3b8;">-</td>
+                                <td id="salesRef2026" style="padding: 12px; text-align: right; color: #64748b; font-weight: 500;">로딩중...</td>
                                 <td style="padding: 12px; text-align: center;">
                                     <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                                         <input type="number" id="costRate2026" value="69.7" step="0.1" min="0" max="100"
@@ -3947,8 +3947,8 @@ ADMIN_TEMPLATE = '''
                             </tr>
                             <tr style="background: #f8fafc;">
                                 <td style="padding: 12px;">2025년</td>
-                                <td style="padding: 12px; text-align: right; color: #94a3b8;">36.2억</td>
-                                <td style="padding: 12px; text-align: right; color: #94a3b8;">52.0억</td>
+                                <td id="costRef2025" style="padding: 12px; text-align: right; color: #94a3b8;">-</td>
+                                <td id="salesRef2025" style="padding: 12px; text-align: right; color: #64748b; font-weight: 500;">로딩중...</td>
                                 <td style="padding: 12px; text-align: center;">
                                     <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                                         <input type="number" id="costRate2025" value="69.7" step="0.1" min="0" max="100"
@@ -3959,8 +3959,8 @@ ADMIN_TEMPLATE = '''
                             </tr>
                             <tr>
                                 <td style="padding: 12px;">2024년</td>
-                                <td style="padding: 12px; text-align: right; color: #94a3b8;">31.8억</td>
-                                <td style="padding: 12px; text-align: right; color: #94a3b8;">57.0억</td>
+                                <td id="costRef2024" style="padding: 12px; text-align: right; color: #94a3b8;">-</td>
+                                <td id="salesRef2024" style="padding: 12px; text-align: right; color: #64748b; font-weight: 500;">로딩중...</td>
                                 <td style="padding: 12px; text-align: center;">
                                     <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                                         <input type="number" id="costRate2024" value="55.8" step="0.1" min="0" max="100"
@@ -3973,7 +3973,7 @@ ADMIN_TEMPLATE = '''
                     </table>
                     <div style="margin-top: 12px; padding: 10px 15px; background: #f8fafc; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
                         <span>ℹ️</span>
-                        <span style="font-size: 13px; color: #64748b;">참고: 매출원가, 매출액은 재무제표 기준 참고값입니다.</span>
+                        <span style="font-size: 13px; color: #64748b;">참고: 매출액은 프로그램 데이터 기준, 매출원가는 매출액 × 원가율로 계산됩니다.</span>
                     </div>
                 </div>
 
@@ -5091,16 +5091,63 @@ ADMIN_TEMPLATE = '''
         // ========== 손익분석 설정 함수들 ==========
         async function loadProfitSettingsPanel() {
             try {
+                // 설정값 로드
                 const response = await fetch('/api/admin/profit-settings');
                 const data = await response.json();
 
                 if (data.settings) {
-                    // 원가율 설정
                     data.settings.forEach(s => {
                         const costRateEl = document.getElementById('costRate' + s.year);
                         const sgaMonthlyEl = document.getElementById('sgaMonthly' + s.year);
                         if (costRateEl) costRateEl.value = s.cost_rate || 69.7;
                         if (sgaMonthlyEl) sgaMonthlyEl.value = s.sga_monthly || 2.5;
+                    });
+                }
+
+                // 년도별 매출액 로드
+                const salesResponse = await fetch('/api/admin/yearly-sales-summary');
+                const salesData = await salesResponse.json();
+
+                if (salesData.success && salesData.data) {
+                    ['2024', '2025', '2026'].forEach(year => {
+                        const yearData = salesData.data[year];
+                        const salesEl = document.getElementById('salesRef' + year);
+                        const costEl = document.getElementById('costRef' + year);
+                        const costRateEl = document.getElementById('costRate' + year);
+
+                        if (yearData && salesEl) {
+                            const sales = yearData.total_sales || 0;
+                            // 억원 단위로 표시
+                            if (sales > 0) {
+                                salesEl.textContent = (sales / 100000000).toFixed(1) + '억';
+                                // 매출원가 = 매출액 × 원가율
+                                const costRate = parseFloat(costRateEl?.value || 69.7) / 100;
+                                const estimatedCost = sales * costRate;
+                                if (costEl) costEl.textContent = (estimatedCost / 100000000).toFixed(1) + '억';
+                            } else {
+                                salesEl.textContent = '-';
+                                if (costEl) costEl.textContent = '-';
+                            }
+                        } else if (salesEl) {
+                            salesEl.textContent = '-';
+                        }
+                    });
+
+                    // 원가율 변경 시 매출원가 자동 계산
+                    ['2024', '2025', '2026'].forEach(year => {
+                        const costRateEl = document.getElementById('costRate' + year);
+                        if (costRateEl) {
+                            costRateEl.addEventListener('input', () => {
+                                const yearData = salesData.data[year];
+                                const costEl = document.getElementById('costRef' + year);
+                                if (yearData && costEl) {
+                                    const sales = yearData.total_sales || 0;
+                                    const costRate = parseFloat(costRateEl.value || 69.7) / 100;
+                                    const estimatedCost = sales * costRate;
+                                    costEl.textContent = sales > 0 ? (estimatedCost / 100000000).toFixed(1) + '억' : '-';
+                                }
+                            });
+                        }
                     });
                 }
             } catch (e) {
@@ -29599,6 +29646,28 @@ def get_profit_analysis_settings(year):
         return {'cost_rate': default_cost_rate, 'sga_monthly': default_sga}
     except:
         return {'cost_rate': 69.7, 'sga_monthly': 2.5}
+
+@app.route('/api/admin/yearly-sales-summary')
+@admin_required
+def api_admin_yearly_sales_summary():
+    """년도별 매출액 요약 (손익분석 설정 참고용)"""
+    try:
+        result = {}
+        for year in ['2024', '2025', '2026']:
+            data = load_excel_data(year)
+            total_sales = 0
+            for row in data:
+                fee = row.get('공급가액', 0) or 0
+                if isinstance(fee, str):
+                    fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
+                total_sales += fee
+            result[year] = {
+                'total_sales': total_sales,
+                'count': len(data)
+            }
+        return jsonify({'success': True, 'data': result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # ============ 손익계산서 설정 API ============
 @app.route('/api/admin/financial-settings')
