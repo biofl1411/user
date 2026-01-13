@@ -30503,13 +30503,13 @@ def export_pdf():
         y_pos = height - 100
         y_pos = draw_section_title(c, y_pos, "월별 매출 현황", width)
 
-        by_month = processed.get('by_month', {})
+        by_month = processed.get('by_month', [])
         if by_month:
             headers = ['월', '매출액', '건수', '평균단가']
             col_widths = [80, 150, 100, 150]
             rows = []
-            for m in sorted(by_month.keys(), key=lambda x: int(x) if x.isdigit() else 0):
-                data = by_month[m]
+            # by_month는 list of tuples: [(month, {sales, count, ...}), ...]
+            for m, data in by_month:
                 rows.append([
                     f"{m}월",
                     format_number(data.get('sales', 0)),
@@ -30520,24 +30520,24 @@ def export_pdf():
 
         draw_pdf_footer(c, width, page_num)
 
-        # ========== 3페이지: 팀별 현황 ==========
+        # ========== 3페이지: 팀(부서)별 현황 ==========
         c.showPage()
         page_num += 1
         draw_pdf_header(c, width, height, title, subtitle)
         y_pos = height - 100
-        y_pos = draw_section_title(c, y_pos, "팀별 실적 현황", width)
+        y_pos = draw_section_title(c, y_pos, "부서별 실적 현황", width)
 
-        by_team = processed.get('by_team', {})
-        if by_team:
-            headers = ['팀', '매출액', '건수', '비율']
+        by_branch = processed.get('by_branch', [])
+        if by_branch:
+            headers = ['부서', '매출액', '건수', '비율']
             col_widths = [120, 150, 100, 100]
             rows = []
             total_sales = processed.get('total_sales', 1)
-            sorted_teams = sorted(by_team.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
-            for team, data in sorted_teams[:10]:
+            # by_branch는 list of tuples: [(branch, {sales, count, ...}), ...]
+            for branch, data in by_branch[:10]:
                 ratio = (data.get('sales', 0) / total_sales * 100) if total_sales > 0 else 0
                 rows.append([
-                    team[:15],
+                    branch[:15],
                     format_number(data.get('sales', 0)),
                     f"{data.get('count', 0):,}건",
                     f"{ratio:.1f}%"
@@ -30553,13 +30553,13 @@ def export_pdf():
         y_pos = height - 100
         y_pos = draw_section_title(c, y_pos, "담당자별 실적 TOP 15", width)
 
-        by_person = processed.get('by_person', {})
-        if by_person:
+        by_manager = processed.get('by_manager', [])
+        if by_manager:
             headers = ['담당자', '매출액', '건수', '평균단가']
             col_widths = [100, 150, 100, 130]
             rows = []
-            sorted_persons = sorted(by_person.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
-            for person, data in sorted_persons[:15]:
+            # by_manager는 list of tuples: [(manager, {sales, count, ...}), ...]
+            for person, data in by_manager[:15]:
                 avg = data.get('sales', 0) / data.get('count', 1) if data.get('count', 0) > 0 else 0
                 rows.append([
                     person[:10],
@@ -30578,13 +30578,13 @@ def export_pdf():
         y_pos = height - 100
         y_pos = draw_section_title(c, y_pos, "업체별 매출 TOP 15", width)
 
-        by_client = processed.get('by_client', {})
+        by_client = processed.get('by_client', [])
         if by_client:
             headers = ['업체명', '매출액', '건수']
             col_widths = [200, 150, 100]
             rows = []
-            sorted_clients = sorted(by_client.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
-            for client, data in sorted_clients[:15]:
+            # by_client는 list of tuples: [(client, {sales, count, ...}), ...]
+            for client, data in by_client[:15]:
                 rows.append([
                     client[:25],
                     format_number(data.get('sales', 0)),
@@ -30601,14 +30601,15 @@ def export_pdf():
         y_pos = height - 100
         y_pos = draw_section_title(c, y_pos, "지역별 매출 현황", width)
 
-        by_region = processed.get('by_region', {})
+        by_region = processed.get('by_region', [])
         if by_region:
             headers = ['지역', '매출액', '건수', '비율']
             col_widths = [120, 150, 100, 100]
             rows = []
             total_sales = processed.get('total_sales', 1)
-            sorted_regions = sorted(by_region.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
-            for region, data in sorted_regions[:15]:
+            # by_region이 list of tuples인 경우
+            region_data = by_region if isinstance(by_region, list) else list(by_region.items())
+            for region, data in region_data[:15]:
                 ratio = (data.get('sales', 0) / total_sales * 100) if total_sales > 0 else 0
                 rows.append([
                     region[:15],
@@ -30627,13 +30628,14 @@ def export_pdf():
         y_pos = height - 100
         y_pos = draw_section_title(c, y_pos, "검사목적별 현황", width)
 
-        by_purpose = processed.get('by_purpose', {})
+        by_purpose = processed.get('by_purpose', [])
         if by_purpose:
             headers = ['검사목적', '매출액', '건수']
             col_widths = [180, 150, 100]
             rows = []
-            sorted_purposes = sorted(by_purpose.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
-            for purp, data in sorted_purposes[:8]:
+            # by_purpose가 list of tuples인 경우
+            purpose_data = by_purpose if isinstance(by_purpose, list) else list(by_purpose.items())
+            for purp, data in purpose_data[:8]:
                 rows.append([
                     purp[:20],
                     format_number(data.get('sales', 0)),
@@ -30644,13 +30646,14 @@ def export_pdf():
         y_pos -= 30
         y_pos = draw_section_title(c, y_pos, "검체유형별 현황", width)
 
-        by_sample = processed.get('by_sample_type', {})
+        by_sample = processed.get('by_sample_type', [])
         if by_sample:
             headers = ['검체유형', '매출액', '건수']
             col_widths = [180, 150, 100]
             rows = []
-            sorted_samples = sorted(by_sample.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
-            for sample, data in sorted_samples[:8]:
+            # by_sample_type이 list of tuples인 경우
+            sample_data = by_sample if isinstance(by_sample, list) else list(by_sample.items())
+            for sample, data in sample_data[:8]:
                 rows.append([
                     sample[:20],
                     format_number(data.get('sales', 0)),
@@ -30667,19 +30670,15 @@ def export_pdf():
         y_pos = height - 100
         y_pos = draw_section_title(c, y_pos, "부적합 현황", width)
 
-        defect_items = processed.get('defect_items', [])
-        if defect_items:
+        by_defect = processed.get('by_defect', [])
+        if by_defect:
             headers = ['부적합 항목', '건수']
             col_widths = [350, 100]
             rows = []
-            # 부적합 항목별 집계
-            defect_summary = {}
-            for item in defect_items:
-                name = item.get('defect_item', '기타')[:40]
-                defect_summary[name] = defect_summary.get(name, 0) + 1
-            sorted_defects = sorted(defect_summary.items(), key=lambda x: x[1], reverse=True)
-            for defect, count in sorted_defects[:15]:
-                rows.append([defect, f"{count}건"])
+            # by_defect는 list of tuples: [(defect_name, {count, ...}), ...]
+            for defect, data in by_defect[:15]:
+                count = data.get('count', 0) if isinstance(data, dict) else data
+                rows.append([defect[:40], f"{count}건"])
             y_pos = draw_table(c, y_pos, headers, rows, col_widths, width)
         else:
             c.setFillColor(HexColor('#64748b'))
