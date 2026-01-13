@@ -11167,7 +11167,7 @@ HTML_TEMPLATE = '''
             }
         }
 
-        // PDF 내보내기 함수
+        // PDF 내보내기 함수 (한글 지원 - html2canvas 방식)
         async function exportToPdf() {
             const btn = document.getElementById('btnExportPdf');
             const originalText = btn.innerHTML;
@@ -11183,31 +11183,55 @@ HTML_TEMPLATE = '''
                 const pageWidth = pdf.internal.pageSize.getWidth();
                 const pageHeight = pdf.internal.pageSize.getHeight();
                 const margin = 10;
-                let yPosition = margin;
 
-                // 제목 추가
-                pdf.setFontSize(18);
-                pdf.setFont(undefined, 'bold');
+                // 조회 조건 가져오기
                 const year = document.getElementById('yearSelect')?.value || '2025';
                 const month = document.getElementById('monthSelect')?.value;
                 const purpose = document.getElementById('purposeSelect')?.value || '전체';
-                const titleText = `경영지표 분석 보고서 - ${year}년${month ? ' ' + month + '월' : ''} ${purpose !== '전체' ? '(' + purpose + ')' : ''}`;
-                pdf.text(titleText, pageWidth / 2, yPosition + 5, { align: 'center' });
-                yPosition += 15;
-
-                // 현재 활성화된 탭 확인
                 const activeTab = document.querySelector('.tab-card.active');
                 const tabLabel = activeTab?.querySelector('.tab-label')?.textContent || '메인';
-                pdf.setFontSize(12);
-                pdf.setFont(undefined, 'normal');
-                pdf.text(`조회 탭: ${tabLabel}`, margin, yPosition);
-                pdf.text(`생성일시: ${new Date().toLocaleString('ko-KR')}`, pageWidth - margin, yPosition, { align: 'right' });
-                yPosition += 10;
+
+                // 임시 헤더 HTML 요소 생성 (한글 지원을 위해 html2canvas로 캡처)
+                const headerDiv = document.createElement('div');
+                headerDiv.style.cssText = `
+                    position: fixed;
+                    left: -9999px;
+                    top: 0;
+                    width: 800px;
+                    padding: 20px;
+                    background: white;
+                    font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+                `;
+                headerDiv.innerHTML = `
+                    <div style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 15px; color: #1e293b;">
+                        경영지표 분석 보고서 - ${year}년${month ? ' ' + month + '월' : ''} ${purpose !== '전체' ? '(' + purpose + ')' : ''}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 14px; color: #64748b; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">
+                        <span>담당 탭: ${tabLabel}</span>
+                        <span>생성일시: ${new Date().toLocaleString('ko-KR')}</span>
+                    </div>
+                `;
+                document.body.appendChild(headerDiv);
+
+                // 헤더 캡처
+                const headerCanvas = await html2canvas(headerDiv, {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: '#ffffff'
+                });
+                document.body.removeChild(headerDiv);
+
+                // 헤더 이미지 추가
+                const headerImgData = headerCanvas.toDataURL('image/png');
+                const headerImgWidth = pageWidth - (margin * 2);
+                const headerImgHeight = (headerCanvas.height * headerImgWidth) / headerCanvas.width;
+                pdf.addImage(headerImgData, 'PNG', margin, margin, headerImgWidth, headerImgHeight);
+                let yPosition = margin + headerImgHeight + 5;
 
                 // 현재 표시된 콘텐츠 영역 캡처
                 const contentArea = document.querySelector('.content-container');
                 if (contentArea) {
-                    // html2canvas로 캡처
                     const canvas = await html2canvas(contentArea, {
                         scale: 2,
                         useCORS: true,
@@ -11253,24 +11277,43 @@ HTML_TEMPLATE = '''
                     }
                 }
 
-                // AI 분석 결과가 있으면 추가
+                // AI 분석 결과가 있으면 추가 (html2canvas로 캡처)
                 const aiAnalysis = document.getElementById('aiSummary');
                 if (aiAnalysis && aiAnalysis.textContent.trim() && !aiAnalysis.textContent.includes('AI 분석 로딩 중')) {
+                    // AI 분석 결과용 임시 요소 생성
+                    const aiDiv = document.createElement('div');
+                    aiDiv.style.cssText = `
+                        position: fixed;
+                        left: -9999px;
+                        top: 0;
+                        width: 800px;
+                        padding: 20px;
+                        background: white;
+                        font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+                    `;
+                    aiDiv.innerHTML = `
+                        <div style="font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #1e293b; border-bottom: 2px solid #6366f1; padding-bottom: 8px;">
+                            AI 분석 결과
+                        </div>
+                        <div style="font-size: 13px; line-height: 1.8; color: #334155; white-space: pre-wrap;">
+                            ${aiAnalysis.textContent.trim()}
+                        </div>
+                    `;
+                    document.body.appendChild(aiDiv);
+
+                    const aiCanvas = await html2canvas(aiDiv, {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff'
+                    });
+                    document.body.removeChild(aiDiv);
+
                     pdf.addPage();
-                    yPosition = margin;
-
-                    pdf.setFontSize(14);
-                    pdf.setFont(undefined, 'bold');
-                    pdf.text('AI 분석 결과', margin, yPosition + 5);
-                    yPosition += 12;
-
-                    pdf.setFontSize(10);
-                    pdf.setFont(undefined, 'normal');
-
-                    // AI 분석 텍스트 줄바꿈 처리
-                    const aiText = aiAnalysis.textContent.trim();
-                    const lines = pdf.splitTextToSize(aiText, pageWidth - (margin * 2));
-                    pdf.text(lines, margin, yPosition);
+                    const aiImgData = aiCanvas.toDataURL('image/png');
+                    const aiImgWidth = pageWidth - (margin * 2);
+                    const aiImgHeight = (aiCanvas.height * aiImgWidth) / aiCanvas.width;
+                    pdf.addImage(aiImgData, 'PNG', margin, margin, aiImgWidth, Math.min(aiImgHeight, pageHeight - margin * 2));
                 }
 
                 // PDF 다운로드
