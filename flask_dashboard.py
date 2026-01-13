@@ -11548,44 +11548,7 @@ HTML_TEMPLATE = '''
             'profitAnalysis': 'profitAnalysisContent'
         };
 
-        // PDF 헤더 이미지 생성 (HTML 캡처로 한글 지원)
-        async function createPdfHeaderImage(tabName, year, month, isContinued = false) {
-            const headerDiv = document.createElement('div');
-            headerDiv.style.cssText = `
-                width: 794px;
-                height: 50px;
-                background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                position: absolute;
-                top: 0;
-                left: 0;
-                z-index: 99999;
-                opacity: 0.99;
-            `;
-            const titleText = isContinued
-                ? `경영지표 - ${tabName} (계속)`
-                : `경영지표 - ${tabName} (${year}년${month ? ' ' + month + '월' : ''})`;
-            headerDiv.innerHTML = `<span style="color: white; font-size: 20px; font-weight: bold; font-family: 'Malgun Gothic', 'Nanum Gothic', sans-serif;">${titleText}</span>`;
-            document.body.appendChild(headerDiv);
-
-            // 렌더링 대기
-            await new Promise(resolve => setTimeout(resolve, 100));
-
-            const canvas = await html2canvas(headerDiv, {
-                scale: 2,
-                backgroundColor: '#6366f1',
-                logging: false,
-                width: 794,
-                height: 50
-            });
-
-            document.body.removeChild(headerDiv);
-            return canvas.toDataURL('image/png');
-        }
-
-        // PDF 생성 (선택한 탭들의 화면 캡처)
+        // PDF 생성 (선택한 탭들의 화면 캡처) - 단순화 버전
         async function generatePdfFromTabs() {
             const selectedTabs = Array.from(document.querySelectorAll('.pdf-tab-item input:checked'))
                 .map(cb => cb.value);
@@ -11614,17 +11577,15 @@ HTML_TEMPLATE = '''
             const progressText = progressDiv.querySelector('.pdf-progress-text');
             const progressFill = progressDiv.querySelector('.pdf-progress-fill');
 
-            // 모달 숨기기 (캡처에서 제외)
-            const pdfModal = document.getElementById('pdfModal');
-            pdfModal.style.visibility = 'hidden';
+            // 모달 닫기 (캡처에서 제외)
+            closePdfModal();
 
             try {
                 const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pdf = new jsPDF('l', 'mm', 'a4'); // 가로 방향
                 const pageWidth = pdf.internal.pageSize.getWidth();
                 const pageHeight = pdf.internal.pageSize.getHeight();
                 const margin = 5;
-                const headerHeight = 13;
 
                 // 현재 활성 탭 저장
                 const currentActiveTab = document.querySelector('.tab-card.active');
@@ -11641,42 +11602,35 @@ HTML_TEMPLATE = '''
                     const tabName = tabNameMap[tabId] || tabId;
                     const progress = Math.round(((i + 1) / selectedTabs.length) * 100);
 
-                    progressText.textContent = `${tabName} 탭 캡처 중... (${i + 1}/${selectedTabs.length})`;
-                    progressFill.style.width = `${progress}%`;
+                    showToast(`${tabName} 탭 캡처 중... (${i + 1}/${selectedTabs.length})`, 'loading');
 
                     // 탭 전환
                     showTab(tabId);
                     // 렌더링 대기 (차트 등 비동기 요소 로딩)
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-
-                    // 탭 콘텐츠 영역 캡처 (id로 직접 접근)
-                    const contentArea = document.getElementById(tabId);
-                    if (!contentArea) {
-                        console.warn(`[PDF] ${tabId} 탭을 찾을 수 없습니다.`);
-                        continue;
-                    }
-
-                    console.log(`[PDF] ${tabName} 탭 캡처 시작, ID: ${tabId}`);
+                    await new Promise(resolve => setTimeout(resolve, 1500));
 
                     // 스크롤 위치 초기화
                     window.scrollTo(0, 0);
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    await new Promise(resolve => setTimeout(resolve, 300));
+
+                    // main-container 전체 캡처
+                    const mainContainer = document.querySelector('.main-container');
+                    if (!mainContainer) {
+                        console.warn(`[PDF] main-container를 찾을 수 없습니다.`);
+                        continue;
+                    }
+
+                    console.log(`[PDF] ${tabName} 탭 캡처 시작`);
 
                     // html2canvas로 캡처
-                    const canvas = await html2canvas(contentArea, {
-                        scale: 1.5,
+                    const canvas = await html2canvas(mainContainer, {
+                        scale: 1,
                         useCORS: true,
-                        logging: true,
+                        logging: false,
                         backgroundColor: '#f8fafc',
-                        scrollX: 0,
-                        scrollY: 0,
-                        width: contentArea.scrollWidth,
-                        height: contentArea.scrollHeight,
-                        onclone: function(clonedDoc) {
-                            const clonedContent = clonedDoc.getElementById(tabId);
-                            if (clonedContent) {
-                                clonedContent.style.display = 'block';
-                            }
+                        ignoreElements: (element) => {
+                            return element.classList.contains('pdf-modal') ||
+                                   element.classList.contains('toast-container');
                         }
                     });
 
@@ -11693,71 +11647,32 @@ HTML_TEMPLATE = '''
                     }
                     isFirstPage = false;
 
-                    // 헤더 이미지 추가 (한글 지원)
-                    const headerImg = await createPdfHeaderImage(tabName, year, month, false);
-                    pdf.addImage(headerImg, 'PNG', 0, 0, pageWidth, headerHeight);
-
                     // 콘텐츠 이미지 추가
-                    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+                    const imgData = canvas.toDataURL('image/jpeg', 0.8);
                     const imgWidth = pageWidth - (margin * 2);
                     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-                    let yPosition = headerHeight + 2;
-                    const availableHeight = pageHeight - headerHeight - 5;
+                    // 페이지에 맞게 조절
+                    const maxHeight = pageHeight - (margin * 2);
+                    const finalHeight = Math.min(imgHeight, maxHeight);
+                    const finalWidth = (finalHeight === maxHeight) ? (canvas.width * maxHeight) / canvas.height : imgWidth;
 
-                    if (imgHeight <= availableHeight) {
-                        pdf.addImage(imgData, 'JPEG', margin, yPosition, imgWidth, imgHeight);
-                    } else {
-                        // 여러 페이지로 분할
-                        let heightLeft = imgHeight;
-                        let sourceY = 0;
-                        const sourceHeight = canvas.height;
-
-                        while (heightLeft > 0) {
-                            const thisPageHeight = Math.min(heightLeft, availableHeight);
-                            const thisSourceHeight = (thisPageHeight / imgHeight) * sourceHeight;
-
-                            const tempCanvas = document.createElement('canvas');
-                            tempCanvas.width = canvas.width;
-                            tempCanvas.height = Math.ceil(thisSourceHeight);
-                            const tempCtx = tempCanvas.getContext('2d');
-                            tempCtx.drawImage(canvas, 0, sourceY, canvas.width, thisSourceHeight,
-                                            0, 0, canvas.width, thisSourceHeight);
-
-                            const partImgData = tempCanvas.toDataURL('image/jpeg', 0.85);
-                            pdf.addImage(partImgData, 'JPEG', margin, yPosition, imgWidth, thisPageHeight);
-
-                            heightLeft -= thisPageHeight;
-                            sourceY += thisSourceHeight;
-
-                            if (heightLeft > 0) {
-                                pdf.addPage();
-                                const contHeaderImg = await createPdfHeaderImage(tabName, year, month, true);
-                                pdf.addImage(contHeaderImg, 'PNG', 0, 0, pageWidth, headerHeight);
-                                yPosition = headerHeight + 2;
-                            }
-                        }
-                    }
+                    pdf.addImage(imgData, 'JPEG', margin, margin, finalWidth, finalHeight);
                 }
 
                 // 원래 탭으로 복원
                 showTab(currentTabId);
-
-                progressText.textContent = 'PDF 다운로드 중...';
-                progressFill.style.width = '100%';
 
                 // PDF 다운로드
                 const fileName = `경영지표_${year}${month ? '_' + month + '월' : ''}_${new Date().toISOString().slice(0,10)}.pdf`;
                 pdf.save(fileName);
 
                 showToast('PDF가 다운로드되었습니다.', 'success');
-                closePdfModal();
 
             } catch (error) {
                 console.error('PDF 생성 오류:', error);
                 showToast('PDF 생성 중 오류가 발생했습니다: ' + error.message, 'error');
             } finally {
-                pdfModal.style.visibility = 'visible';
                 generateBtn.disabled = false;
                 document.getElementById('pdfGenerateText').textContent = '📄 PDF 생성';
             }
