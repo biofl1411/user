@@ -5,7 +5,7 @@
 - 연도 비교, 검사목적 필터, 업체별 분석, 부적합항목 분석
 - AI 분석 (Google Gemini API)
 """
-from flask import Flask, render_template_string, jsonify, request, redirect, make_response
+from flask import Flask, render_template_string, jsonify, request, redirect, make_response, session
 import os
 import time
 import sqlite3
