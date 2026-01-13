@@ -3201,8 +3201,10 @@ ADMIN_TEMPLATE = '''
             padding: 25px;
             max-height: 300px;
             overflow-y: auto;
-            line-height: 1.7;
+            line-height: 1.8;
             color: #374151;
+            white-space: pre-line;
+            word-break: keep-all;
         }
         .popup-notice-footer {
             padding: 15px 25px;
@@ -7985,8 +7987,10 @@ HTML_TEMPLATE = '''
             padding: 25px;
             max-height: 300px;
             overflow-y: auto;
-            line-height: 1.7;
+            line-height: 1.8;
             color: #374151;
+            white-space: pre-line;
+            word-break: keep-all;
         }
         .popup-notice-footer {
             padding: 15px 25px;
@@ -29372,7 +29376,7 @@ def api_admin_get_popup_notices():
         status = request.args.get('status', '')
         priority = request.args.get('priority', '')
 
-        conn = sqlite3.connect(USERS_DB)
+        conn = get_user_db()
         cursor = conn.cursor()
 
         query = 'SELECT * FROM popup_notices WHERE 1=1'
@@ -29451,7 +29455,7 @@ def api_admin_create_popup_notice():
     try:
         data = request.get_json()
 
-        conn = sqlite3.connect(USERS_DB)
+        conn = get_user_db()
         cursor = conn.cursor()
 
         cursor.execute('''
@@ -29487,7 +29491,7 @@ def api_admin_update_popup_notice(notice_id):
     try:
         data = request.get_json()
 
-        conn = sqlite3.connect(USERS_DB)
+        conn = get_user_db()
         cursor = conn.cursor()
 
         cursor.execute('''
@@ -29530,7 +29534,7 @@ def api_admin_update_popup_notice(notice_id):
 def api_admin_delete_popup_notice(notice_id):
     """팝업 공지 삭제"""
     try:
-        conn = sqlite3.connect(USERS_DB)
+        conn = get_user_db()
         cursor = conn.cursor()
         cursor.execute('DELETE FROM popup_notices WHERE id = ?', (notice_id,))
         conn.commit()
@@ -29548,7 +29552,7 @@ def api_get_active_popup_notices():
         user_role = user.get('role', 'user')
         today = datetime.now().strftime('%Y-%m-%d')
 
-        conn = sqlite3.connect(USERS_DB)
+        conn = get_user_db()
         cursor = conn.cursor()
 
         cursor.execute('''
@@ -29590,7 +29594,7 @@ def api_get_active_popup_notices():
 def api_popup_notice_viewed(notice_id):
     """팝업 공지 조회수 증가"""
     try:
-        conn = sqlite3.connect(USERS_DB)
+        conn = get_user_db()
         cursor = conn.cursor()
         cursor.execute('UPDATE popup_notices SET view_count = view_count + 1 WHERE id = ?', (notice_id,))
         conn.commit()
