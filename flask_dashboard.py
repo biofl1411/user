@@ -3979,22 +3979,22 @@ ADMIN_TEMPLATE = '''
 
                 <!-- 판관비 설정 -->
                 <div class="card" style="margin-bottom: 20px;">
-                    <div class="card-title">💰 년도별 판관비 (월평균)</div>
+                    <div class="card-title">💰 년도별 판관비 및 세전이익</div>
                     <p style="color: #64748b; font-size: 13px; margin-bottom: 15px;">
-                        판매비와 관리비의 월 평균 금액을 입력합니다.
+                        판매비와 관리비의 월 평균 금액을 입력합니다. 연간 판관비와 세전이익은 자동 계산됩니다.
                     </p>
                     <table style="width: 100%;">
                         <thead>
                             <tr style="background: #f8fafc;">
                                 <th style="padding: 12px; text-align: left; font-weight: 600; color: #475569;">년도</th>
-                                <th style="padding: 12px; text-align: right; font-weight: 600; color: #475569;">연간 판관비 (참고)</th>
                                 <th style="padding: 12px; text-align: center; font-weight: 600; color: #475569;">월평균</th>
+                                <th style="padding: 12px; text-align: right; font-weight: 600; color: #475569;">연간 판관비</th>
+                                <th style="padding: 12px; text-align: right; font-weight: 600; color: #475569;">세전이익</th>
                             </tr>
                         </thead>
                         <tbody id="sgaSettingsTable">
                             <tr>
                                 <td style="padding: 12px;">2026년</td>
-                                <td style="padding: 12px; text-align: right; color: #94a3b8;">-</td>
                                 <td style="padding: 12px; text-align: center;">
                                     <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                                         <input type="number" id="sgaMonthly2026" value="2.5" step="0.1" min="0"
@@ -4002,10 +4002,11 @@ ADMIN_TEMPLATE = '''
                                         <span style="color: #64748b;">억원</span>
                                     </div>
                                 </td>
+                                <td id="sgaAnnual2026" style="padding: 12px; text-align: right; color: #64748b; font-weight: 500;">-</td>
+                                <td id="preTaxProfit2026" style="padding: 12px; text-align: right; font-weight: 600;">-</td>
                             </tr>
                             <tr style="background: #f8fafc;">
                                 <td style="padding: 12px;">2025년</td>
-                                <td style="padding: 12px; text-align: right; color: #94a3b8;">30.3억</td>
                                 <td style="padding: 12px; text-align: center;">
                                     <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                                         <input type="number" id="sgaMonthly2025" value="2.5" step="0.1" min="0"
@@ -4013,10 +4014,11 @@ ADMIN_TEMPLATE = '''
                                         <span style="color: #64748b;">억원</span>
                                     </div>
                                 </td>
+                                <td id="sgaAnnual2025" style="padding: 12px; text-align: right; color: #64748b; font-weight: 500;">-</td>
+                                <td id="preTaxProfit2025" style="padding: 12px; text-align: right; font-weight: 600;">-</td>
                             </tr>
                             <tr>
                                 <td style="padding: 12px;">2024년</td>
-                                <td style="padding: 12px; text-align: right; color: #94a3b8;">28.8억</td>
                                 <td style="padding: 12px; text-align: center;">
                                     <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
                                         <input type="number" id="sgaMonthly2024" value="2.4" step="0.1" min="0"
@@ -4024,12 +4026,14 @@ ADMIN_TEMPLATE = '''
                                         <span style="color: #64748b;">억원</span>
                                     </div>
                                 </td>
+                                <td id="sgaAnnual2024" style="padding: 12px; text-align: right; color: #64748b; font-weight: 500;">-</td>
+                                <td id="preTaxProfit2024" style="padding: 12px; text-align: right; font-weight: 600;">-</td>
                             </tr>
                         </tbody>
                     </table>
                     <div style="margin-top: 12px; padding: 10px 15px; background: #f8fafc; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
                         <span>ℹ️</span>
-                        <span style="font-size: 13px; color: #64748b;">손익분석에서 영업이익 계산에 사용됩니다.</span>
+                        <span style="font-size: 13px; color: #64748b;">세전이익 = 매출액 - 매출원가 - 연간판관비</span>
                     </div>
                 </div>
 
@@ -5089,6 +5093,8 @@ ADMIN_TEMPLATE = '''
         });
 
         // ========== 손익분석 설정 함수들 ==========
+        let profitSettingsSalesData = {};  // 매출 데이터 저장용
+
         async function loadProfitSettingsPanel() {
             try {
                 // 설정값 로드
@@ -5109,49 +5115,72 @@ ADMIN_TEMPLATE = '''
                 const salesData = await salesResponse.json();
 
                 if (salesData.success && salesData.data) {
-                    ['2024', '2025', '2026'].forEach(year => {
-                        const yearData = salesData.data[year];
-                        const salesEl = document.getElementById('salesRef' + year);
-                        const costEl = document.getElementById('costRef' + year);
-                        const costRateEl = document.getElementById('costRate' + year);
+                    profitSettingsSalesData = salesData.data;  // 전역 저장
 
-                        if (yearData && salesEl) {
-                            const sales = yearData.total_sales || 0;
-                            // 억원 단위로 표시
-                            if (sales > 0) {
-                                salesEl.textContent = (sales / 100000000).toFixed(1) + '억';
-                                // 매출원가 = 매출액 × 원가율
-                                const costRate = parseFloat(costRateEl?.value || 69.7) / 100;
-                                const estimatedCost = sales * costRate;
-                                if (costEl) costEl.textContent = (estimatedCost / 100000000).toFixed(1) + '억';
-                            } else {
-                                salesEl.textContent = '-';
-                                if (costEl) costEl.textContent = '-';
-                            }
-                        } else if (salesEl) {
-                            salesEl.textContent = '-';
-                        }
+                    ['2024', '2025', '2026'].forEach(year => {
+                        updateProfitCalculations(year);
                     });
 
-                    // 원가율 변경 시 매출원가 자동 계산
+                    // 원가율 변경 시 자동 계산
                     ['2024', '2025', '2026'].forEach(year => {
                         const costRateEl = document.getElementById('costRate' + year);
+                        const sgaMonthlyEl = document.getElementById('sgaMonthly' + year);
+
                         if (costRateEl) {
-                            costRateEl.addEventListener('input', () => {
-                                const yearData = salesData.data[year];
-                                const costEl = document.getElementById('costRef' + year);
-                                if (yearData && costEl) {
-                                    const sales = yearData.total_sales || 0;
-                                    const costRate = parseFloat(costRateEl.value || 69.7) / 100;
-                                    const estimatedCost = sales * costRate;
-                                    costEl.textContent = sales > 0 ? (estimatedCost / 100000000).toFixed(1) + '억' : '-';
-                                }
-                            });
+                            costRateEl.addEventListener('input', () => updateProfitCalculations(year));
+                        }
+                        if (sgaMonthlyEl) {
+                            sgaMonthlyEl.addEventListener('input', () => updateProfitCalculations(year));
                         }
                     });
                 }
             } catch (e) {
                 console.error('손익분석 설정 로드 실패:', e);
+            }
+        }
+
+        function updateProfitCalculations(year) {
+            const yearData = profitSettingsSalesData[year];
+            const salesEl = document.getElementById('salesRef' + year);
+            const costEl = document.getElementById('costRef' + year);
+            const costRateEl = document.getElementById('costRate' + year);
+            const sgaMonthlyEl = document.getElementById('sgaMonthly' + year);
+            const sgaAnnualEl = document.getElementById('sgaAnnual' + year);
+            const preTaxProfitEl = document.getElementById('preTaxProfit' + year);
+
+            const sales = yearData?.total_sales || 0;
+            const costRate = parseFloat(costRateEl?.value || 69.7) / 100;
+            const sgaMonthly = parseFloat(sgaMonthlyEl?.value || 2.5);
+
+            // 매출액 표시
+            if (salesEl) {
+                salesEl.textContent = sales > 0 ? (sales / 100000000).toFixed(1) + '억' : '-';
+            }
+
+            // 매출원가 = 매출액 × 원가율
+            const estimatedCost = sales * costRate;
+            if (costEl) {
+                costEl.textContent = sales > 0 ? (estimatedCost / 100000000).toFixed(1) + '억' : '-';
+            }
+
+            // 연간 판관비 = 월평균 × 12
+            const sgaAnnual = sgaMonthly * 12;
+            if (sgaAnnualEl) {
+                sgaAnnualEl.textContent = sgaAnnual.toFixed(1) + '억';
+            }
+
+            // 세전이익 = 매출액 - 매출원가 - 연간판관비
+            const sgaAnnualWon = sgaAnnual * 100000000;  // 억원 → 원
+            const preTaxProfit = sales - estimatedCost - sgaAnnualWon;
+            if (preTaxProfitEl) {
+                if (sales > 0) {
+                    const profitBillion = preTaxProfit / 100000000;
+                    preTaxProfitEl.textContent = profitBillion.toFixed(1) + '억';
+                    preTaxProfitEl.style.color = preTaxProfit >= 0 ? '#059669' : '#dc2626';
+                } else {
+                    preTaxProfitEl.textContent = '-';
+                    preTaxProfitEl.style.color = '#94a3b8';
+                }
             }
         }
 
