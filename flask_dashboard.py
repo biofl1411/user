@@ -6088,6 +6088,8 @@ HTML_TEMPLATE = '''
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -6371,6 +6373,34 @@ HTML_TEMPLATE = '''
         }
 
         .btn-search:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-export-pdf {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            margin-left: 10px;
+        }
+
+        .btn-export-pdf:hover {
+            background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-export-pdf:disabled {
             opacity: 0.6;
             cursor: not-allowed;
             transform: none;
@@ -8502,6 +8532,10 @@ HTML_TEMPLATE = '''
 
                 <button id="btnSearch" class="btn-search" onclick="loadData()">
                     🔍 조회하기
+                </button>
+
+                <button id="btnExportPdf" class="btn-export-pdf" onclick="exportToPdf()" title="현재 화면을 PDF로 저장">
+                    📄 PDF 저장
                 </button>
             </div>
         </section>
@@ -11130,6 +11164,126 @@ HTML_TEMPLATE = '''
                             <span>2024년</span>
                         </label>`;
                 }
+            }
+        }
+
+        // PDF 내보내기 함수
+        async function exportToPdf() {
+            const btn = document.getElementById('btnExportPdf');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ PDF 생성중...';
+
+            try {
+                showToast('PDF를 생성하고 있습니다...', 'loading');
+
+                // jsPDF 초기화
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pageWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
+                const margin = 10;
+                let yPosition = margin;
+
+                // 제목 추가
+                pdf.setFontSize(18);
+                pdf.setFont(undefined, 'bold');
+                const year = document.getElementById('yearSelect')?.value || '2025';
+                const month = document.getElementById('monthSelect')?.value;
+                const purpose = document.getElementById('purposeSelect')?.value || '전체';
+                const titleText = `경영지표 분석 보고서 - ${year}년${month ? ' ' + month + '월' : ''} ${purpose !== '전체' ? '(' + purpose + ')' : ''}`;
+                pdf.text(titleText, pageWidth / 2, yPosition + 5, { align: 'center' });
+                yPosition += 15;
+
+                // 현재 활성화된 탭 확인
+                const activeTab = document.querySelector('.tab-card.active');
+                const tabLabel = activeTab?.querySelector('.tab-label')?.textContent || '메인';
+                pdf.setFontSize(12);
+                pdf.setFont(undefined, 'normal');
+                pdf.text(`조회 탭: ${tabLabel}`, margin, yPosition);
+                pdf.text(`생성일시: ${new Date().toLocaleString('ko-KR')}`, pageWidth - margin, yPosition, { align: 'right' });
+                yPosition += 10;
+
+                // 현재 표시된 콘텐츠 영역 캡처
+                const contentArea = document.querySelector('.content-container');
+                if (contentArea) {
+                    // html2canvas로 캡처
+                    const canvas = await html2canvas(contentArea, {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#f8fafc',
+                        windowWidth: contentArea.scrollWidth,
+                        windowHeight: contentArea.scrollHeight
+                    });
+
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    const imgWidth = pageWidth - (margin * 2);
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                    // 여러 페이지로 나누기
+                    let heightLeft = imgHeight;
+                    let position = yPosition;
+                    const availableHeight = pageHeight - margin - yPosition;
+
+                    // 첫 페이지
+                    if (imgHeight <= availableHeight) {
+                        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
+                    } else {
+                        // 이미지를 여러 페이지로 분할
+                        let srcY = 0;
+                        const srcHeight = canvas.height;
+                        const firstPageImgHeight = availableHeight;
+                        const firstPageSrcHeight = (firstPageImgHeight / imgHeight) * srcHeight;
+
+                        // 첫 페이지 부분 캡처
+                        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, firstPageImgHeight, undefined, 'FAST', 0, 0);
+
+                        heightLeft -= firstPageImgHeight;
+                        srcY += firstPageSrcHeight;
+
+                        while (heightLeft > 0) {
+                            pdf.addPage();
+                            position = margin;
+                            const thisPageHeight = Math.min(heightLeft, pageHeight - (margin * 2));
+                            pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight, undefined, 'FAST', 0, -((srcY / srcHeight) * imgHeight));
+                            heightLeft -= thisPageHeight;
+                            srcY += (thisPageHeight / imgHeight) * srcHeight;
+                        }
+                    }
+                }
+
+                // AI 분석 결과가 있으면 추가
+                const aiAnalysis = document.getElementById('aiSummary');
+                if (aiAnalysis && aiAnalysis.textContent.trim() && !aiAnalysis.textContent.includes('AI 분석 로딩 중')) {
+                    pdf.addPage();
+                    yPosition = margin;
+
+                    pdf.setFontSize(14);
+                    pdf.setFont(undefined, 'bold');
+                    pdf.text('AI 분석 결과', margin, yPosition + 5);
+                    yPosition += 12;
+
+                    pdf.setFontSize(10);
+                    pdf.setFont(undefined, 'normal');
+
+                    // AI 분석 텍스트 줄바꿈 처리
+                    const aiText = aiAnalysis.textContent.trim();
+                    const lines = pdf.splitTextToSize(aiText, pageWidth - (margin * 2));
+                    pdf.text(lines, margin, yPosition);
+                }
+
+                // PDF 다운로드
+                const fileName = `경영지표_${year}${month ? '_' + month + '월' : ''}_${new Date().toISOString().slice(0,10)}.pdf`;
+                pdf.save(fileName);
+
+                showToast('PDF가 다운로드되었습니다.', 'success');
+            } catch (error) {
+                console.error('PDF 생성 오류:', error);
+                showToast('PDF 생성 중 오류가 발생했습니다.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
             }
         }
 
