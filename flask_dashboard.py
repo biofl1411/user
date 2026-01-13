@@ -279,6 +279,26 @@ def init_user_db():
         )
     ''')
 
+    # 팝업 공지 테이블
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS popup_notices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            priority TEXT DEFAULT 'normal',
+            target_users TEXT DEFAULT 'all',
+            start_date DATE,
+            end_date DATE,
+            link_text TEXT,
+            link_url TEXT,
+            show_once INTEGER DEFAULT 1,
+            is_active INTEGER DEFAULT 1,
+            view_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # 기존 users 테이블에 team_id, email 컬럼 추가 (마이그레이션)
     try:
         cursor.execute('ALTER TABLE users ADD COLUMN team_id INTEGER')
@@ -2964,6 +2984,274 @@ ADMIN_TEMPLATE = '''
         .search-box { display: flex; gap: 10px; margin-bottom: 20px; }
         .search-box input { flex: 1; }
         .copyright { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+
+        /* 팝업 공지 관리 스타일 */
+        .notice-kpi-section {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .notice-kpi-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .notice-kpi-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        .notice-kpi-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+        .notice-kpi-label {
+            font-size: 13px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+        .notice-filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .notice-filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            flex: 1;
+        }
+        .notice-filter-group label {
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 500;
+        }
+        .notice-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .notice-table th {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #475569;
+            font-size: 13px;
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .notice-table td {
+            padding: 15px;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: middle;
+        }
+        .notice-table tr:hover {
+            background: #f8fafc;
+        }
+        .notice-priority-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .notice-priority-high {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .notice-priority-normal {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+        .notice-priority-low {
+            background: #f1f5f9;
+            color: #64748b;
+        }
+        .notice-status-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .notice-status-active {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        .notice-status-scheduled {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        .notice-status-expired {
+            background: #f1f5f9;
+            color: #64748b;
+        }
+        .notice-status-inactive {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .notice-actions {
+            display: flex;
+            gap: 5px;
+        }
+        .notice-actions button {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .notice-actions .btn-edit {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+        .notice-actions .btn-edit:hover {
+            background: #bfdbfe;
+        }
+        .notice-actions .btn-preview {
+            background: #f0fdf4;
+            color: #16a34a;
+        }
+        .notice-actions .btn-preview:hover {
+            background: #dcfce7;
+        }
+        .notice-actions .btn-delete {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .notice-actions .btn-delete:hover {
+            background: #fecaca;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #374151;
+        }
+        .checkbox-label input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        /* 팝업 공지 미리보기 스타일 */
+        .popup-notice-preview {
+            padding: 0 !important;
+            border-radius: 16px !important;
+            overflow: hidden;
+        }
+        .popup-notice-header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .popup-notice-header.urgent {
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+        }
+        .popup-notice-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .popup-notice-close {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .popup-notice-close:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .popup-notice-body {
+            padding: 25px;
+            max-height: 300px;
+            overflow-y: auto;
+            line-height: 1.7;
+            color: #374151;
+        }
+        .popup-notice-footer {
+            padding: 15px 25px;
+            background: #f8fafc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #e2e8f0;
+        }
+        .popup-notice-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #64748b;
+            cursor: pointer;
+        }
+        .popup-notice-checkbox input {
+            width: 16px;
+            height: 16px;
+        }
+        .popup-notice-btn {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .popup-notice-btn:hover {
+            background: #4f46e5;
+        }
+        .popup-notice-link {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: #6366f1;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .popup-notice-link:hover {
+            background: #4f46e5;
+        }
+
+        @media (max-width: 1024px) {
+            .notice-kpi-section {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        @media (max-width: 768px) {
+            .notice-kpi-section {
+                grid-template-columns: 1fr;
+            }
+            .notice-filters {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2996,6 +3284,7 @@ ADMIN_TEMPLATE = '''
                 <div class="sidebar-title">시스템</div>
                 <div class="sidebar-item" onclick="showPanel('settings')">⚙️ 시스템 설정</div>
                 <div class="sidebar-item" onclick="showPanel('aiLogs')">🤖 AI 분석 로그</div>
+                <div class="sidebar-item" onclick="showPanel('popupNotice')">📢 팝업 공지</div>
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-title">원가 관리</div>
@@ -3583,6 +3872,183 @@ ADMIN_TEMPLATE = '''
                     <textarea class="form-control" id="fsNotes" rows="3" placeholder="손익계산서 관련 메모..."></textarea>
                 </div>
             </div>
+
+            <!-- 팝업 공지 관리 패널 -->
+            <div id="popupNoticePanel" class="admin-panel">
+                <div class="panel-header">
+                    <h2>📢 팝업 공지 관리</h2>
+                    <button class="btn btn-primary" onclick="showNoticeModal()">+ 새 공지 작성</button>
+                </div>
+
+                <!-- KPI 카드 섹션 -->
+                <div class="notice-kpi-section">
+                    <div class="notice-kpi-card">
+                        <div class="notice-kpi-icon" style="background: #dbeafe; color: #3b82f6;">📋</div>
+                        <div class="notice-kpi-info">
+                            <div class="notice-kpi-value" id="totalNoticeCount">0</div>
+                            <div class="notice-kpi-label">전체 공지</div>
+                        </div>
+                    </div>
+                    <div class="notice-kpi-card">
+                        <div class="notice-kpi-icon" style="background: #dcfce7; color: #22c55e;">✅</div>
+                        <div class="notice-kpi-info">
+                            <div class="notice-kpi-value" id="activeNoticeCount">0</div>
+                            <div class="notice-kpi-label">활성 공지</div>
+                        </div>
+                    </div>
+                    <div class="notice-kpi-card">
+                        <div class="notice-kpi-icon" style="background: #fef3c7; color: #f59e0b;">⏳</div>
+                        <div class="notice-kpi-info">
+                            <div class="notice-kpi-value" id="scheduledNoticeCount">0</div>
+                            <div class="notice-kpi-label">예약 공지</div>
+                        </div>
+                    </div>
+                    <div class="notice-kpi-card">
+                        <div class="notice-kpi-icon" style="background: #f1f5f9; color: #64748b;">📊</div>
+                        <div class="notice-kpi-info">
+                            <div class="notice-kpi-value" id="totalViewCount">0</div>
+                            <div class="notice-kpi-label">총 노출 수</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 필터 영역 -->
+                <div class="notice-filters">
+                    <div class="notice-filter-group">
+                        <label>상태</label>
+                        <select class="form-control" id="noticeStatusFilter" onchange="loadPopupNotices()">
+                            <option value="">전체</option>
+                            <option value="active">활성</option>
+                            <option value="scheduled">예약</option>
+                            <option value="expired">만료</option>
+                            <option value="inactive">비활성</option>
+                        </select>
+                    </div>
+                    <div class="notice-filter-group">
+                        <label>중요도</label>
+                        <select class="form-control" id="noticePriorityFilter" onchange="loadPopupNotices()">
+                            <option value="">전체</option>
+                            <option value="high">긴급</option>
+                            <option value="normal">일반</option>
+                            <option value="low">낮음</option>
+                        </select>
+                    </div>
+                    <div class="notice-filter-group" style="flex: 2;">
+                        <label>검색</label>
+                        <input type="text" class="form-control" id="noticeSearchInput" placeholder="제목 또는 내용 검색..." onkeyup="filterNotices()">
+                    </div>
+                </div>
+
+                <!-- 공지 목록 테이블 -->
+                <div class="card">
+                    <table class="notice-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">순서</th>
+                                <th style="width: 80px;">중요도</th>
+                                <th>제목</th>
+                                <th style="width: 120px;">기간</th>
+                                <th style="width: 80px;">상태</th>
+                                <th style="width: 80px;">노출 수</th>
+                                <th style="width: 150px;">관리</th>
+                            </tr>
+                        </thead>
+                        <tbody id="noticeTableBody">
+                            <tr><td colspan="7" style="text-align: center; color: #64748b; padding: 40px;">등록된 공지가 없습니다.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 팝업 공지 작성/수정 모달 -->
+    <div class="modal" id="noticeModal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3 id="noticeModalTitle">새 공지 작성</h3>
+                <button class="modal-close" onclick="closeModal('noticeModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="noticeId">
+                <div class="form-group">
+                    <label>제목 *</label>
+                    <input type="text" class="form-control" id="noticeTitle" placeholder="공지 제목을 입력하세요" maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label>내용 *</label>
+                    <textarea class="form-control" id="noticeContent" rows="5" placeholder="공지 내용을 입력하세요 (HTML 태그 사용 가능)"></textarea>
+                </div>
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>중요도</label>
+                        <select class="form-control" id="noticePriority">
+                            <option value="normal">일반</option>
+                            <option value="high">긴급 (빨간색 테두리)</option>
+                            <option value="low">낮음</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>대상 사용자</label>
+                        <select class="form-control" id="noticeTargetUsers">
+                            <option value="all">모든 사용자</option>
+                            <option value="admin">관리자만</option>
+                            <option value="user">일반 사용자만</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>시작일</label>
+                        <input type="date" class="form-control" id="noticeStartDate">
+                    </div>
+                    <div class="form-group">
+                        <label>종료일</label>
+                        <input type="date" class="form-control" id="noticeEndDate">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>링크 버튼 (선택)</label>
+                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px;">
+                        <input type="text" class="form-control" id="noticeLinkText" placeholder="버튼 텍스트">
+                        <input type="text" class="form-control" id="noticeLinkUrl" placeholder="링크 URL (https://...)">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div style="display: flex; gap: 20px;">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="noticeShowOnce"> 하루 동안 다시 보지 않기 옵션 표시
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="noticeIsActive" checked> 활성화
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeModal('noticeModal')">취소</button>
+                <button class="btn btn-secondary" onclick="previewNotice()">👁️ 미리보기</button>
+                <button class="btn btn-primary" onclick="saveNotice()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 팝업 공지 미리보기 모달 -->
+    <div class="modal" id="noticePreviewModal">
+        <div class="modal-content popup-notice-preview" style="max-width: 500px;">
+            <div class="popup-notice-header" id="previewHeader">
+                <span class="popup-notice-title" id="previewTitle">공지 제목</span>
+                <button class="popup-notice-close" onclick="closeModal('noticePreviewModal')">&times;</button>
+            </div>
+            <div class="popup-notice-body" id="previewBody">
+                <p>공지 내용이 여기에 표시됩니다.</p>
+            </div>
+            <div class="popup-notice-footer" id="previewFooter">
+                <label class="popup-notice-checkbox">
+                    <input type="checkbox" disabled> 오늘 하루 보지 않기
+                </label>
+                <button class="popup-notice-btn" disabled>확인</button>
+            </div>
         </div>
     </div>
 
@@ -3872,6 +4338,7 @@ ADMIN_TEMPLATE = '''
             else if (panel === 'costMapping') loadCostMapping();
             else if (panel === 'profitAnalysis') loadProfitAnalysis();
             else if (panel === 'financialSettings') loadFinancialSettings();
+            else if (panel === 'popupNotice') loadPopupNotices();
         }
 
         // 목표 탭 전환
@@ -4603,6 +5070,241 @@ ADMIN_TEMPLATE = '''
             } catch (e) {
                 alert('저장 실패: ' + e.message);
             }
+        }
+
+        // ========== 팝업 공지 관리 함수 ==========
+        let noticesData = [];
+
+        async function loadPopupNotices() {
+            try {
+                const status = document.getElementById('noticeStatusFilter')?.value || '';
+                const priority = document.getElementById('noticePriorityFilter')?.value || '';
+                const response = await fetch(`/api/admin/popup-notices?status=${status}&priority=${priority}`);
+                const data = await response.json();
+                noticesData = data.notices || [];
+                renderNotices();
+                updateNoticeKPIs(data);
+            } catch (e) {
+                console.error('공지 로드 실패:', e);
+            }
+        }
+
+        function updateNoticeKPIs(data) {
+            document.getElementById('totalNoticeCount').textContent = data.total || 0;
+            document.getElementById('activeNoticeCount').textContent = data.active || 0;
+            document.getElementById('scheduledNoticeCount').textContent = data.scheduled || 0;
+            document.getElementById('totalViewCount').textContent = (data.totalViews || 0).toLocaleString();
+        }
+
+        function renderNotices() {
+            const tbody = document.getElementById('noticeTableBody');
+            const searchTerm = document.getElementById('noticeSearchInput')?.value.toLowerCase() || '';
+
+            let filtered = noticesData;
+            if (searchTerm) {
+                filtered = noticesData.filter(n =>
+                    n.title.toLowerCase().includes(searchTerm) ||
+                    n.content.toLowerCase().includes(searchTerm)
+                );
+            }
+
+            if (!filtered.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #64748b; padding: 40px;">등록된 공지가 없습니다.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filtered.map((n, idx) => {
+                const priorityClass = `notice-priority-${n.priority}`;
+                const priorityText = n.priority === 'high' ? '긴급' : n.priority === 'normal' ? '일반' : '낮음';
+                const statusClass = `notice-status-${n.status}`;
+                const statusText = n.status === 'active' ? '활성' : n.status === 'scheduled' ? '예약' : n.status === 'expired' ? '만료' : '비활성';
+                const dateRange = n.start_date && n.end_date ?
+                    `${n.start_date.slice(5)} ~ ${n.end_date.slice(5)}` :
+                    (n.start_date ? `${n.start_date.slice(5)} ~` : '상시');
+
+                return `
+                    <tr>
+                        <td style="text-align: center;">${idx + 1}</td>
+                        <td><span class="notice-priority-badge ${priorityClass}">${priorityText}</span></td>
+                        <td><strong>${escapeHtml(n.title)}</strong></td>
+                        <td style="font-size: 12px; color: #64748b;">${dateRange}</td>
+                        <td><span class="notice-status-badge ${statusClass}">${statusText}</span></td>
+                        <td style="text-align: center;">${n.view_count || 0}</td>
+                        <td>
+                            <div class="notice-actions">
+                                <button class="btn-preview" onclick="previewNoticeById(${n.id})">👁️</button>
+                                <button class="btn-edit" onclick="editNotice(${n.id})">✏️</button>
+                                <button class="btn-delete" onclick="deleteNotice(${n.id})">🗑️</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function filterNotices() {
+            renderNotices();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showNoticeModal(noticeId = null) {
+            document.getElementById('noticeModalTitle').textContent = noticeId ? '공지 수정' : '새 공지 작성';
+            document.getElementById('noticeId').value = noticeId || '';
+
+            if (!noticeId) {
+                document.getElementById('noticeTitle').value = '';
+                document.getElementById('noticeContent').value = '';
+                document.getElementById('noticePriority').value = 'normal';
+                document.getElementById('noticeTargetUsers').value = 'all';
+                document.getElementById('noticeStartDate').value = new Date().toISOString().slice(0, 10);
+                document.getElementById('noticeEndDate').value = '';
+                document.getElementById('noticeLinkText').value = '';
+                document.getElementById('noticeLinkUrl').value = '';
+                document.getElementById('noticeShowOnce').checked = true;
+                document.getElementById('noticeIsActive').checked = true;
+            }
+
+            document.getElementById('noticeModal').classList.add('show');
+        }
+
+        function editNotice(id) {
+            const notice = noticesData.find(n => n.id === id);
+            if (!notice) return;
+
+            document.getElementById('noticeModalTitle').textContent = '공지 수정';
+            document.getElementById('noticeId').value = notice.id;
+            document.getElementById('noticeTitle').value = notice.title;
+            document.getElementById('noticeContent').value = notice.content;
+            document.getElementById('noticePriority').value = notice.priority;
+            document.getElementById('noticeTargetUsers').value = notice.target_users || 'all';
+            document.getElementById('noticeStartDate').value = notice.start_date || '';
+            document.getElementById('noticeEndDate').value = notice.end_date || '';
+            document.getElementById('noticeLinkText').value = notice.link_text || '';
+            document.getElementById('noticeLinkUrl').value = notice.link_url || '';
+            document.getElementById('noticeShowOnce').checked = notice.show_once !== false;
+            document.getElementById('noticeIsActive').checked = notice.is_active !== false;
+
+            document.getElementById('noticeModal').classList.add('show');
+        }
+
+        async function saveNotice() {
+            const id = document.getElementById('noticeId').value;
+            const title = document.getElementById('noticeTitle').value.trim();
+            const content = document.getElementById('noticeContent').value.trim();
+
+            if (!title || !content) {
+                alert('제목과 내용을 입력해주세요.');
+                return;
+            }
+
+            const data = {
+                title,
+                content,
+                priority: document.getElementById('noticePriority').value,
+                target_users: document.getElementById('noticeTargetUsers').value,
+                start_date: document.getElementById('noticeStartDate').value || null,
+                end_date: document.getElementById('noticeEndDate').value || null,
+                link_text: document.getElementById('noticeLinkText').value.trim() || null,
+                link_url: document.getElementById('noticeLinkUrl').value.trim() || null,
+                show_once: document.getElementById('noticeShowOnce').checked,
+                is_active: document.getElementById('noticeIsActive').checked
+            };
+
+            try {
+                const url = id ? `/api/admin/popup-notices/${id}` : '/api/admin/popup-notices';
+                const method = id ? 'PUT' : 'POST';
+
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    closeModal('noticeModal');
+                    loadPopupNotices();
+                    alert(id ? '공지가 수정되었습니다.' : '공지가 등록되었습니다.');
+                } else {
+                    alert('저장 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('저장 실패: ' + e.message);
+            }
+        }
+
+        async function deleteNotice(id) {
+            if (!confirm('이 공지를 삭제하시겠습니까?')) return;
+
+            try {
+                const response = await fetch(`/api/admin/popup-notices/${id}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                if (result.success) {
+                    loadPopupNotices();
+                    alert('공지가 삭제되었습니다.');
+                } else {
+                    alert('삭제 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (e) {
+                alert('삭제 실패: ' + e.message);
+            }
+        }
+
+        function previewNotice() {
+            const title = document.getElementById('noticeTitle').value || '공지 제목';
+            const content = document.getElementById('noticeContent').value || '공지 내용이 여기에 표시됩니다.';
+            const priority = document.getElementById('noticePriority').value;
+            const showOnce = document.getElementById('noticeShowOnce').checked;
+            const linkText = document.getElementById('noticeLinkText').value;
+            const linkUrl = document.getElementById('noticeLinkUrl').value;
+
+            const header = document.getElementById('previewHeader');
+            header.className = 'popup-notice-header' + (priority === 'high' ? ' urgent' : '');
+            document.getElementById('previewTitle').textContent = title;
+
+            let bodyHtml = content;
+            if (linkText && linkUrl) {
+                bodyHtml += `<br><a href="${linkUrl}" target="_blank" class="popup-notice-link">${linkText}</a>`;
+            }
+            document.getElementById('previewBody').innerHTML = bodyHtml;
+
+            const footer = document.getElementById('previewFooter');
+            footer.innerHTML = `
+                ${showOnce ? '<label class="popup-notice-checkbox"><input type="checkbox" disabled> 오늘 하루 보지 않기</label>' : '<span></span>'}
+                <button class="popup-notice-btn" onclick="closeModal('noticePreviewModal')">확인</button>
+            `;
+
+            document.getElementById('noticePreviewModal').classList.add('show');
+        }
+
+        function previewNoticeById(id) {
+            const notice = noticesData.find(n => n.id === id);
+            if (!notice) return;
+
+            const header = document.getElementById('previewHeader');
+            header.className = 'popup-notice-header' + (notice.priority === 'high' ? ' urgent' : '');
+            document.getElementById('previewTitle').textContent = notice.title;
+
+            let bodyHtml = notice.content;
+            if (notice.link_text && notice.link_url) {
+                bodyHtml += `<br><a href="${notice.link_url}" target="_blank" class="popup-notice-link">${notice.link_text}</a>`;
+            }
+            document.getElementById('previewBody').innerHTML = bodyHtml;
+
+            const footer = document.getElementById('previewFooter');
+            footer.innerHTML = `
+                ${notice.show_once ? '<label class="popup-notice-checkbox"><input type="checkbox" disabled> 오늘 하루 보지 않기</label>' : '<span></span>'}
+                <button class="popup-notice-btn" onclick="closeModal('noticePreviewModal')">확인</button>
+            `;
+
+            document.getElementById('noticePreviewModal').classList.add('show');
         }
 
         function formatNumber(num) {
@@ -7201,6 +7903,125 @@ HTML_TEMPLATE = '''
 
         .toast.error { background: var(--danger); }
         .toast.loading { background: var(--primary); }
+
+        /* 팝업 공지 모달 스타일 */
+        .popup-notice-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .popup-notice-modal.show {
+            opacity: 1;
+        }
+        .popup-notice-content {
+            background: white;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 480px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+        .popup-notice-modal.show .popup-notice-content {
+            transform: scale(1);
+        }
+        .popup-notice-content.urgent {
+            border: 3px solid #ef4444;
+        }
+        .popup-notice-header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .popup-notice-header.urgent {
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+        }
+        .popup-notice-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .popup-notice-close {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .popup-notice-close:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .popup-notice-body {
+            padding: 25px;
+            max-height: 300px;
+            overflow-y: auto;
+            line-height: 1.7;
+            color: #374151;
+        }
+        .popup-notice-footer {
+            padding: 15px 25px;
+            background: #f8fafc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #e2e8f0;
+        }
+        .popup-notice-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #64748b;
+            cursor: pointer;
+        }
+        .popup-notice-checkbox input {
+            width: 16px;
+            height: 16px;
+        }
+        .popup-notice-btn {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .popup-notice-btn:hover {
+            background: #4f46e5;
+        }
+        .popup-notice-link-btn {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: #6366f1;
+            color: white !important;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .popup-notice-link-btn:hover {
+            background: #4f46e5;
+        }
 
         /* 반응형 */
         @media (max-width: 1400px) {
@@ -27242,7 +28063,92 @@ HTML_TEMPLATE = '''
         loadSessionInfo();
         initializeYearSelects();  // 연도 드롭다운 동적 로드
         showToast('조회 버튼을 클릭하세요.', 'loading', 3000);
+        checkPopupNotices();  // 팝업 공지 확인
         console.log('[DEBUG] Main script completed successfully');
+
+        // 팝업 공지 확인 및 표시
+        async function checkPopupNotices() {
+            try {
+                const response = await fetch('/api/popup-notices/active');
+                const data = await response.json();
+                if (data.notices && data.notices.length > 0) {
+                    showPopupNotices(data.notices);
+                }
+            } catch (e) {
+                console.log('팝업 공지 로드 실패:', e);
+            }
+        }
+
+        function showPopupNotices(notices) {
+            const today = new Date().toISOString().slice(0, 10);
+
+            notices.forEach((notice, index) => {
+                // "오늘 하루 보지 않기" 체크
+                const hideKey = `popup_notice_hide_${notice.id}`;
+                const hideUntil = localStorage.getItem(hideKey);
+                if (hideUntil && hideUntil >= today) {
+                    return; // 오늘 이미 닫은 공지는 표시하지 않음
+                }
+
+                // 일정 시간 후 순차적으로 표시
+                setTimeout(() => {
+                    showSinglePopupNotice(notice);
+                }, index * 300);
+            });
+        }
+
+        function showSinglePopupNotice(notice) {
+            // 조회수 증가 API 호출
+            fetch(`/api/popup-notices/${notice.id}/view`, { method: 'POST' });
+
+            const modal = document.createElement('div');
+            modal.className = 'popup-notice-modal';
+            modal.id = `popupNotice_${notice.id}`;
+
+            const isUrgent = notice.priority === 'high';
+            let linkHtml = '';
+            if (notice.link_text && notice.link_url) {
+                linkHtml = `<a href="${notice.link_url}" target="_blank" class="popup-notice-link-btn">${notice.link_text}</a>`;
+            }
+
+            modal.innerHTML = `
+                <div class="popup-notice-content${isUrgent ? ' urgent' : ''}">
+                    <div class="popup-notice-header${isUrgent ? ' urgent' : ''}">
+                        <span class="popup-notice-title">${notice.title}</span>
+                        <button class="popup-notice-close" onclick="closePopupNotice(${notice.id})">&times;</button>
+                    </div>
+                    <div class="popup-notice-body">
+                        ${notice.content}
+                        ${linkHtml}
+                    </div>
+                    <div class="popup-notice-footer">
+                        ${notice.show_once ? `
+                            <label class="popup-notice-checkbox">
+                                <input type="checkbox" id="hideToday_${notice.id}"> 오늘 하루 보지 않기
+                            </label>
+                        ` : '<span></span>'}
+                        <button class="popup-notice-btn" onclick="closePopupNotice(${notice.id})">확인</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            setTimeout(() => modal.classList.add('show'), 10);
+        }
+
+        function closePopupNotice(noticeId) {
+            const checkbox = document.getElementById(`hideToday_${noticeId}`);
+            if (checkbox && checkbox.checked) {
+                const today = new Date().toISOString().slice(0, 10);
+                localStorage.setItem(`popup_notice_hide_${noticeId}`, today);
+            }
+
+            const modal = document.getElementById(`popupNotice_${noticeId}`);
+            if (modal) {
+                modal.classList.remove('show');
+                setTimeout(() => modal.remove(), 300);
+            }
+        }
     </script>
 </body>
 </html>
@@ -28442,6 +29348,242 @@ def api_admin_save_financial_settings():
             COST_RATE = new_rate / 100
 
         return jsonify({'success': True, 'message': '손익계산서 설정이 저장되었습니다.'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+# ============ 팝업 공지 API ============
+@app.route('/api/admin/popup-notices')
+@admin_required
+def api_admin_get_popup_notices():
+    """팝업 공지 목록 조회"""
+    try:
+        status = request.args.get('status', '')
+        priority = request.args.get('priority', '')
+
+        conn = sqlite3.connect(USERS_DB)
+        cursor = conn.cursor()
+
+        query = 'SELECT * FROM popup_notices WHERE 1=1'
+        params = []
+
+        if priority:
+            query += ' AND priority = ?'
+            params.append(priority)
+
+        # status 필터는 날짜 기반으로 처리
+        today = datetime.now().strftime('%Y-%m-%d')
+
+        cursor.execute(query + ' ORDER BY created_at DESC', params)
+        rows = cursor.fetchall()
+
+        notices = []
+        total = len(rows)
+        active_count = 0
+        scheduled_count = 0
+        total_views = 0
+
+        for row in rows:
+            notice = {
+                'id': row[0],
+                'title': row[1],
+                'content': row[2],
+                'priority': row[3],
+                'target_users': row[4],
+                'start_date': row[5],
+                'end_date': row[6],
+                'link_text': row[7],
+                'link_url': row[8],
+                'show_once': bool(row[9]),
+                'is_active': bool(row[10]),
+                'view_count': row[11] or 0,
+                'created_at': row[12],
+                'updated_at': row[13]
+            }
+
+            # 상태 계산
+            if not notice['is_active']:
+                notice['status'] = 'inactive'
+            elif notice['start_date'] and notice['start_date'] > today:
+                notice['status'] = 'scheduled'
+                scheduled_count += 1
+            elif notice['end_date'] and notice['end_date'] < today:
+                notice['status'] = 'expired'
+            else:
+                notice['status'] = 'active'
+                active_count += 1
+
+            total_views += notice['view_count']
+
+            # status 필터 적용
+            if status and notice['status'] != status:
+                continue
+
+            notices.append(notice)
+
+        conn.close()
+
+        return jsonify({
+            'notices': notices,
+            'total': total,
+            'active': active_count,
+            'scheduled': scheduled_count,
+            'totalViews': total_views
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/popup-notices', methods=['POST'])
+@admin_required
+def api_admin_create_popup_notice():
+    """팝업 공지 생성"""
+    try:
+        data = request.get_json()
+
+        conn = sqlite3.connect(USERS_DB)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            INSERT INTO popup_notices
+            (title, content, priority, target_users, start_date, end_date,
+             link_text, link_url, show_once, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data.get('title'),
+            data.get('content'),
+            data.get('priority', 'normal'),
+            data.get('target_users', 'all'),
+            data.get('start_date'),
+            data.get('end_date'),
+            data.get('link_text'),
+            data.get('link_url'),
+            1 if data.get('show_once', True) else 0,
+            1 if data.get('is_active', True) else 0
+        ))
+
+        conn.commit()
+        notice_id = cursor.lastrowid
+        conn.close()
+
+        return jsonify({'success': True, 'id': notice_id})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/admin/popup-notices/<int:notice_id>', methods=['PUT'])
+@admin_required
+def api_admin_update_popup_notice(notice_id):
+    """팝업 공지 수정"""
+    try:
+        data = request.get_json()
+
+        conn = sqlite3.connect(USERS_DB)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            UPDATE popup_notices SET
+                title = ?,
+                content = ?,
+                priority = ?,
+                target_users = ?,
+                start_date = ?,
+                end_date = ?,
+                link_text = ?,
+                link_url = ?,
+                show_once = ?,
+                is_active = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (
+            data.get('title'),
+            data.get('content'),
+            data.get('priority', 'normal'),
+            data.get('target_users', 'all'),
+            data.get('start_date'),
+            data.get('end_date'),
+            data.get('link_text'),
+            data.get('link_url'),
+            1 if data.get('show_once', True) else 0,
+            1 if data.get('is_active', True) else 0,
+            notice_id
+        ))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/admin/popup-notices/<int:notice_id>', methods=['DELETE'])
+@admin_required
+def api_admin_delete_popup_notice(notice_id):
+    """팝업 공지 삭제"""
+    try:
+        conn = sqlite3.connect(USERS_DB)
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM popup_notices WHERE id = ?', (notice_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/popup-notices/active')
+@login_required
+def api_get_active_popup_notices():
+    """활성 팝업 공지 조회 (사용자용)"""
+    try:
+        user = session.get('user', {})
+        user_role = user.get('role', 'user')
+        today = datetime.now().strftime('%Y-%m-%d')
+
+        conn = sqlite3.connect(USERS_DB)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT * FROM popup_notices
+            WHERE is_active = 1
+            AND (start_date IS NULL OR start_date <= ?)
+            AND (end_date IS NULL OR end_date >= ?)
+            ORDER BY priority DESC, created_at DESC
+        ''', (today, today))
+
+        rows = cursor.fetchall()
+        notices = []
+
+        for row in rows:
+            target = row[4]  # target_users
+            # 대상 사용자 필터링
+            if target == 'admin' and user_role != 'admin':
+                continue
+            if target == 'user' and user_role == 'admin':
+                continue
+
+            notices.append({
+                'id': row[0],
+                'title': row[1],
+                'content': row[2],
+                'priority': row[3],
+                'link_text': row[7],
+                'link_url': row[8],
+                'show_once': bool(row[9])
+            })
+
+        conn.close()
+        return jsonify({'notices': notices})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/popup-notices/<int:notice_id>/view', methods=['POST'])
+@login_required
+def api_popup_notice_viewed(notice_id):
+    """팝업 공지 조회수 증가"""
+    try:
+        conn = sqlite3.connect(USERS_DB)
+        cursor = conn.cursor()
+        cursor.execute('UPDATE popup_notices SET view_count = view_count + 1 WHERE id = ?', (notice_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
