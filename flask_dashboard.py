@@ -11642,29 +11642,35 @@ HTML_TEMPLATE = '''
                     // 렌더링 대기 (차트 등 비동기 요소 로딩)
                     await new Promise(resolve => setTimeout(resolve, 1000));
 
-                    // content-area 클래스 영역 캡처
-                    const contentArea = document.querySelector('.content-area');
+                    // 탭 콘텐츠 영역 캡처 (id로 직접 접근)
+                    const contentArea = document.getElementById(tabId);
                     if (!contentArea) {
-                        console.warn(`[PDF] ${tabId} 탭의 content-area를 찾을 수 없습니다.`);
+                        console.warn(`[PDF] ${tabId} 탭을 찾을 수 없습니다.`);
                         continue;
                     }
 
-                    console.log(`[PDF] ${tabName} 탭 캡처 시작`);
+                    console.log(`[PDF] ${tabName} 탭 캡처 시작, ID: ${tabId}`);
 
                     // 스크롤 위치 초기화
                     window.scrollTo(0, 0);
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await new Promise(resolve => setTimeout(resolve, 200));
 
                     // html2canvas로 캡처
                     const canvas = await html2canvas(contentArea, {
                         scale: 1.5,
                         useCORS: true,
-                        logging: false,
+                        logging: true,
                         backgroundColor: '#f8fafc',
                         scrollX: 0,
                         scrollY: 0,
                         width: contentArea.scrollWidth,
-                        height: contentArea.scrollHeight
+                        height: contentArea.scrollHeight,
+                        onclone: function(clonedDoc) {
+                            const clonedContent = clonedDoc.getElementById(tabId);
+                            if (clonedContent) {
+                                clonedContent.style.display = 'block';
+                            }
+                        }
                     });
 
                     console.log(`[PDF] ${tabName} 캡처 완료: ${canvas.width}x${canvas.height}`);
