@@ -6455,6 +6455,205 @@ HTML_TEMPLATE = '''
             transform: none;
         }
 
+        /* PDF 모달 스타일 */
+        .pdf-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .pdf-modal-content {
+            background: white;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+
+        .pdf-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            color: white;
+        }
+
+        .pdf-modal-header h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .pdf-modal-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            line-height: 1;
+            opacity: 0.8;
+        }
+
+        .pdf-modal-close:hover {
+            opacity: 1;
+        }
+
+        .pdf-modal-body {
+            padding: 24px;
+            max-height: 50vh;
+            overflow-y: auto;
+        }
+
+        .pdf-tab-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .pdf-tab-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .pdf-tab-item:hover {
+            background: #e0e7ff;
+            border-color: #6366f1;
+        }
+
+        .pdf-tab-item:has(input:checked) {
+            background: #e0e7ff;
+            border-color: #6366f1;
+        }
+
+        .pdf-tab-item input {
+            width: 18px;
+            height: 18px;
+            accent-color: #6366f1;
+        }
+
+        .pdf-tab-item span {
+            font-size: 13px;
+            font-weight: 500;
+            color: #334155;
+        }
+
+        .pdf-select-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .pdf-select-buttons button {
+            padding: 8px 16px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .pdf-select-buttons button:hover {
+            background: #f1f5f9;
+            border-color: #6366f1;
+        }
+
+        .pdf-modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            padding: 16px 24px;
+            background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .pdf-cancel-btn {
+            padding: 10px 20px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .pdf-cancel-btn:hover {
+            background: #f1f5f9;
+        }
+
+        .pdf-generate-btn {
+            padding: 10px 24px;
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .pdf-generate-btn:hover {
+            background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+            transform: translateY(-1px);
+        }
+
+        .pdf-generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .pdf-progress {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f0fdf4;
+            border-radius: 8px;
+            border: 1px solid #86efac;
+        }
+
+        .pdf-progress-text {
+            font-size: 13px;
+            color: #166534;
+            margin-bottom: 8px;
+        }
+
+        .pdf-progress-bar {
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .pdf-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #22c55e, #16a34a);
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        @media (max-width: 600px) {
+            .pdf-tab-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
         /* 탭 카드 그리드 */
         .tab-cards {
             display: flex;
@@ -8583,11 +8782,88 @@ HTML_TEMPLATE = '''
                     🔍 조회하기
                 </button>
 
-                <button id="btnExportPdf" class="btn-export-pdf" onclick="exportToPdf()" title="현재 화면을 PDF로 저장">
+                <button id="btnExportPdf" class="btn-export-pdf" onclick="openPdfModal()" title="PDF로 내보내기">
                     📄 PDF 저장
                 </button>
             </div>
         </section>
+
+        <!-- PDF 탭 선택 모달 -->
+        <div id="pdfModal" class="pdf-modal" style="display: none;">
+            <div class="pdf-modal-content">
+                <div class="pdf-modal-header">
+                    <h3>📄 PDF 내보내기</h3>
+                    <button class="pdf-modal-close" onclick="closePdfModal()">&times;</button>
+                </div>
+                <div class="pdf-modal-body">
+                    <p style="margin-bottom: 15px; color: #64748b;">PDF에 포함할 탭을 선택하세요:</p>
+                    <div class="pdf-tab-grid">
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_main" value="main" checked>
+                            <span>🏠 메인</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_daily" value="daily">
+                            <span>📅 일별</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_personal" value="personal">
+                            <span>👤 개인별</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_team" value="team">
+                            <span>👥 팀별</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_monthly" value="monthly">
+                            <span>📆 월별</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_client" value="client">
+                            <span>🏢 업체별</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_region" value="region">
+                            <span>📍 지역별</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_purpose" value="purpose">
+                            <span>🎯 목적별</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_sampleType" value="sampleType">
+                            <span>🧪 유형</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_defect" value="defect">
+                            <span>⚠️ 부적합</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_foodItem" value="foodItem">
+                            <span>🔬 검사항목</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_collection" value="collection">
+                            <span>💵 수금</span>
+                        </label>
+                        <label class="pdf-tab-item">
+                            <input type="checkbox" id="pdfTab_profitAnalysis" value="profitAnalysis">
+                            <span>📊 손익분석</span>
+                        </label>
+                    </div>
+                    <div class="pdf-select-buttons">
+                        <button type="button" onclick="selectAllPdfTabs(true)">전체 선택</button>
+                        <button type="button" onclick="selectAllPdfTabs(false)">전체 해제</button>
+                    </div>
+                </div>
+                <div class="pdf-modal-footer">
+                    <button class="pdf-cancel-btn" onclick="closePdfModal()">취소</button>
+                    <button class="pdf-generate-btn" onclick="generatePdfFromTabs()">
+                        <span id="pdfGenerateText">📄 PDF 생성</span>
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <!-- 탭 카드 -->
         <section class="tab-cards">
@@ -11216,71 +11492,231 @@ HTML_TEMPLATE = '''
             }
         }
 
-        // PDF 내보내기 함수 (서버 측 생성 - 한글 지원)
-        async function exportToPdf() {
-            const btn = document.getElementById('btnExportPdf');
-            const originalText = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '⏳ PDF 생성중...';
+        // ============ PDF 모달 및 화면 캡처 기능 ============
+
+        // PDF 모달 열기
+        function openPdfModal() {
+            document.getElementById('pdfModal').style.display = 'flex';
+        }
+
+        // PDF 모달 닫기
+        function closePdfModal() {
+            document.getElementById('pdfModal').style.display = 'none';
+            // 진행 상태 초기화
+            const progressDiv = document.querySelector('.pdf-progress');
+            if (progressDiv) progressDiv.remove();
+        }
+
+        // 전체 선택/해제
+        function selectAllPdfTabs(checked) {
+            document.querySelectorAll('.pdf-tab-item input').forEach(cb => {
+                cb.checked = checked;
+            });
+        }
+
+        // 탭 이름 매핑
+        const tabNameMap = {
+            'main': '메인',
+            'daily': '일별',
+            'personal': '개인별',
+            'team': '팀별',
+            'monthly': '월별',
+            'client': '업체별',
+            'region': '지역별',
+            'purpose': '목적별',
+            'sampleType': '유형',
+            'defect': '부적합',
+            'foodItem': '검사항목',
+            'collection': '수금',
+            'profitAnalysis': '손익분석'
+        };
+
+        // 탭별 컨텐츠 영역 ID 매핑
+        const tabContentMap = {
+            'main': 'mainContent',
+            'daily': 'dailyContent',
+            'personal': 'personalContent',
+            'team': 'teamContent',
+            'monthly': 'monthlyContent',
+            'client': 'clientContent',
+            'region': 'regionContent',
+            'purpose': 'purposeContent',
+            'sampleType': 'sampleTypeContent',
+            'defect': 'defectContent',
+            'foodItem': 'foodItemContent',
+            'collection': 'collectionContent',
+            'profitAnalysis': 'profitAnalysisContent'
+        };
+
+        // PDF 생성 (선택한 탭들의 화면 캡처)
+        async function generatePdfFromTabs() {
+            const selectedTabs = Array.from(document.querySelectorAll('.pdf-tab-item input:checked'))
+                .map(cb => cb.value);
+
+            if (selectedTabs.length === 0) {
+                showToast('최소 1개 이상의 탭을 선택해주세요.', 'error');
+                return;
+            }
+
+            const generateBtn = document.querySelector('.pdf-generate-btn');
+            generateBtn.disabled = true;
+            document.getElementById('pdfGenerateText').textContent = '⏳ 생성 중...';
+
+            // 진행 상태 표시
+            let progressDiv = document.querySelector('.pdf-progress');
+            if (!progressDiv) {
+                progressDiv = document.createElement('div');
+                progressDiv.className = 'pdf-progress';
+                progressDiv.innerHTML = `
+                    <div class="pdf-progress-text">PDF 생성 준비 중...</div>
+                    <div class="pdf-progress-bar"><div class="pdf-progress-fill" style="width: 0%"></div></div>
+                `;
+                document.querySelector('.pdf-modal-body').appendChild(progressDiv);
+            }
+
+            const progressText = progressDiv.querySelector('.pdf-progress-text');
+            const progressFill = progressDiv.querySelector('.pdf-progress-fill');
 
             try {
-                showToast('PDF를 생성하고 있습니다...', 'loading');
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pageWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
+                const margin = 10;
 
-                // 조회 조건 가져오기
+                // 현재 활성 탭 저장
+                const currentActiveTab = document.querySelector('.tab-card.active');
+                const currentTabId = currentActiveTab?.getAttribute('onclick')?.match(/'(\w+)'/)?.[1] || 'main';
+
+                // 조회 조건
                 const year = document.getElementById('yearSelect')?.value || '2025';
                 const month = document.getElementById('monthSelect')?.value || '';
-                const purpose = document.getElementById('purposeSelect')?.value || '전체';
-                const activeTab = document.querySelector('.tab-card.active');
-                const tabLabel = activeTab?.querySelector('.tab-label')?.textContent || '메인';
 
-                // 현재 화면의 요약 데이터 수집
-                const summaryData = {
-                    totalSales: document.querySelector('.stat-card:nth-child(1) .stat-value')?.textContent || '-',
-                    totalCount: document.querySelector('.stat-card:nth-child(2) .stat-value')?.textContent || '-',
-                    avgPrice: document.querySelector('.stat-card:nth-child(3) .stat-value')?.textContent || '-',
-                    newClients: document.querySelector('.stat-card:nth-child(4) .stat-value')?.textContent || '-',
-                    defectCount: document.querySelector('.stat-card:nth-child(5) .stat-value')?.textContent || '-',
-                };
+                let isFirstPage = true;
 
-                // 서버 API 호출
-                const response = await fetch('/api/export-pdf', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        year,
-                        month,
-                        purpose,
-                        tabLabel,
-                        summaryData
-                    })
-                });
+                for (let i = 0; i < selectedTabs.length; i++) {
+                    const tabId = selectedTabs[i];
+                    const tabName = tabNameMap[tabId] || tabId;
+                    const progress = Math.round(((i + 1) / selectedTabs.length) * 100);
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'PDF 생성 실패');
+                    progressText.textContent = `${tabName} 탭 캡처 중... (${i + 1}/${selectedTabs.length})`;
+                    progressFill.style.width = `${progress}%`;
+
+                    // 탭 전환
+                    showTab(tabId);
+                    await new Promise(resolve => setTimeout(resolve, 500)); // 렌더링 대기
+
+                    // 콘텐츠 영역 찾기
+                    const contentId = tabContentMap[tabId];
+                    let contentArea = document.getElementById(contentId);
+
+                    // 콘텐츠가 없으면 현재 보이는 탭 콘텐츠 찾기
+                    if (!contentArea || contentArea.style.display === 'none') {
+                        contentArea = document.querySelector('.tab-content:not([style*="display: none"])') ||
+                                     document.querySelector('.content-container');
+                    }
+
+                    if (!contentArea) {
+                        console.warn(`${tabId} 탭의 콘텐츠를 찾을 수 없습니다.`);
+                        continue;
+                    }
+
+                    // html2canvas로 캡처
+                    const canvas = await html2canvas(contentArea, {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#f8fafc',
+                        windowWidth: contentArea.scrollWidth,
+                        windowHeight: contentArea.scrollHeight
+                    });
+
+                    // 새 페이지 추가 (첫 페이지가 아닌 경우)
+                    if (!isFirstPage) {
+                        pdf.addPage();
+                    }
+                    isFirstPage = false;
+
+                    // 페이지 헤더 추가
+                    pdf.setFillColor(99, 102, 241); // #6366f1
+                    pdf.rect(0, 0, pageWidth, 25, 'F');
+                    pdf.setTextColor(255, 255, 255);
+                    pdf.setFontSize(14);
+                    pdf.text(`경영지표 - ${tabName} (${year}년${month ? ' ' + month + '월' : ''})`, pageWidth / 2, 16, { align: 'center' });
+
+                    // 이미지 추가
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    const imgWidth = pageWidth - (margin * 2);
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                    let yPosition = 30;
+                    const availableHeight = pageHeight - 35;
+
+                    if (imgHeight <= availableHeight) {
+                        pdf.addImage(imgData, 'JPEG', margin, yPosition, imgWidth, imgHeight);
+                    } else {
+                        // 여러 페이지로 분할
+                        let heightLeft = imgHeight;
+                        let sourceY = 0;
+                        const sourceHeight = canvas.height;
+
+                        while (heightLeft > 0) {
+                            const thisPageHeight = Math.min(heightLeft, availableHeight);
+                            const thisSourceHeight = (thisPageHeight / imgHeight) * sourceHeight;
+
+                            // 캔버스 일부분 추출
+                            const tempCanvas = document.createElement('canvas');
+                            tempCanvas.width = canvas.width;
+                            tempCanvas.height = thisSourceHeight;
+                            const tempCtx = tempCanvas.getContext('2d');
+                            tempCtx.drawImage(canvas, 0, sourceY, canvas.width, thisSourceHeight,
+                                            0, 0, canvas.width, thisSourceHeight);
+
+                            const partImgData = tempCanvas.toDataURL('image/jpeg', 0.95);
+                            pdf.addImage(partImgData, 'JPEG', margin, yPosition, imgWidth, thisPageHeight);
+
+                            heightLeft -= thisPageHeight;
+                            sourceY += thisSourceHeight;
+
+                            if (heightLeft > 0) {
+                                pdf.addPage();
+                                // 연속 페이지 헤더
+                                pdf.setFillColor(99, 102, 241);
+                                pdf.rect(0, 0, pageWidth, 25, 'F');
+                                pdf.setTextColor(255, 255, 255);
+                                pdf.setFontSize(14);
+                                pdf.text(`경영지표 - ${tabName} (계속)`, pageWidth / 2, 16, { align: 'center' });
+                                yPosition = 30;
+                            }
+                        }
+                    }
                 }
 
+                // 원래 탭으로 복원
+                showTab(currentTabId);
+
+                progressText.textContent = 'PDF 다운로드 중...';
+                progressFill.style.width = '100%';
+
                 // PDF 다운로드
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `경영지표_${year}${month ? '_' + month + '월' : ''}_${new Date().toISOString().slice(0,10)}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
+                const fileName = `경영지표_${year}${month ? '_' + month + '월' : ''}_${new Date().toISOString().slice(0,10)}.pdf`;
+                pdf.save(fileName);
 
                 showToast('PDF가 다운로드되었습니다.', 'success');
+                closePdfModal();
+
             } catch (error) {
                 console.error('PDF 생성 오류:', error);
                 showToast('PDF 생성 중 오류가 발생했습니다: ' + error.message, 'error');
             } finally {
-                btn.disabled = false;
-                btn.innerHTML = originalText;
+                generateBtn.disabled = false;
+                document.getElementById('pdfGenerateText').textContent = '📄 PDF 생성';
             }
+        }
+
+        // 기존 exportToPdf 함수 (서버 측 종합 보고서용 - 유지)
+        async function exportToPdf() {
+            openPdfModal();
         }
 
         // 데이터 로드 (실제 API 호출)
