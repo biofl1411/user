@@ -891,6 +891,18 @@ def check_sqlite_needs_update():
     """SQLite DB 업데이트 필요 여부 확인"""
     import sqlite3
 
+    # Excel 파일이 하나도 없으면 변환 불필요 (Colab 업로드 대기)
+    has_excel_files = False
+    for year in ['2024', '2025']:
+        data_path = DATA_DIR / str(year)
+        if data_path.exists() and list(data_path.glob("*.xlsx")):
+            has_excel_files = True
+            break
+
+    if not has_excel_files:
+        print("[SQLITE] Excel 파일 없음 - DB 업로드 대기 상태로 시작")
+        return False
+
     if not SQLITE_DB.exists():
         return True
 
