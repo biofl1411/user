@@ -26,6 +26,7 @@ try:
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib.colors import HexColor
+    from reportlab.lib.utils import ImageReader
     REPORTLAB_AVAILABLE = True
     # 나눔고딕 폰트 등록 (여러 경로 시도)
     FONT_PATHS = [
@@ -35,17 +36,35 @@ try:
         '/usr/share/fonts/NanumGothic.ttf',
     ]
     KOREAN_FONT = None
+    KOREAN_FONT_PATH = None
     for font_path in FONT_PATHS:
         if os.path.exists(font_path):
             try:
                 pdfmetrics.registerFont(TTFont('NanumGothic', font_path))
                 KOREAN_FONT = 'NanumGothic'
+                KOREAN_FONT_PATH = font_path
                 break
             except:
                 pass
 except ImportError:
     REPORTLAB_AVAILABLE = False
     KOREAN_FONT = None
+    KOREAN_FONT_PATH = None
+
+# 차트 생성을 위한 matplotlib
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # GUI 없는 백엔드
+    import matplotlib.pyplot as plt
+    from matplotlib import font_manager
+    MATPLOTLIB_AVAILABLE = True
+    # matplotlib 한글 폰트 설정
+    if KOREAN_FONT_PATH:
+        font_manager.fontManager.addfont(KOREAN_FONT_PATH)
+        plt.rcParams['font.family'] = 'NanumGothic'
+    plt.rcParams['axes.unicode_minus'] = False
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
 
 app = Flask(__name__)
 
@@ -30340,6 +30359,133 @@ def filter_data_by_date(data, year, month=None, day=None, end_year=None, end_mon
     return filtered
 
 # ============ PDF 내보내기 API ============
+
+def create_monthly_chart(by_month):
+    """월별 매출 추이 차트 생성"""
+    if not MATPLOTLIB_AVAILABLE or not by_month:
+        return None
+
+    try:
+        months = [f"{m}월" for m, _ in by_month]
+        sales = [d.get('sales', 0) / 100000000 for _, d in by_month]  # 억 단위
+
+        fig, ax = plt.subplots(figsize=(7, 3))
+        bars = ax.bar(months, sales, color='#6366f1', alpha=0.8)
+        ax.set_ylabel('매출액 (억원)', fontsize=10)
+        ax.set_title('월별 매출 추이', fontsize=12, fontweight='bold')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        # 값 표시
+        for bar, val in zip(bars, sales):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
+                   f'{val:.1f}', ha='center', va='bottom', fontsize=8)
+
+        plt.tight_layout()
+
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception as e:
+        print(f"[차트 오류] monthly: {e}")
+        return None
+
+def create_branch_pie_chart(by_branch, total_sales):
+    """부서별 매출 비율 파이 차트"""
+    if not MATPLOTLIB_AVAILABLE or not by_branch:
+        return None
+
+    try:
+        labels = [b[:8] for b, _ in by_branch[:6]]
+        sizes = [d.get('sales', 0) for _, d in by_branch[:6]]
+        colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+
+        fig, ax = plt.subplots(figsize=(4, 3))
+        wedges, texts, autotexts = ax.pie(sizes, labels=labels, autopct='%1.1f%%',
+                                          colors=colors[:len(sizes)], startangle=90)
+        ax.set_title('부서별 매출 비율', fontsize=12, fontweight='bold')
+
+        for autotext in autotexts:
+            autotext.set_fontsize(8)
+        for text in texts:
+            text.set_fontsize(8)
+
+        plt.tight_layout()
+
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception as e:
+        print(f"[차트 오류] branch_pie: {e}")
+        return None
+
+def create_manager_bar_chart(by_manager):
+    """담당자별 실적 수평 막대 차트"""
+    if not MATPLOTLIB_AVAILABLE or not by_manager:
+        return None
+
+    try:
+        top10 = by_manager[:10]
+        names = [m[:6] for m, _ in top10][::-1]
+        sales = [d.get('sales', 0) / 100000000 for _, d in top10][::-1]  # 억 단위
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        bars = ax.barh(names, sales, color='#10b981', alpha=0.8)
+        ax.set_xlabel('매출액 (억원)', fontsize=10)
+        ax.set_title('담당자별 실적 TOP 10', fontsize=12, fontweight='bold')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        for bar, val in zip(bars, sales):
+            ax.text(val + 0.1, bar.get_y() + bar.get_height()/2,
+                   f'{val:.1f}', va='center', fontsize=8)
+
+        plt.tight_layout()
+
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception as e:
+        print(f"[차트 오류] manager_bar: {e}")
+        return None
+
+def create_purpose_chart(by_purpose):
+    """검사목적별 매출 차트"""
+    if not MATPLOTLIB_AVAILABLE or not by_purpose:
+        return None
+
+    try:
+        purpose_data = by_purpose if isinstance(by_purpose, list) else list(by_purpose.items())
+        top8 = purpose_data[:8]
+        labels = [p[:10] for p, _ in top8]
+        sales = [d.get('sales', 0) / 100000000 for _, d in top8]  # 억 단위
+        colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
+
+        fig, ax = plt.subplots(figsize=(7, 3))
+        bars = ax.bar(labels, sales, color=colors[:len(labels)], alpha=0.8)
+        ax.set_ylabel('매출액 (억원)', fontsize=10)
+        ax.set_title('검사목적별 매출', fontsize=12, fontweight='bold')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        plt.xticks(rotation=15, ha='right', fontsize=8)
+
+        plt.tight_layout()
+
+        buf = BytesIO()
+        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception as e:
+        print(f"[차트 오류] purpose: {e}")
+        return None
+
 def draw_pdf_header(c, width, height, title_text, subtitle_text):
     """PDF 헤더 그리기"""
     c.setFillColor(HexColor('#6366f1'))
@@ -30505,10 +30651,16 @@ def export_pdf():
 
         by_month = processed.get('by_month', [])
         if by_month:
+            # 차트 추가
+            chart_buf = create_monthly_chart(by_month)
+            if chart_buf:
+                chart_img = ImageReader(chart_buf)
+                c.drawImage(chart_img, 40, y_pos - 130, width=width-80, height=120, preserveAspectRatio=True)
+                y_pos -= 145
+
             headers = ['월', '매출액', '건수', '평균단가']
             col_widths = [80, 150, 100, 150]
             rows = []
-            # by_month는 list of tuples: [(month, {sales, count, ...}), ...]
             for m, data in by_month:
                 rows.append([
                     f"{m}월",
@@ -30528,12 +30680,18 @@ def export_pdf():
         y_pos = draw_section_title(c, y_pos, "부서별 실적 현황", width)
 
         by_branch = processed.get('by_branch', [])
+        total_sales = processed.get('total_sales', 1)
         if by_branch:
+            # 파이 차트 추가
+            chart_buf = create_branch_pie_chart(by_branch, total_sales)
+            if chart_buf:
+                chart_img = ImageReader(chart_buf)
+                c.drawImage(chart_img, 40, y_pos - 130, width=width-80, height=120, preserveAspectRatio=True)
+                y_pos -= 145
+
             headers = ['부서', '매출액', '건수', '비율']
             col_widths = [120, 150, 100, 100]
             rows = []
-            total_sales = processed.get('total_sales', 1)
-            # by_branch는 list of tuples: [(branch, {sales, count, ...}), ...]
             for branch, data in by_branch[:10]:
                 ratio = (data.get('sales', 0) / total_sales * 100) if total_sales > 0 else 0
                 rows.append([
@@ -30555,10 +30713,16 @@ def export_pdf():
 
         by_manager = processed.get('by_manager', [])
         if by_manager:
+            # 수평 막대 차트 추가
+            chart_buf = create_manager_bar_chart(by_manager)
+            if chart_buf:
+                chart_img = ImageReader(chart_buf)
+                c.drawImage(chart_img, 40, y_pos - 170, width=width-80, height=160, preserveAspectRatio=True)
+                y_pos -= 185
+
             headers = ['담당자', '매출액', '건수', '평균단가']
             col_widths = [100, 150, 100, 130]
             rows = []
-            # by_manager는 list of tuples: [(manager, {sales, count, ...}), ...]
             for person, data in by_manager[:15]:
                 avg = data.get('sales', 0) / data.get('count', 1) if data.get('count', 0) > 0 else 0
                 rows.append([
@@ -30630,10 +30794,16 @@ def export_pdf():
 
         by_purpose = processed.get('by_purpose', [])
         if by_purpose:
+            # 차트 추가
+            chart_buf = create_purpose_chart(by_purpose)
+            if chart_buf:
+                chart_img = ImageReader(chart_buf)
+                c.drawImage(chart_img, 40, y_pos - 130, width=width-80, height=120, preserveAspectRatio=True)
+                y_pos -= 145
+
             headers = ['검사목적', '매출액', '건수']
             col_widths = [180, 150, 100]
             rows = []
-            # by_purpose가 list of tuples인 경우
             purpose_data = by_purpose if isinstance(by_purpose, list) else list(by_purpose.items())
             for purp, data in purpose_data[:8]:
                 rows.append([
