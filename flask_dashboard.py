@@ -11558,20 +11558,27 @@ HTML_TEMPLATE = '''
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                position: fixed;
-                top: -9999px;
-                left: -9999px;
+                position: absolute;
+                top: 0;
+                left: 0;
+                z-index: 99999;
+                opacity: 0.99;
             `;
             const titleText = isContinued
                 ? `경영지표 - ${tabName} (계속)`
                 : `경영지표 - ${tabName} (${year}년${month ? ' ' + month + '월' : ''})`;
-            headerDiv.innerHTML = `<span style="color: white; font-size: 20px; font-weight: bold; font-family: 'Malgun Gothic', sans-serif;">${titleText}</span>`;
+            headerDiv.innerHTML = `<span style="color: white; font-size: 20px; font-weight: bold; font-family: 'Malgun Gothic', 'Nanum Gothic', sans-serif;">${titleText}</span>`;
             document.body.appendChild(headerDiv);
+
+            // 렌더링 대기
+            await new Promise(resolve => setTimeout(resolve, 100));
 
             const canvas = await html2canvas(headerDiv, {
                 scale: 2,
-                backgroundColor: null,
-                logging: false
+                backgroundColor: '#6366f1',
+                logging: false,
+                width: 794,
+                height: 50
             });
 
             document.body.removeChild(headerDiv);
