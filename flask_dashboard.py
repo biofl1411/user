@@ -30340,9 +30340,83 @@ def filter_data_by_date(data, year, month=None, day=None, end_year=None, end_mon
     return filtered
 
 # ============ PDF 내보내기 API ============
+def draw_pdf_header(c, width, height, title_text, subtitle_text):
+    """PDF 헤더 그리기"""
+    c.setFillColor(HexColor('#6366f1'))
+    c.rect(0, height - 70, width, 70, fill=True, stroke=False)
+    c.setFillColor(HexColor('#ffffff'))
+    c.setFont(KOREAN_FONT, 18)
+    c.drawCentredString(width / 2, height - 35, title_text)
+    c.setFont(KOREAN_FONT, 10)
+    c.drawCentredString(width / 2, height - 55, subtitle_text)
+
+def draw_pdf_footer(c, width, page_num):
+    """PDF 푸터 그리기"""
+    c.setFillColor(HexColor('#6366f1'))
+    c.rect(0, 0, width, 25, fill=True, stroke=False)
+    c.setFillColor(HexColor('#ffffff'))
+    c.setFont(KOREAN_FONT, 8)
+    c.drawCentredString(width / 2, 10, f"Business Metrics Analyzer - {page_num} 페이지")
+
+def draw_section_title(c, y_pos, title, width):
+    """섹션 제목 그리기"""
+    c.setFillColor(HexColor('#6366f1'))
+    c.setFont(KOREAN_FONT, 14)
+    c.drawString(40, y_pos, f"■ {title}")
+    c.setStrokeColor(HexColor('#e2e8f0'))
+    c.line(40, y_pos - 5, width - 40, y_pos - 5)
+    return y_pos - 25
+
+def draw_table(c, y_pos, headers, rows, col_widths, width):
+    """테이블 그리기"""
+    x_start = 40
+    row_height = 20
+
+    # 헤더 배경
+    c.setFillColor(HexColor('#f1f5f9'))
+    c.rect(x_start, y_pos - row_height + 5, sum(col_widths), row_height, fill=True, stroke=False)
+
+    # 헤더 텍스트
+    c.setFillColor(HexColor('#475569'))
+    c.setFont(KOREAN_FONT, 9)
+    x = x_start + 5
+    for i, header in enumerate(headers):
+        c.drawString(x, y_pos - 10, header)
+        x += col_widths[i]
+
+    y_pos -= row_height
+
+    # 데이터 행
+    c.setFillColor(HexColor('#1e293b'))
+    for row in rows:
+        y_pos -= row_height
+        if y_pos < 60:  # 페이지 하단 여백
+            break
+        x = x_start + 5
+        for i, cell in enumerate(row):
+            text = str(cell)[:20]  # 텍스트 길이 제한
+            c.drawString(x, y_pos + 5, text)
+            x += col_widths[i]
+        # 행 구분선
+        c.setStrokeColor(HexColor('#e2e8f0'))
+        c.line(x_start, y_pos, x_start + sum(col_widths), y_pos)
+
+    return y_pos
+
+def format_number(num):
+    """숫자 포맷팅"""
+    if isinstance(num, (int, float)):
+        if num >= 100000000:
+            return f"{num/100000000:.1f}억"
+        elif num >= 10000:
+            return f"{num/10000:.0f}만"
+        else:
+            return f"{num:,.0f}"
+    return str(num)
+
 @app.route('/api/export-pdf', methods=['POST'])
 def export_pdf():
-    """서버 측에서 PDF 생성 (한글 지원)"""
+    """서버 측에서 전체 탭 종합 PDF 보고서 생성"""
     if not REPORTLAB_AVAILABLE:
         return jsonify({'error': 'PDF 라이브러리가 설치되지 않았습니다.'}), 500
 
@@ -30350,97 +30424,280 @@ def export_pdf():
         return jsonify({'error': '한글 폰트를 찾을 수 없습니다.'}), 500
 
     try:
-        data = request.get_json() or {}
-        year = data.get('year', '2025')
-        month = data.get('month', '')
-        purpose = data.get('purpose', '전체')
-        tab_label = data.get('tabLabel', '메인')
-        summary_data = data.get('summaryData', {})
+        req_data = request.get_json() or {}
+        year = req_data.get('year', '2025')
+        month = req_data.get('month', '')
+        purpose = req_data.get('purpose', '전체')
+
+        # 데이터 로드
+        all_data = load_excel_data(year)
+        if month:
+            all_data = [r for r in all_data if str(r.get('월', '')).replace('월', '') == str(month)]
+
+        # 전년도 거래처 (신규 판단용)
+        prev_year_clients = set()
+        try:
+            prev_data = load_excel_data(str(int(year) - 1))
+            for r in prev_data:
+                client = str(r.get('거래처', '') or '').strip()
+                if client:
+                    prev_year_clients.add(client)
+        except:
+            pass
+
+        # 데이터 처리
+        processed = process_data(all_data, purpose, prev_year_clients if prev_year_clients else None)
 
         # PDF 생성
         buffer = BytesIO()
         c = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
+        page_num = 1
 
-        # 폰트 설정
-        c.setFont(KOREAN_FONT, 12)
-
-        # 헤더 배경
-        c.setFillColor(HexColor('#6366f1'))
-        c.rect(0, height - 80, width, 80, fill=True, stroke=False)
-
-        # 제목
-        c.setFillColor(HexColor('#ffffff'))
-        c.setFont(KOREAN_FONT, 22)
-        title = f"경영지표 분석 보고서 - {year}년"
+        # ========== 1페이지: 표지 및 요약 ==========
+        title = f"경영지표 종합 보고서 - {year}년"
         if month:
             title += f" {month}월"
-        if purpose != '전체':
-            title += f" ({purpose})"
-        c.drawCentredString(width / 2, height - 45, title)
+        subtitle = f"생성일시: {datetime.now().strftime('%Y-%m-%d %H:%M')} | 검사목적: {purpose}"
+        draw_pdf_header(c, width, height, title, subtitle)
 
-        # 부제목
-        c.setFont(KOREAN_FONT, 11)
-        c.drawCentredString(width / 2, height - 65, f"조회 탭: {tab_label} | 생성일시: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        y_pos = height - 100
+        y_pos = draw_section_title(c, y_pos, "주요 지표 요약", width)
 
-        # 본문 시작 위치
-        y_pos = height - 120
-
-        # 요약 정보 박스
+        # 요약 박스
         c.setFillColor(HexColor('#f8fafc'))
-        c.rect(30, y_pos - 180, width - 60, 180, fill=True, stroke=False)
+        c.rect(40, y_pos - 120, width - 80, 120, fill=True, stroke=False)
         c.setStrokeColor(HexColor('#e2e8f0'))
-        c.rect(30, y_pos - 180, width - 60, 180, fill=False, stroke=True)
+        c.rect(40, y_pos - 120, width - 80, 120, fill=False, stroke=True)
 
-        # 요약 데이터 출력
-        c.setFillColor(HexColor('#1e293b'))
-        c.setFont(KOREAN_FONT, 14)
-        c.drawString(50, y_pos - 25, "주요 지표 요약")
-
-        c.setFont(KOREAN_FONT, 11)
-        y_pos -= 55
-
-        # 요약 항목들
+        # 요약 데이터
         summary_items = [
-            ('총 매출액', summary_data.get('totalSales', '-')),
-            ('총 건수', summary_data.get('totalCount', '-')),
-            ('평균 단가', summary_data.get('avgPrice', '-')),
-            ('신규 업체', summary_data.get('newClients', '-')),
-            ('부적합 건수', summary_data.get('defectCount', '-')),
+            ('총 매출액', format_number(processed.get('total_sales', 0))),
+            ('총 건수', f"{processed.get('total_count', 0):,}건"),
+            ('평균 단가', format_number(processed.get('avg_price', 0))),
+            ('신규 업체', f"{processed.get('new_client_count', 0)}개"),
+            ('부적합 건수', f"{processed.get('defect_count', 0)}건"),
+            ('거래처 수', f"{len(processed.get('by_client', {}))}개"),
         ]
 
-        col1_x = 50
-        col2_x = width / 2 + 20
-        row_height = 28
-
+        c.setFont(KOREAN_FONT, 11)
+        col1_x, col2_x = 60, width / 2 + 20
+        item_y = y_pos - 25
         for i, (label, value) in enumerate(summary_items):
             x = col1_x if i % 2 == 0 else col2_x
             if i % 2 == 0 and i > 0:
-                y_pos -= row_height
+                item_y -= 30
             c.setFillColor(HexColor('#64748b'))
-            c.drawString(x, y_pos, f"{label}:")
+            c.drawString(x, item_y, f"{label}:")
             c.setFillColor(HexColor('#1e293b'))
             c.setFont(KOREAN_FONT, 12)
-            c.drawString(x + 85, y_pos, str(value))
+            c.drawString(x + 80, item_y, str(value))
             c.setFont(KOREAN_FONT, 11)
+
+        draw_pdf_footer(c, width, page_num)
+
+        # ========== 2페이지: 월별 현황 ==========
+        c.showPage()
+        page_num += 1
+        draw_pdf_header(c, width, height, title, subtitle)
+        y_pos = height - 100
+        y_pos = draw_section_title(c, y_pos, "월별 매출 현황", width)
+
+        by_month = processed.get('by_month', {})
+        if by_month:
+            headers = ['월', '매출액', '건수', '평균단가']
+            col_widths = [80, 150, 100, 150]
+            rows = []
+            for m in sorted(by_month.keys(), key=lambda x: int(x) if x.isdigit() else 0):
+                data = by_month[m]
+                rows.append([
+                    f"{m}월",
+                    format_number(data.get('sales', 0)),
+                    f"{data.get('count', 0):,}건",
+                    format_number(data.get('sales', 0) / data.get('count', 1) if data.get('count', 0) > 0 else 0)
+                ])
+            y_pos = draw_table(c, y_pos, headers, rows, col_widths, width)
+
+        draw_pdf_footer(c, width, page_num)
+
+        # ========== 3페이지: 팀별 현황 ==========
+        c.showPage()
+        page_num += 1
+        draw_pdf_header(c, width, height, title, subtitle)
+        y_pos = height - 100
+        y_pos = draw_section_title(c, y_pos, "팀별 실적 현황", width)
+
+        by_team = processed.get('by_team', {})
+        if by_team:
+            headers = ['팀', '매출액', '건수', '비율']
+            col_widths = [120, 150, 100, 100]
+            rows = []
+            total_sales = processed.get('total_sales', 1)
+            sorted_teams = sorted(by_team.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
+            for team, data in sorted_teams[:10]:
+                ratio = (data.get('sales', 0) / total_sales * 100) if total_sales > 0 else 0
+                rows.append([
+                    team[:15],
+                    format_number(data.get('sales', 0)),
+                    f"{data.get('count', 0):,}건",
+                    f"{ratio:.1f}%"
+                ])
+            y_pos = draw_table(c, y_pos, headers, rows, col_widths, width)
+
+        draw_pdf_footer(c, width, page_num)
+
+        # ========== 4페이지: 담당자별 현황 ==========
+        c.showPage()
+        page_num += 1
+        draw_pdf_header(c, width, height, title, subtitle)
+        y_pos = height - 100
+        y_pos = draw_section_title(c, y_pos, "담당자별 실적 TOP 15", width)
+
+        by_person = processed.get('by_person', {})
+        if by_person:
+            headers = ['담당자', '매출액', '건수', '평균단가']
+            col_widths = [100, 150, 100, 130]
+            rows = []
+            sorted_persons = sorted(by_person.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
+            for person, data in sorted_persons[:15]:
+                avg = data.get('sales', 0) / data.get('count', 1) if data.get('count', 0) > 0 else 0
+                rows.append([
+                    person[:10],
+                    format_number(data.get('sales', 0)),
+                    f"{data.get('count', 0):,}건",
+                    format_number(avg)
+                ])
+            y_pos = draw_table(c, y_pos, headers, rows, col_widths, width)
+
+        draw_pdf_footer(c, width, page_num)
+
+        # ========== 5페이지: 업체별 현황 ==========
+        c.showPage()
+        page_num += 1
+        draw_pdf_header(c, width, height, title, subtitle)
+        y_pos = height - 100
+        y_pos = draw_section_title(c, y_pos, "업체별 매출 TOP 15", width)
+
+        by_client = processed.get('by_client', {})
+        if by_client:
+            headers = ['업체명', '매출액', '건수']
+            col_widths = [200, 150, 100]
+            rows = []
+            sorted_clients = sorted(by_client.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
+            for client, data in sorted_clients[:15]:
+                rows.append([
+                    client[:25],
+                    format_number(data.get('sales', 0)),
+                    f"{data.get('count', 0):,}건"
+                ])
+            y_pos = draw_table(c, y_pos, headers, rows, col_widths, width)
+
+        draw_pdf_footer(c, width, page_num)
+
+        # ========== 6페이지: 지역별 현황 ==========
+        c.showPage()
+        page_num += 1
+        draw_pdf_header(c, width, height, title, subtitle)
+        y_pos = height - 100
+        y_pos = draw_section_title(c, y_pos, "지역별 매출 현황", width)
+
+        by_region = processed.get('by_region', {})
+        if by_region:
+            headers = ['지역', '매출액', '건수', '비율']
+            col_widths = [120, 150, 100, 100]
+            rows = []
+            total_sales = processed.get('total_sales', 1)
+            sorted_regions = sorted(by_region.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
+            for region, data in sorted_regions[:15]:
+                ratio = (data.get('sales', 0) / total_sales * 100) if total_sales > 0 else 0
+                rows.append([
+                    region[:15],
+                    format_number(data.get('sales', 0)),
+                    f"{data.get('count', 0):,}건",
+                    f"{ratio:.1f}%"
+                ])
+            y_pos = draw_table(c, y_pos, headers, rows, col_widths, width)
+
+        draw_pdf_footer(c, width, page_num)
+
+        # ========== 7페이지: 목적별/유형별 현황 ==========
+        c.showPage()
+        page_num += 1
+        draw_pdf_header(c, width, height, title, subtitle)
+        y_pos = height - 100
+        y_pos = draw_section_title(c, y_pos, "검사목적별 현황", width)
+
+        by_purpose = processed.get('by_purpose', {})
+        if by_purpose:
+            headers = ['검사목적', '매출액', '건수']
+            col_widths = [180, 150, 100]
+            rows = []
+            sorted_purposes = sorted(by_purpose.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
+            for purp, data in sorted_purposes[:8]:
+                rows.append([
+                    purp[:20],
+                    format_number(data.get('sales', 0)),
+                    f"{data.get('count', 0):,}건"
+                ])
+            y_pos = draw_table(c, y_pos, headers, rows, col_widths, width)
+
+        y_pos -= 30
+        y_pos = draw_section_title(c, y_pos, "검체유형별 현황", width)
+
+        by_sample = processed.get('by_sample_type', {})
+        if by_sample:
+            headers = ['검체유형', '매출액', '건수']
+            col_widths = [180, 150, 100]
+            rows = []
+            sorted_samples = sorted(by_sample.items(), key=lambda x: x[1].get('sales', 0), reverse=True)
+            for sample, data in sorted_samples[:8]:
+                rows.append([
+                    sample[:20],
+                    format_number(data.get('sales', 0)),
+                    f"{data.get('count', 0):,}건"
+                ])
+            y_pos = draw_table(c, y_pos, headers, rows, col_widths, width)
+
+        draw_pdf_footer(c, width, page_num)
+
+        # ========== 8페이지: 부적합 현황 ==========
+        c.showPage()
+        page_num += 1
+        draw_pdf_header(c, width, height, title, subtitle)
+        y_pos = height - 100
+        y_pos = draw_section_title(c, y_pos, "부적합 현황", width)
+
+        defect_items = processed.get('defect_items', [])
+        if defect_items:
+            headers = ['부적합 항목', '건수']
+            col_widths = [350, 100]
+            rows = []
+            # 부적합 항목별 집계
+            defect_summary = {}
+            for item in defect_items:
+                name = item.get('defect_item', '기타')[:40]
+                defect_summary[name] = defect_summary.get(name, 0) + 1
+            sorted_defects = sorted(defect_summary.items(), key=lambda x: x[1], reverse=True)
+            for defect, count in sorted_defects[:15]:
+                rows.append([defect, f"{count}건"])
+            y_pos = draw_table(c, y_pos, headers, rows, col_widths, width)
+        else:
+            c.setFillColor(HexColor('#64748b'))
+            c.setFont(KOREAN_FONT, 11)
+            c.drawString(50, y_pos - 20, "부적합 데이터가 없습니다.")
 
         # 안내 문구
         c.setFillColor(HexColor('#94a3b8'))
-        c.setFont(KOREAN_FONT, 10)
+        c.setFont(KOREAN_FONT, 9)
         c.drawCentredString(width / 2, 50, "※ 본 보고서는 경영지표 분석 시스템에서 자동 생성되었습니다.")
 
-        # 푸터
-        c.setFillColor(HexColor('#6366f1'))
-        c.rect(0, 0, width, 30, fill=True, stroke=False)
-        c.setFillColor(HexColor('#ffffff'))
-        c.setFont(KOREAN_FONT, 9)
-        c.drawCentredString(width / 2, 12, "Business Metrics Analyzer")
+        draw_pdf_footer(c, width, page_num)
 
         c.save()
         buffer.seek(0)
 
         # 파일명 생성
-        filename = f"경영지표_{year}"
+        filename = f"경영지표_종합보고서_{year}"
         if month:
             filename += f"_{month}월"
         filename += f"_{datetime.now().strftime('%Y%m%d')}.pdf"
