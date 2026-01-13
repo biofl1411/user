@@ -299,6 +299,19 @@ def init_user_db():
         )
     ''')
 
+    # 손익분석 설정 테이블
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS profit_analysis_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL,
+            cost_rate REAL DEFAULT 69.7,
+            sga_monthly REAL DEFAULT 2.5,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(year)
+        )
+    ''')
+
     # 기존 users 테이블에 team_id, email 컬럼 추가 (마이그레이션)
     try:
         cursor.execute('ALTER TABLE users ADD COLUMN team_id INTEGER')
@@ -3305,6 +3318,7 @@ ADMIN_TEMPLATE = '''
                 <div class="sidebar-item" onclick="showPanel('costData')">💰 원가 데이터</div>
                 <div class="sidebar-item" onclick="showPanel('costMapping')">🔗 항목 매핑</div>
                 <div class="sidebar-item" onclick="showPanel('profitAnalysis')">📈 손익 분석</div>
+                <div class="sidebar-item" onclick="showPanel('profitSettings')">⚙️ 손익분석 설정</div>
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-title">재무 설정</div>
@@ -3887,6 +3901,145 @@ ADMIN_TEMPLATE = '''
                 </div>
             </div>
 
+            <!-- 손익분석 설정 패널 -->
+            <div id="profitSettingsPanel" class="admin-panel">
+                <div class="panel-header">
+                    <h2>⚙️ 손익분석 설정</h2>
+                    <button class="btn btn-primary" onclick="saveProfitSettings()">💾 저장</button>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 15px; background: #f0f9ff; border-radius: 12px; border-left: 4px solid #3b82f6;">
+                    <p style="margin: 0; color: #1e40af; font-size: 14px;">
+                        <strong>💡 손익분석 설정 안내</strong><br>
+                        이 설정은 손익분석 탭에서 추정 원가와 추정 이익을 계산할 때 사용됩니다.<br>
+                        원가율과 월평균 판관비를 년도별로 입력해주세요.
+                    </p>
+                </div>
+
+                <!-- 원가율 설정 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-title">📊 년도별 원가율</div>
+                    <p style="color: #64748b; font-size: 13px; margin-bottom: 15px;">
+                        분석사업 매출원가를 기준으로 원가율을 입력합니다.<br>
+                        <small style="color: #94a3b8;">(원가율 = 매출원가 ÷ 매출액 × 100)</small>
+                    </p>
+                    <table style="width: 100%;">
+                        <thead>
+                            <tr style="background: #f8fafc;">
+                                <th style="padding: 12px; text-align: left; font-weight: 600; color: #475569;">년도</th>
+                                <th style="padding: 12px; text-align: right; font-weight: 600; color: #475569;">매출원가 (참고)</th>
+                                <th style="padding: 12px; text-align: right; font-weight: 600; color: #475569;">매출액 (참고)</th>
+                                <th style="padding: 12px; text-align: center; font-weight: 600; color: #475569;">원가율</th>
+                            </tr>
+                        </thead>
+                        <tbody id="costRateSettingsTable">
+                            <tr>
+                                <td style="padding: 12px;">2026년</td>
+                                <td style="padding: 12px; text-align: right; color: #94a3b8;">-</td>
+                                <td style="padding: 12px; text-align: right; color: #94a3b8;">-</td>
+                                <td style="padding: 12px; text-align: center;">
+                                    <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                        <input type="number" id="costRate2026" value="69.7" step="0.1" min="0" max="100"
+                                               style="width: 80px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: right; font-weight: 600;">
+                                        <span style="color: #64748b;">%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr style="background: #f8fafc;">
+                                <td style="padding: 12px;">2025년</td>
+                                <td style="padding: 12px; text-align: right; color: #94a3b8;">36.2억</td>
+                                <td style="padding: 12px; text-align: right; color: #94a3b8;">52.0억</td>
+                                <td style="padding: 12px; text-align: center;">
+                                    <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                        <input type="number" id="costRate2025" value="69.7" step="0.1" min="0" max="100"
+                                               style="width: 80px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: right; font-weight: 600;">
+                                        <span style="color: #64748b;">%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px;">2024년</td>
+                                <td style="padding: 12px; text-align: right; color: #94a3b8;">31.8억</td>
+                                <td style="padding: 12px; text-align: right; color: #94a3b8;">57.0억</td>
+                                <td style="padding: 12px; text-align: center;">
+                                    <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                        <input type="number" id="costRate2024" value="55.8" step="0.1" min="0" max="100"
+                                               style="width: 80px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: right; font-weight: 600;">
+                                        <span style="color: #64748b;">%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div style="margin-top: 12px; padding: 10px 15px; background: #f8fafc; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+                        <span>ℹ️</span>
+                        <span style="font-size: 13px; color: #64748b;">참고: 매출원가, 매출액은 재무제표 기준 참고값입니다.</span>
+                    </div>
+                </div>
+
+                <!-- 판관비 설정 -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-title">💰 년도별 판관비 (월평균)</div>
+                    <p style="color: #64748b; font-size: 13px; margin-bottom: 15px;">
+                        판매비와 관리비의 월 평균 금액을 입력합니다.
+                    </p>
+                    <table style="width: 100%;">
+                        <thead>
+                            <tr style="background: #f8fafc;">
+                                <th style="padding: 12px; text-align: left; font-weight: 600; color: #475569;">년도</th>
+                                <th style="padding: 12px; text-align: right; font-weight: 600; color: #475569;">연간 판관비 (참고)</th>
+                                <th style="padding: 12px; text-align: center; font-weight: 600; color: #475569;">월평균</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sgaSettingsTable">
+                            <tr>
+                                <td style="padding: 12px;">2026년</td>
+                                <td style="padding: 12px; text-align: right; color: #94a3b8;">-</td>
+                                <td style="padding: 12px; text-align: center;">
+                                    <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                        <input type="number" id="sgaMonthly2026" value="2.5" step="0.1" min="0"
+                                               style="width: 80px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: right; font-weight: 600;">
+                                        <span style="color: #64748b;">억원</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr style="background: #f8fafc;">
+                                <td style="padding: 12px;">2025년</td>
+                                <td style="padding: 12px; text-align: right; color: #94a3b8;">30.3억</td>
+                                <td style="padding: 12px; text-align: center;">
+                                    <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                        <input type="number" id="sgaMonthly2025" value="2.5" step="0.1" min="0"
+                                               style="width: 80px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: right; font-weight: 600;">
+                                        <span style="color: #64748b;">억원</span>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 12px;">2024년</td>
+                                <td style="padding: 12px; text-align: right; color: #94a3b8;">28.8억</td>
+                                <td style="padding: 12px; text-align: center;">
+                                    <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                        <input type="number" id="sgaMonthly2024" value="2.4" step="0.1" min="0"
+                                               style="width: 80px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: right; font-weight: 600;">
+                                        <span style="color: #64748b;">억원</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div style="margin-top: 12px; padding: 10px 15px; background: #f8fafc; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+                        <span>ℹ️</span>
+                        <span style="font-size: 13px; color: #64748b;">손익분석에서 영업이익 계산에 사용됩니다.</span>
+                    </div>
+                </div>
+
+                <!-- 하단 버튼 -->
+                <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
+                    <button class="btn" onclick="resetProfitSettings()">초기화</button>
+                    <button class="btn btn-primary" onclick="saveProfitSettings()">💾 저장</button>
+                </div>
+            </div>
+
             <!-- 팝업 공지 관리 패널 -->
             <div id="popupNoticePanel" class="admin-panel">
                 <div class="panel-header">
@@ -4352,6 +4505,7 @@ ADMIN_TEMPLATE = '''
             else if (panel === 'costMapping') loadCostMapping();
             else if (panel === 'profitAnalysis') loadProfitAnalysis();
             else if (panel === 'financialSettings') loadFinancialSettings();
+            else if (panel === 'profitSettings') loadProfitSettingsPanel();
             else if (panel === 'popupNotice') loadPopupNotices();
         }
 
@@ -4933,6 +5087,73 @@ ADMIN_TEMPLATE = '''
                 calculateFinancialSummary();
             }
         });
+
+        // ========== 손익분석 설정 함수들 ==========
+        async function loadProfitSettingsPanel() {
+            try {
+                const response = await fetch('/api/admin/profit-settings');
+                const data = await response.json();
+
+                if (data.settings) {
+                    // 원가율 설정
+                    data.settings.forEach(s => {
+                        const costRateEl = document.getElementById('costRate' + s.year);
+                        const sgaMonthlyEl = document.getElementById('sgaMonthly' + s.year);
+                        if (costRateEl) costRateEl.value = s.cost_rate || 69.7;
+                        if (sgaMonthlyEl) sgaMonthlyEl.value = s.sga_monthly || 2.5;
+                    });
+                }
+            } catch (e) {
+                console.error('손익분석 설정 로드 실패:', e);
+            }
+        }
+
+        async function saveProfitSettings() {
+            const settings = [];
+            [2024, 2025, 2026].forEach(year => {
+                const costRateEl = document.getElementById('costRate' + year);
+                const sgaMonthlyEl = document.getElementById('sgaMonthly' + year);
+                if (costRateEl && sgaMonthlyEl) {
+                    settings.push({
+                        year: year,
+                        cost_rate: parseFloat(costRateEl.value) || 69.7,
+                        sga_monthly: parseFloat(sgaMonthlyEl.value) || 2.5
+                    });
+                }
+            });
+
+            try {
+                const response = await fetch('/api/admin/profit-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ settings })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast('손익분석 설정이 저장되었습니다.', 'success');
+                } else {
+                    showToast('저장 실패: ' + (data.error || '알 수 없는 오류'), 'error');
+                }
+            } catch (e) {
+                console.error('손익분석 설정 저장 실패:', e);
+                showToast('저장 실패: ' + e.message, 'error');
+            }
+        }
+
+        function resetProfitSettings() {
+            if (!confirm('설정을 기본값으로 초기화하시겠습니까?')) return;
+
+            // 기본값으로 초기화
+            document.getElementById('costRate2026').value = 69.7;
+            document.getElementById('costRate2025').value = 69.7;
+            document.getElementById('costRate2024').value = 55.8;
+            document.getElementById('sgaMonthly2026').value = 2.5;
+            document.getElementById('sgaMonthly2025').value = 2.5;
+            document.getElementById('sgaMonthly2024').value = 2.4;
+
+            showToast('기본값으로 초기화되었습니다.', 'info');
+        }
 
         async function loadFinancialSettings() {
             const year = document.getElementById('financialYear')?.value || '2025';
@@ -27913,14 +28134,14 @@ HTML_TEMPLATE = '''
             const tbody = document.querySelector('#profitByPurposeTable tbody');
             tbody.innerHTML = data.map(d => `
                 <tr>
-                    <td>${d.purpose}</td>
-                    <td style="text-align:right;">${d.count.toLocaleString()}</td>
-                    <td style="text-align:right;">${formatCurrency(d.normal_price)}</td>
-                    <td style="text-align:right;">${formatCurrency(d.actual_sales)}</td>
-                    <td style="text-align:right; color:${d.discount_rate > 0 ? '#f59e0b' : '#059669'};">${d.discount_rate}%</td>
-                    <td style="text-align:right; color:#dc2626;">${formatCurrency(d.estimated_cost)}</td>
-                    <td style="text-align:right; color:${d.estimated_profit >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(d.estimated_profit)}</td>
-                    <td style="text-align:right; font-weight:bold;">${d.profit_rate}%</td>
+                    <td>${d.purpose || '-'}</td>
+                    <td style="text-align:right;">${(d.count || 0).toLocaleString()}</td>
+                    <td style="text-align:right;">${formatCurrency(d.normal_price || 0)}</td>
+                    <td style="text-align:right;">${formatCurrency(d.actual_sales || 0)}</td>
+                    <td style="text-align:right; color:${(d.discount_rate || 0) > 0 ? '#f59e0b' : '#059669'};">${(d.discount_rate || 0).toFixed(1)}%</td>
+                    <td style="text-align:right; color:#dc2626;">${formatCurrency(d.estimated_cost || 0)}</td>
+                    <td style="text-align:right; color:${(d.estimated_profit || 0) >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(d.estimated_profit || 0)}</td>
+                    <td style="text-align:right; font-weight:bold;">${(d.profit_rate || 0).toFixed(1)}%</td>
                 </tr>
             `).join('') || '<tr><td colspan="8" style="text-align:center;">데이터 없음</td></tr>';
         }
@@ -27929,30 +28150,30 @@ HTML_TEMPLATE = '''
             const tbody = document.querySelector('#profitByManagerTable tbody');
             tbody.innerHTML = data.map(d => `
                 <tr>
-                    <td>${d.manager}</td>
-                    <td style="text-align:right;">${d.count.toLocaleString()}</td>
-                    <td style="text-align:right;">${formatCurrency(d.normal_price)}</td>
-                    <td style="text-align:right;">${formatCurrency(d.actual_sales)}</td>
-                    <td style="text-align:right; color:${d.discount_rate > 0 ? '#f59e0b' : '#059669'};">${d.discount_rate}%</td>
-                    <td style="text-align:right; color:#dc2626;">${formatCurrency(d.estimated_cost)}</td>
-                    <td style="text-align:right; color:${d.estimated_profit >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(d.estimated_profit)}</td>
-                    <td style="text-align:right; font-weight:bold;">${d.profit_rate}%</td>
+                    <td>${d.manager || '-'}</td>
+                    <td style="text-align:right;">${(d.count || 0).toLocaleString()}</td>
+                    <td style="text-align:right;">${formatCurrency(d.normal_price || 0)}</td>
+                    <td style="text-align:right;">${formatCurrency(d.actual_sales || 0)}</td>
+                    <td style="text-align:right; color:${(d.discount_rate || 0) > 0 ? '#f59e0b' : '#059669'};">${(d.discount_rate || 0).toFixed(1)}%</td>
+                    <td style="text-align:right; color:#dc2626;">${formatCurrency(d.estimated_cost || 0)}</td>
+                    <td style="text-align:right; color:${(d.estimated_profit || 0) >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(d.estimated_profit || 0)}</td>
+                    <td style="text-align:right; font-weight:bold;">${(d.profit_rate || 0).toFixed(1)}%</td>
                 </tr>
             `).join('') || '<tr><td colspan="8" style="text-align:center;">데이터 없음</td></tr>';
         }
 
         function updateProfitByMonthTable(data) {
             const tbody = document.querySelector('#profitByMonthTable tbody');
-            tbody.innerHTML = data.filter(d => d.count > 0).map(d => `
+            tbody.innerHTML = data.filter(d => (d.count || 0) > 0).map(d => `
                 <tr>
-                    <td>${d.month_name}</td>
-                    <td style="text-align:right;">${d.count.toLocaleString()}</td>
-                    <td style="text-align:right;">${formatCurrency(d.normal_price)}</td>
-                    <td style="text-align:right;">${formatCurrency(d.actual_sales)}</td>
-                    <td style="text-align:right; color:${d.discount_rate > 0 ? '#f59e0b' : '#059669'};">${d.discount_rate}%</td>
-                    <td style="text-align:right; color:#dc2626;">${formatCurrency(d.estimated_cost)}</td>
-                    <td style="text-align:right; color:${d.estimated_profit >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(d.estimated_profit)}</td>
-                    <td style="text-align:right; font-weight:bold;">${d.profit_rate}%</td>
+                    <td>${d.month_name || '-'}</td>
+                    <td style="text-align:right;">${(d.count || 0).toLocaleString()}</td>
+                    <td style="text-align:right;">${formatCurrency(d.normal_price || 0)}</td>
+                    <td style="text-align:right;">${formatCurrency(d.actual_sales || 0)}</td>
+                    <td style="text-align:right; color:${(d.discount_rate || 0) > 0 ? '#f59e0b' : '#059669'};">${(d.discount_rate || 0).toFixed(1)}%</td>
+                    <td style="text-align:right; color:#dc2626;">${formatCurrency(d.estimated_cost || 0)}</td>
+                    <td style="text-align:right; color:${(d.estimated_profit || 0) >= 0 ? '#059669' : '#dc2626'};">${formatCurrency(d.estimated_profit || 0)}</td>
+                    <td style="text-align:right; font-weight:bold;">${(d.profit_rate || 0).toFixed(1)}%</td>
                 </tr>
             `).join('') || '<tr><td colspan="8" style="text-align:center;">데이터 없음</td></tr>';
         }
@@ -29039,43 +29260,48 @@ def api_profit_summary():
     data = load_excel_data(year)
 
     total_sales = 0  # 실제 매출액 (공급가액 합계)
+    total_normal_price = 0  # 정상가 합계
     for row in data:
         fee = row.get('공급가액', 0) or 0
         if isinstance(fee, str):
             fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
         total_sales += fee
 
-    # 2. 원가율/판관비율 가져오기 (financial_settings에서)
+        # 정상가 (검사료 또는 수수료 컬럼 사용)
+        normal = row.get('검사료', 0) or row.get('수수료', 0) or fee
+        if isinstance(normal, str):
+            normal = float(normal.replace(',', '').replace('원', '')) if normal else 0
+        total_normal_price += normal
+
+    # 2. 원가율/판관비 가져오기 (profit_analysis_settings 우선)
+    profit_settings = get_profit_analysis_settings(year)
+    cost_rate = profit_settings['cost_rate'] / 100  # % -> 비율
+    sga_monthly = profit_settings['sga_monthly'] * 100000000  # 억원 -> 원
+
+    # financial_settings에서 영업외손익 가져오기
     fin_settings = get_financial_settings(year)
+    non_operating = fin_settings.get('non_operating_income', 0) if fin_settings else 0
 
-    if fin_settings:
-        cost_rate = fin_settings.get('cost_rate', 69.7) / 100  # % -> 비율
-        sga_rate = fin_settings.get('sga_rate', 58.4) / 100
-        non_operating = fin_settings.get('non_operating_income', 0)
-    else:
-        cost_rate = COST_RATE  # 기본값 69.7%
-        sga_rate = 0.584  # 기본값 58.4%
-        non_operating = 0
-
-    # 3. 손익 계산 (실제 매출 × 비율)
+    # 3. 손익 계산
     cost_of_sales = total_sales * cost_rate  # 매출원가
     gross_profit = total_sales - cost_of_sales  # 매출총이익
-    sga_expense = total_sales * sga_rate  # 판관비
-    operating_profit = gross_profit - sga_expense  # 영업이익
+    operating_profit = gross_profit - sga_monthly  # 영업이익
     net_profit = operating_profit + non_operating  # 세전이익
 
     profit_rate = (operating_profit / total_sales * 100) if total_sales > 0 else 0
     gross_margin = (gross_profit / total_sales * 100) if total_sales > 0 else 0
+    discount_rate = ((total_normal_price - total_sales) / total_normal_price * 100) if total_normal_price > 0 else 0
 
     return jsonify({
         'success': True,
         'year': year,
-        'source': 'excel_data',
+        'source': 'profit_analysis_settings',
         'data_count': len(data),
         'total_actual_sales': total_sales,
+        'total_normal_price': total_normal_price,
         'cost_of_sales': cost_of_sales,
         'gross_profit': gross_profit,
-        'sga_expense': sga_expense,
+        'sga_expense': sga_monthly,
         'operating_profit': operating_profit,
         'non_operating_income': non_operating,
         'net_profit': net_profit,
@@ -29084,58 +29310,63 @@ def api_profit_summary():
         'profit_rate': round(profit_rate, 1),
         'gross_margin': round(gross_margin, 1),
         'cost_rate': round(cost_rate * 100, 1),
-        'sga_rate': round(sga_rate * 100, 1),
-        'discount_rate': 0,
-        'total_normal_price': total_sales
+        'sga_monthly': profit_settings['sga_monthly']
     })
 
 @app.route('/api/profit/by-purpose')
 @login_required
 def api_profit_by_purpose():
-    """검사목적별 손익 분석 - 실제 매출 + 원가율/판관비율 적용"""
+    """검사목적별 손익 분석 - 실제 매출 + 원가율 적용"""
     year = request.args.get('year', '2025')
     data = load_excel_data(year)
 
-    # 원가율/판관비율 가져오기
-    fin_settings = get_financial_settings(year)
-    if fin_settings:
-        cost_rate = fin_settings.get('cost_rate', 69.7) / 100
-        sga_rate = fin_settings.get('sga_rate', 58.4) / 100
-    else:
-        cost_rate = COST_RATE
-        sga_rate = 0.584
+    # 원가율 가져오기 (profit_analysis_settings)
+    profit_settings = get_profit_analysis_settings(year)
+    cost_rate = profit_settings['cost_rate'] / 100  # % -> 비율
 
     purpose_stats = {}
     for row in data:
         purpose = str(row.get('검사목적', '기타')).strip() or '기타'
 
         if purpose not in purpose_stats:
-            purpose_stats[purpose] = {'count': 0, 'sales': 0}
+            purpose_stats[purpose] = {'count': 0, 'sales': 0, 'normal_price': 0}
 
         purpose_stats[purpose]['count'] += 1
 
-        # 공급가액 사용
+        # 공급가액 (실제 매출)
         fee = row.get('공급가액', 0) or 0
         if isinstance(fee, str):
             fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
         purpose_stats[purpose]['sales'] += fee
 
+        # 정상가 (검사료 또는 수수료)
+        normal = row.get('검사료', 0) or row.get('수수료', 0) or fee
+        if isinstance(normal, str):
+            normal = float(normal.replace(',', '').replace('원', '')) if normal else 0
+        purpose_stats[purpose]['normal_price'] += normal
+
     result = []
     for purpose, stats in purpose_stats.items():
         sales = stats['sales']
-        cost_of_sales = sales * cost_rate
-        sga_expense = sales * sga_rate
-        operating_profit = sales - cost_of_sales - sga_expense
-        profit_rate = (operating_profit / sales * 100) if sales > 0 else 0
+        normal_price = stats['normal_price']
+        count = stats['count']
+
+        # 할인율 계산
+        discount_rate = ((normal_price - sales) / normal_price * 100) if normal_price > 0 else 0
+
+        # 매출원가만 계산 (판관비는 월평균으로 별도 처리)
+        estimated_cost = sales * cost_rate
+        estimated_profit = sales - estimated_cost
+        profit_rate = (estimated_profit / sales * 100) if sales > 0 else 0
 
         result.append({
             'purpose': purpose,
-            'count': stats['count'],
+            'count': count,
+            'normal_price': normal_price,
             'actual_sales': sales,
-            'cost_of_sales': cost_of_sales,
-            'sga_expense': sga_expense,
-            'estimated_cost': cost_of_sales + sga_expense,
-            'estimated_profit': operating_profit,
+            'discount_rate': round(discount_rate, 1),
+            'estimated_cost': estimated_cost,
+            'estimated_profit': estimated_profit,
             'profit_rate': round(profit_rate, 1)
         })
 
@@ -29145,50 +29376,54 @@ def api_profit_by_purpose():
 @app.route('/api/profit/by-manager')
 @login_required
 def api_profit_by_manager():
-    """담당자별 손익 분석 - 실제 매출 + 원가율/판관비율 적용"""
+    """담당자별 손익 분석 - 실제 매출 + 원가율 적용"""
     year = request.args.get('year', '2025')
     data = load_excel_data(year)
 
-    # 원가율/판관비율 가져오기
-    fin_settings = get_financial_settings(year)
-    if fin_settings:
-        cost_rate = fin_settings.get('cost_rate', 69.7) / 100
-        sga_rate = fin_settings.get('sga_rate', 58.4) / 100
-    else:
-        cost_rate = COST_RATE
-        sga_rate = 0.584
+    # 원가율 가져오기 (profit_analysis_settings)
+    profit_settings = get_profit_analysis_settings(year)
+    cost_rate = profit_settings['cost_rate'] / 100  # % -> 비율
 
     manager_stats = {}
     for row in data:
         manager = str(row.get('영업담당', '미지정')).strip() or '미지정'
 
         if manager not in manager_stats:
-            manager_stats[manager] = {'count': 0, 'sales': 0}
+            manager_stats[manager] = {'count': 0, 'sales': 0, 'normal_price': 0}
 
         manager_stats[manager]['count'] += 1
 
-        # 공급가액 사용
+        # 공급가액 (실제 매출)
         fee = row.get('공급가액', 0) or 0
         if isinstance(fee, str):
             fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
         manager_stats[manager]['sales'] += fee
 
+        # 정상가
+        normal = row.get('검사료', 0) or row.get('수수료', 0) or fee
+        if isinstance(normal, str):
+            normal = float(normal.replace(',', '').replace('원', '')) if normal else 0
+        manager_stats[manager]['normal_price'] += normal
+
     result = []
     for manager, stats in manager_stats.items():
         sales = stats['sales']
-        cost_of_sales = sales * cost_rate
-        sga_expense = sales * sga_rate
-        operating_profit = sales - cost_of_sales - sga_expense
-        profit_rate = (operating_profit / sales * 100) if sales > 0 else 0
+        normal_price = stats['normal_price']
+        count = stats['count']
+
+        discount_rate = ((normal_price - sales) / normal_price * 100) if normal_price > 0 else 0
+        estimated_cost = sales * cost_rate
+        estimated_profit = sales - estimated_cost
+        profit_rate = (estimated_profit / sales * 100) if sales > 0 else 0
 
         result.append({
             'manager': manager,
-            'count': stats['count'],
+            'count': count,
+            'normal_price': normal_price,
             'actual_sales': sales,
-            'cost_of_sales': cost_of_sales,
-            'sga_expense': sga_expense,
-            'estimated_cost': cost_of_sales + sga_expense,
-            'estimated_profit': operating_profit,
+            'discount_rate': round(discount_rate, 1),
+            'estimated_cost': estimated_cost,
+            'estimated_profit': estimated_profit,
             'profit_rate': round(profit_rate, 1)
         })
 
@@ -29198,20 +29433,16 @@ def api_profit_by_manager():
 @app.route('/api/profit/by-month')
 @login_required
 def api_profit_by_month():
-    """월별 손익 분석 - 실제 매출 + 원가율/판관비율 적용"""
+    """월별 손익 분석 - 실제 매출 + 원가율/월판관비 적용"""
     year = request.args.get('year', '2025')
     data = load_excel_data(year)
 
-    # 원가율/판관비율 가져오기
-    fin_settings = get_financial_settings(year)
-    if fin_settings:
-        cost_rate = fin_settings.get('cost_rate', 69.7) / 100
-        sga_rate = fin_settings.get('sga_rate', 58.4) / 100
-    else:
-        cost_rate = COST_RATE
-        sga_rate = 0.584
+    # 원가율, 월간 판관비 가져오기 (profit_analysis_settings)
+    profit_settings = get_profit_analysis_settings(year)
+    cost_rate = profit_settings['cost_rate'] / 100  # % -> 비율
+    sga_monthly = profit_settings['sga_monthly'] * 100000000  # 억원 -> 원
 
-    month_stats = {m: {'count': 0, 'sales': 0} for m in range(1, 13)}
+    month_stats = {m: {'count': 0, 'sales': 0, 'normal_price': 0} for m in range(1, 13)}
 
     for row in data:
         date_str = row.get('접수일자', '')
@@ -29228,34 +29459,146 @@ def api_profit_by_month():
         if 1 <= month <= 12:
             month_stats[month]['count'] += 1
 
-            # 공급가액 사용
+            # 공급가액 (실제 매출)
             fee = row.get('공급가액', 0) or 0
             if isinstance(fee, str):
                 fee = float(fee.replace(',', '').replace('원', '')) if fee else 0
             month_stats[month]['sales'] += fee
 
+            # 정상가 (검사료 또는 수수료)
+            normal = row.get('검사료', 0) or row.get('수수료', 0) or fee
+            if isinstance(normal, str):
+                normal = float(normal.replace(',', '').replace('원', '')) if normal else 0
+            month_stats[month]['normal_price'] += normal
+
     result = []
     for month in range(1, 13):
         stats = month_stats[month]
         sales = stats['sales']
+        normal_price = stats['normal_price']
+        count = stats['count']
+
+        # 할인율 계산
+        discount_rate = ((normal_price - sales) / normal_price * 100) if normal_price > 0 else 0
+
+        # 원가 = 매출 × 원가율
         cost_of_sales = sales * cost_rate
-        sga_expense = sales * sga_rate
-        operating_profit = sales - cost_of_sales - sga_expense
-        profit_rate = (operating_profit / sales * 100) if sales > 0 else 0
+        # 판관비 = 월 고정액 (억원 → 원 변환됨)
+        sga_expense = sga_monthly
+        # 추정 원가 = 매출원가 + 판관비
+        estimated_cost = cost_of_sales + sga_expense
+        # 추정 이익 = 매출 - 추정원가
+        estimated_profit = sales - estimated_cost
+        profit_rate = (estimated_profit / sales * 100) if sales > 0 else 0
 
         result.append({
             'month': month,
             'month_name': f'{month}월',
-            'count': stats['count'],
+            'count': count,
+            'normal_price': normal_price,
             'actual_sales': sales,
+            'discount_rate': round(discount_rate, 1),
             'cost_of_sales': cost_of_sales,
             'sga_expense': sga_expense,
-            'estimated_cost': cost_of_sales + sga_expense,
-            'estimated_profit': operating_profit,
+            'estimated_cost': estimated_cost,
+            'estimated_profit': estimated_profit,
             'profit_rate': round(profit_rate, 1)
         })
 
     return jsonify({'success': True, 'data': result})
+
+# ============ 손익분석 설정 API ============
+@app.route('/api/admin/profit-settings')
+@admin_required
+def api_admin_get_profit_settings():
+    """손익분석 설정 조회 (년도별 원가율, 판관비)"""
+    try:
+        conn = get_user_db()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT year, cost_rate, sga_monthly FROM profit_analysis_settings ORDER BY year DESC')
+        rows = cursor.fetchall()
+        conn.close()
+
+        settings = []
+        for row in rows:
+            settings.append({
+                'year': row[0],
+                'cost_rate': row[1] or 69.7,
+                'sga_monthly': row[2] or 2.5
+            })
+
+        # 기본값 추가 (데이터가 없는 경우)
+        existing_years = [s['year'] for s in settings]
+        for year in [2024, 2025, 2026]:
+            if year not in existing_years:
+                default_cost_rate = 55.8 if year == 2024 else 69.7
+                default_sga = 2.4 if year == 2024 else 2.5
+                settings.append({
+                    'year': year,
+                    'cost_rate': default_cost_rate,
+                    'sga_monthly': default_sga
+                })
+
+        settings.sort(key=lambda x: x['year'], reverse=True)
+        return jsonify({'success': True, 'settings': settings})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/profit-settings', methods=['POST'])
+@admin_required
+def api_admin_save_profit_settings():
+    """손익분석 설정 저장"""
+    try:
+        data = request.json
+        settings = data.get('settings', [])
+
+        conn = get_user_db()
+        cursor = conn.cursor()
+
+        for s in settings:
+            year = s.get('year')
+            cost_rate = s.get('cost_rate', 69.7)
+            sga_monthly = s.get('sga_monthly', 2.5)
+
+            cursor.execute('SELECT id FROM profit_analysis_settings WHERE year = ?', (year,))
+            existing = cursor.fetchone()
+
+            if existing:
+                cursor.execute('''
+                    UPDATE profit_analysis_settings
+                    SET cost_rate = ?, sga_monthly = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE year = ?
+                ''', (cost_rate, sga_monthly, year))
+            else:
+                cursor.execute('''
+                    INSERT INTO profit_analysis_settings (year, cost_rate, sga_monthly)
+                    VALUES (?, ?, ?)
+                ''', (year, cost_rate, sga_monthly))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def get_profit_analysis_settings(year):
+    """손익분석 설정 가져오기 (년도별)"""
+    try:
+        conn = get_user_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT cost_rate, sga_monthly FROM profit_analysis_settings WHERE year = ?', (int(year),))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return {'cost_rate': row[0] or 69.7, 'sga_monthly': row[1] or 2.5}
+        # 기본값 반환
+        default_cost_rate = 55.8 if str(year) == '2024' else 69.7
+        default_sga = 2.4 if str(year) == '2024' else 2.5
+        return {'cost_rate': default_cost_rate, 'sga_monthly': default_sga}
+    except:
+        return {'cost_rate': 69.7, 'sga_monthly': 2.5}
 
 # ============ 손익계산서 설정 API ============
 @app.route('/api/admin/financial-settings')
