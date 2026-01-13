@@ -5,7 +5,7 @@
 - 연도 비교, 검사목적 필터, 업체별 분석, 부적합항목 분석
 - AI 분석 (Google Gemini API)
 """
-from flask import Flask, render_template_string, jsonify, request, redirect, make_response, session
+from flask import Flask, render_template_string, jsonify, request, redirect, make_response, session, send_file
 import os
 import time
 import sqlite3
@@ -16,6 +16,36 @@ import subprocess
 import secrets
 import hashlib
 from functools import wraps
+from io import BytesIO
+
+# PDF 생성을 위한 reportlab
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.colors import HexColor
+    REPORTLAB_AVAILABLE = True
+    # 나눔고딕 폰트 등록 (여러 경로 시도)
+    FONT_PATHS = [
+        '/usr/share/fonts/truetype/nanum/NanumGothic.ttf',
+        '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf',
+        '/usr/share/fonts/nanum/NanumGothic.ttf',
+        '/usr/share/fonts/NanumGothic.ttf',
+    ]
+    KOREAN_FONT = None
+    for font_path in FONT_PATHS:
+        if os.path.exists(font_path):
+            try:
+                pdfmetrics.registerFont(TTFont('NanumGothic', font_path))
+                KOREAN_FONT = 'NanumGothic'
+                break
+            except:
+                pass
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+    KOREAN_FONT = None
 
 app = Flask(__name__)
 
@@ -11167,7 +11197,7 @@ HTML_TEMPLATE = '''
             }
         }
 
-        // PDF 내보내기 함수 (한글 지원 - html2canvas 방식)
+        // PDF 내보내기 함수 (서버 측 생성 - 한글 지원)
         async function exportToPdf() {
             const btn = document.getElementById('btnExportPdf');
             const originalText = btn.innerHTML;
@@ -11177,153 +11207,57 @@ HTML_TEMPLATE = '''
             try {
                 showToast('PDF를 생성하고 있습니다...', 'loading');
 
-                // jsPDF 초기화
-                const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF('p', 'mm', 'a4');
-                const pageWidth = pdf.internal.pageSize.getWidth();
-                const pageHeight = pdf.internal.pageSize.getHeight();
-                const margin = 10;
-
                 // 조회 조건 가져오기
                 const year = document.getElementById('yearSelect')?.value || '2025';
-                const month = document.getElementById('monthSelect')?.value;
+                const month = document.getElementById('monthSelect')?.value || '';
                 const purpose = document.getElementById('purposeSelect')?.value || '전체';
                 const activeTab = document.querySelector('.tab-card.active');
                 const tabLabel = activeTab?.querySelector('.tab-label')?.textContent || '메인';
 
-                // 임시 헤더 HTML 요소 생성 (한글 지원을 위해 html2canvas로 캡처)
-                const headerDiv = document.createElement('div');
-                headerDiv.style.cssText = `
-                    position: fixed;
-                    left: -9999px;
-                    top: 0;
-                    width: 800px;
-                    padding: 20px;
-                    background: white;
-                    font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
-                `;
-                headerDiv.innerHTML = `
-                    <div style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 15px; color: #1e293b;">
-                        경영지표 분석 보고서 - ${year}년${month ? ' ' + month + '월' : ''} ${purpose !== '전체' ? '(' + purpose + ')' : ''}
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 14px; color: #64748b; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">
-                        <span>담당 탭: ${tabLabel}</span>
-                        <span>생성일시: ${new Date().toLocaleString('ko-KR')}</span>
-                    </div>
-                `;
-                document.body.appendChild(headerDiv);
+                // 현재 화면의 요약 데이터 수집
+                const summaryData = {
+                    totalSales: document.querySelector('.stat-card:nth-child(1) .stat-value')?.textContent || '-',
+                    totalCount: document.querySelector('.stat-card:nth-child(2) .stat-value')?.textContent || '-',
+                    avgPrice: document.querySelector('.stat-card:nth-child(3) .stat-value')?.textContent || '-',
+                    newClients: document.querySelector('.stat-card:nth-child(4) .stat-value')?.textContent || '-',
+                    defectCount: document.querySelector('.stat-card:nth-child(5) .stat-value')?.textContent || '-',
+                };
 
-                // 헤더 캡처
-                const headerCanvas = await html2canvas(headerDiv, {
-                    scale: 2,
-                    useCORS: true,
-                    logging: false,
-                    backgroundColor: '#ffffff'
+                // 서버 API 호출
+                const response = await fetch('/api/export-pdf', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        year,
+                        month,
+                        purpose,
+                        tabLabel,
+                        summaryData
+                    })
                 });
-                document.body.removeChild(headerDiv);
 
-                // 헤더 이미지 추가
-                const headerImgData = headerCanvas.toDataURL('image/png');
-                const headerImgWidth = pageWidth - (margin * 2);
-                const headerImgHeight = (headerCanvas.height * headerImgWidth) / headerCanvas.width;
-                pdf.addImage(headerImgData, 'PNG', margin, margin, headerImgWidth, headerImgHeight);
-                let yPosition = margin + headerImgHeight + 5;
-
-                // 현재 표시된 콘텐츠 영역 캡처
-                const contentArea = document.querySelector('.content-container');
-                if (contentArea) {
-                    const canvas = await html2canvas(contentArea, {
-                        scale: 2,
-                        useCORS: true,
-                        logging: false,
-                        backgroundColor: '#f8fafc',
-                        windowWidth: contentArea.scrollWidth,
-                        windowHeight: contentArea.scrollHeight
-                    });
-
-                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
-                    const imgWidth = pageWidth - (margin * 2);
-                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-                    // 여러 페이지로 나누기
-                    let heightLeft = imgHeight;
-                    let position = yPosition;
-                    const availableHeight = pageHeight - margin - yPosition;
-
-                    // 첫 페이지
-                    if (imgHeight <= availableHeight) {
-                        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-                    } else {
-                        // 이미지를 여러 페이지로 분할
-                        let srcY = 0;
-                        const srcHeight = canvas.height;
-                        const firstPageImgHeight = availableHeight;
-                        const firstPageSrcHeight = (firstPageImgHeight / imgHeight) * srcHeight;
-
-                        // 첫 페이지 부분 캡처
-                        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, firstPageImgHeight, undefined, 'FAST', 0, 0);
-
-                        heightLeft -= firstPageImgHeight;
-                        srcY += firstPageSrcHeight;
-
-                        while (heightLeft > 0) {
-                            pdf.addPage();
-                            position = margin;
-                            const thisPageHeight = Math.min(heightLeft, pageHeight - (margin * 2));
-                            pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight, undefined, 'FAST', 0, -((srcY / srcHeight) * imgHeight));
-                            heightLeft -= thisPageHeight;
-                            srcY += (thisPageHeight / imgHeight) * srcHeight;
-                        }
-                    }
-                }
-
-                // AI 분석 결과가 있으면 추가 (html2canvas로 캡처)
-                const aiAnalysis = document.getElementById('aiSummary');
-                if (aiAnalysis && aiAnalysis.textContent.trim() && !aiAnalysis.textContent.includes('AI 분석 로딩 중')) {
-                    // AI 분석 결과용 임시 요소 생성
-                    const aiDiv = document.createElement('div');
-                    aiDiv.style.cssText = `
-                        position: fixed;
-                        left: -9999px;
-                        top: 0;
-                        width: 800px;
-                        padding: 20px;
-                        background: white;
-                        font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
-                    `;
-                    aiDiv.innerHTML = `
-                        <div style="font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #1e293b; border-bottom: 2px solid #6366f1; padding-bottom: 8px;">
-                            AI 분석 결과
-                        </div>
-                        <div style="font-size: 13px; line-height: 1.8; color: #334155; white-space: pre-wrap;">
-                            ${aiAnalysis.textContent.trim()}
-                        </div>
-                    `;
-                    document.body.appendChild(aiDiv);
-
-                    const aiCanvas = await html2canvas(aiDiv, {
-                        scale: 2,
-                        useCORS: true,
-                        logging: false,
-                        backgroundColor: '#ffffff'
-                    });
-                    document.body.removeChild(aiDiv);
-
-                    pdf.addPage();
-                    const aiImgData = aiCanvas.toDataURL('image/png');
-                    const aiImgWidth = pageWidth - (margin * 2);
-                    const aiImgHeight = (aiCanvas.height * aiImgWidth) / aiCanvas.width;
-                    pdf.addImage(aiImgData, 'PNG', margin, margin, aiImgWidth, Math.min(aiImgHeight, pageHeight - margin * 2));
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'PDF 생성 실패');
                 }
 
                 // PDF 다운로드
-                const fileName = `경영지표_${year}${month ? '_' + month + '월' : ''}_${new Date().toISOString().slice(0,10)}.pdf`;
-                pdf.save(fileName);
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `경영지표_${year}${month ? '_' + month + '월' : ''}_${new Date().toISOString().slice(0,10)}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
 
                 showToast('PDF가 다운로드되었습니다.', 'success');
             } catch (error) {
                 console.error('PDF 생성 오류:', error);
-                showToast('PDF 생성 중 오류가 발생했습니다.', 'error');
+                showToast('PDF 생성 중 오류가 발생했습니다: ' + error.message, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = originalText;
@@ -30404,6 +30338,125 @@ def filter_data_by_date(data, year, month=None, day=None, end_year=None, end_mon
             filtered.append(row)
 
     return filtered
+
+# ============ PDF 내보내기 API ============
+@app.route('/api/export-pdf', methods=['POST'])
+def export_pdf():
+    """서버 측에서 PDF 생성 (한글 지원)"""
+    if not REPORTLAB_AVAILABLE:
+        return jsonify({'error': 'PDF 라이브러리가 설치되지 않았습니다.'}), 500
+
+    if not KOREAN_FONT:
+        return jsonify({'error': '한글 폰트를 찾을 수 없습니다.'}), 500
+
+    try:
+        data = request.get_json() or {}
+        year = data.get('year', '2025')
+        month = data.get('month', '')
+        purpose = data.get('purpose', '전체')
+        tab_label = data.get('tabLabel', '메인')
+        summary_data = data.get('summaryData', {})
+
+        # PDF 생성
+        buffer = BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+
+        # 폰트 설정
+        c.setFont(KOREAN_FONT, 12)
+
+        # 헤더 배경
+        c.setFillColor(HexColor('#6366f1'))
+        c.rect(0, height - 80, width, 80, fill=True, stroke=False)
+
+        # 제목
+        c.setFillColor(HexColor('#ffffff'))
+        c.setFont(KOREAN_FONT, 22)
+        title = f"경영지표 분석 보고서 - {year}년"
+        if month:
+            title += f" {month}월"
+        if purpose != '전체':
+            title += f" ({purpose})"
+        c.drawCentredString(width / 2, height - 45, title)
+
+        # 부제목
+        c.setFont(KOREAN_FONT, 11)
+        c.drawCentredString(width / 2, height - 65, f"조회 탭: {tab_label} | 생성일시: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+
+        # 본문 시작 위치
+        y_pos = height - 120
+
+        # 요약 정보 박스
+        c.setFillColor(HexColor('#f8fafc'))
+        c.rect(30, y_pos - 180, width - 60, 180, fill=True, stroke=False)
+        c.setStrokeColor(HexColor('#e2e8f0'))
+        c.rect(30, y_pos - 180, width - 60, 180, fill=False, stroke=True)
+
+        # 요약 데이터 출력
+        c.setFillColor(HexColor('#1e293b'))
+        c.setFont(KOREAN_FONT, 14)
+        c.drawString(50, y_pos - 25, "주요 지표 요약")
+
+        c.setFont(KOREAN_FONT, 11)
+        y_pos -= 55
+
+        # 요약 항목들
+        summary_items = [
+            ('총 매출액', summary_data.get('totalSales', '-')),
+            ('총 건수', summary_data.get('totalCount', '-')),
+            ('평균 단가', summary_data.get('avgPrice', '-')),
+            ('신규 업체', summary_data.get('newClients', '-')),
+            ('부적합 건수', summary_data.get('defectCount', '-')),
+        ]
+
+        col1_x = 50
+        col2_x = width / 2 + 20
+        row_height = 28
+
+        for i, (label, value) in enumerate(summary_items):
+            x = col1_x if i % 2 == 0 else col2_x
+            if i % 2 == 0 and i > 0:
+                y_pos -= row_height
+            c.setFillColor(HexColor('#64748b'))
+            c.drawString(x, y_pos, f"{label}:")
+            c.setFillColor(HexColor('#1e293b'))
+            c.setFont(KOREAN_FONT, 12)
+            c.drawString(x + 85, y_pos, str(value))
+            c.setFont(KOREAN_FONT, 11)
+
+        # 안내 문구
+        c.setFillColor(HexColor('#94a3b8'))
+        c.setFont(KOREAN_FONT, 10)
+        c.drawCentredString(width / 2, 50, "※ 본 보고서는 경영지표 분석 시스템에서 자동 생성되었습니다.")
+
+        # 푸터
+        c.setFillColor(HexColor('#6366f1'))
+        c.rect(0, 0, width, 30, fill=True, stroke=False)
+        c.setFillColor(HexColor('#ffffff'))
+        c.setFont(KOREAN_FONT, 9)
+        c.drawCentredString(width / 2, 12, "Business Metrics Analyzer")
+
+        c.save()
+        buffer.seek(0)
+
+        # 파일명 생성
+        filename = f"경영지표_{year}"
+        if month:
+            filename += f"_{month}월"
+        filename += f"_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        print(f"[PDF 오류] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/data')
 def get_data():
